@@ -360,7 +360,7 @@ POSTS = {
         _e("📝 v0.1.1: Discord update :3",
            "💜 **Discord status**: ur profile shows ur fps, world + song with Download / Join buttons\n"
            "💜 **join our discord** button + online count on the <3 page\n"
-           "🔍 **Zoom lens**: magnify what u see, 2x to 6x\n"
+           "🔍 **Zoom lens**: hold a controller up to ur eye like a telescope to zoom (2x-6x)\n"
            "🐍 install.bat now installs Python for u if it's missing\n"
            "🎃 **new theme: Spooky Floof** (25 themes)\n"
            "🔋 **Low battery alert** · 💧 **Hydration buddy** · 🎉 **VR milestones**\n"
@@ -525,7 +525,9 @@ POSTS.update({
         _e("🔍 zoom lens",
            "a little magnifier floating in front of ur eyes that **zooms into the middle of what u see** "
            "(2x, 3x, 4x or 6x). great for reading signs, spotting friends across the world, or peeping at avatars.\n\n"
-           "**turn it on:** 🖥️ Screen tab → Zoom lens, or tap the **🔍** on ur wrist with ur other hand\n"
+           "**in game:** just **hold a controller up to ur eye like a telescope** 🔭 and it zooms! "
+           "move it away and it stops. no buttons, nothing clashes with VRChat.\n"
+           "**prefer a button?** pick *tap on/off* in the 🖥️ Screen tab and tap the **🔍** on ur wrist\n"
            "**how it works:** it zooms the VRChat window on ur desktop, so keep VRChat's window open "
            "(not minimized).", PURPLE),
         _e("🖥️ desktop in VR",

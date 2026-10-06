@@ -90,7 +90,7 @@ DEFAULT_CFG = {
         "discord_presence": True,
         "battery_alert": True, "hydration_reminder": False, "vr_milestones": True, "zoom_lens": True,
     },
-    "zoom": {"enabled": False, "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
+    "zoom": {"enabled": False, "mode": "gesture", "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
     "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
         "provider": "anthropic", "api_key": "", "model": "claude-haiku-4-5", "base_url": "",
@@ -415,6 +415,7 @@ class App:
         self.ov.setOverlaySortOrder(self.zoom_ov, 6)
         self.zoom_shown = False
         self.zoom_placed = None
+        self.gesture_since = None
         self.scr_shown = False
 
         self.safe("icon", self.refresh_icon)
@@ -649,9 +650,41 @@ class App:
                 self.ov.showOverlay(self.scr)
                 self.scr_shown = True
 
+    def zoom_gesture(self):
+        """True while either controller is held up to your face, like a telescope."""
+        poses = (openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount)()
+        self.vr.getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0, poses)
+        hp = poses[openvr.k_unTrackedDeviceIndex_Hmd]
+        if not hp.bPoseIsValid:
+            return False
+        H = hp.mDeviceToAbsoluteTracking.m
+        for role in (openvr.TrackedControllerRole_LeftHand, openvr.TrackedControllerRole_RightHand):
+            idx = self.vr.getTrackedDeviceIndexForControllerRole(role)
+            if idx == openvr.k_unTrackedDeviceIndexInvalid or not poses[idx].bPoseIsValid:
+                continue
+            C = poses[idx].mDeviceToAbsoluteTracking.m
+            rel = [C[i][3] - H[i][3] for i in range(3)]
+            loc = [sum(H[k][i] * rel[k] for k in range(3)) for i in range(3)]   # into headset space
+            # in front of the face (z is backwards in SteamVR), near the eyes, not far off to the side
+            if -0.20 < loc[2] < -0.02 and abs(loc[0]) < 0.11 and -0.10 < loc[1] < 0.07:
+                return True
+        return False
+
     def update_zoom(self):
         z = self.cfg["zoom"]
         on = self.cfg["modules"].get("zoom_lens", True) and z.get("enabled")
+        if self.cfg["modules"].get("zoom_lens", True) and z.get("mode", "gesture") == "gesture":
+            now = time.time()
+            if self.zoom_gesture():
+                self.gesture_since = self.gesture_since or now
+            else:
+                self.gesture_since = None
+            held = self.gesture_since is not None and now - self.gesture_since > 0.25
+            if held != z.get("enabled"):
+                z["enabled"] = held                    # live state only, not a setting change
+                if held:
+                    self.zoom_placed = None
+            on = held
         if not on:
             if self.zoom_shown:
                 self.ov.hideOverlay(self.zoom_ov)
@@ -672,6 +705,7 @@ class App:
 
     def toggle_zoom(self):
         z = self.cfg["zoom"]
+        z["mode"] = "toggle"                          # tapping the button = classic on/off mode
         z["enabled"] = not z.get("enabled")
         self.cfg["modules"]["zoom_lens"] = True
         self.state.dirty_cfg = self.state.dash_dirty = self.state.hud_dirty = True
@@ -854,6 +888,8 @@ class App:
             self.toggle_zoom()
         elif action == "zoom_set":
             cfg["zoom"][args[0]] = args[1]
+            if args[0] == "mode":
+                cfg["zoom"]["enabled"] = False
             self.zoom_placed = None
             st.dirty_cfg = True
         elif action == "join_discord":

@@ -1,7 +1,7 @@
 # Changelog
 
 ## v0.1.1: Discord update :3
-- 🔍 **Zoom lens**: a magnifier (2x-6x) in front of ur eyes that zooms into what u see. toggle it from the Screen tab or the 🔍 on ur wrist
+- 🔍 **Zoom lens**: hold a controller up to ur eye like a telescope and it zooms in (2x-6x) while u play. or pick tap on/off and use the 🔍 on ur wrist
 - 🐍 **No Python? No problem**: install.bat finds Python or installs it for you
 - 🎃 **new theme: Spooky Floof** (25 themes now!)
 - 🔋 **Low battery alert**: ur wrist warns u before a controller or tracker dies

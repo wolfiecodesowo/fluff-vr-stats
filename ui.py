@@ -1840,15 +1840,22 @@ def _tab_screen(d, hit, box, state, t):
     zx = x0 + half + gap
     z = state.cfg.get("zoom", {})
     panel(d, [zx, y0, x1, y0 + top_h], 22, t)
-    d.text((zx + 24, y0 + 18), "Zoom lens", font=font("title", 28), fill=t["text"])
-    switch(d, x1 - 110, y0 + 16, bool(z.get("enabled")), t, scale=1.2)
-    hit.add([zx, y0, x1, y0 + 56], "zoom_toggle")
+    d.text((zx + 24, y0 + 14), "Zoom lens", font=font("title", 26), fill=t["text"])
+    gest = z.get("mode", "gesture") == "gesture"
+    mw = 128
+    button(d, hit, [x1 - 24 - 2 * mw - 6, y0 + 12, x1 - 24 - mw - 6, y0 + 46], "hold to eye", t,
+           "zoom_set", "mode", "gesture", active=gest, fsize=15)
+    button(d, hit, [x1 - 24 - mw, y0 + 12, x1 - 24, y0 + 46],
+           ("on" if z.get("enabled") and not gest else "tap on/off"), t,
+           "zoom_toggle", active=not gest and bool(z.get("enabled")), fsize=15)
     lv = [2, 3, 4, 6]
     bw = (x1 - zx - 48 - 8 * (len(lv) - 1)) / len(lv)
     for i, v in enumerate(lv):
         bx = zx + 24 + i * (bw + 8)
-        button(d, hit, [bx, y0 + 62, bx + bw, y0 + 102], f"{v}x", t, "zoom_set", "level", v,
-               active=z.get("level", 3) == v, fsize=18)
+        button(d, hit, [bx, y0 + 56, bx + bw, y0 + 92], f"{v}x", t, "zoom_set", "level", v,
+               active=z.get("level", 3) == v, fsize=17)
+    d.text(((zx + x1) / 2, y0 + 106), "in game: hold a controller up to ur eye like a telescope" if gest
+           else "in game: tap the 🔍 on ur wrist", font=font("body2", 14), fill=t["sub"], anchor="mm")
 
     ly = y0 + top_h + 14
     # left: where + which monitor
