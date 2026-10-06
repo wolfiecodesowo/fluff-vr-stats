@@ -32,6 +32,7 @@ CFG_PATH = os.path.join(HERE, "bot_config.json")
 CLIENT_CFG = os.path.join(os.path.dirname(HERE), "config.json")
 REPO_API = "https://api.github.com/repos/wolfiecodesowo/fluff-vr-stats/releases/latest"
 PRESENCE_NAMES = ("fluff vr stats",)
+THREAD_CHANNELS = {"support", "suggestions", "bugs"}
 INVITE_RE = re.compile(r"(discord\.gg/|discord(app)?\.com/invite/)\S+", re.I)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -124,6 +125,59 @@ class RoleButtons(discord.ui.View):
         return cb
 
 
+async def open_ticket(inter: discord.Interaction, topic: str = ""):
+    c = bot.ch("support")
+    if c is None:
+        return await inter.response.send_message("tickets aren't set up yet, ask staff :3", ephemeral=True)
+    for t in c.threads:                       # one open ticket per person
+        if not t.archived and t.name.endswith(f"· {inter.user.name}"):
+            return await inter.response.send_message(f"u already have a ticket open: {t.mention}", ephemeral=True)
+    n = CFG.get("ticket_no", 0) + 1
+    CFG["ticket_no"] = n
+    save_cfg(CFG)
+    t = await c.create_thread(name=f"🎫 {n:03d} · {inter.user.name}", type=discord.ChannelType.private_thread,
+                              invitable=False, auto_archive_duration=10080)
+    await t.add_user(inter.user)
+    staff = bot.role("staff")
+    e = discord.Embed(title=f"🎫 ticket #{n:03d}", color=C.PINK,
+                      description=f"hiii {inter.user.mention}! staff will be here soon :3\n\n"
+                                  "tell us what's going on + add a screenshot and your `logs/fluffvr.log` "
+                                  "if the app is acting up.\n\npress **close ticket** when you're all sorted.")
+    if topic:
+        e.add_field(name="topic", value=topic[:1000], inline=False)
+    await t.send(content=staff.mention if staff else None, embed=e, view=CloseTicket(),
+                 allowed_mentions=discord.AllowedMentions(roles=True, users=True))
+    await inter.response.send_message(f"made ur ticket: {t.mention} 🐾", ephemeral=True)
+    log_c = bot.ch("tickets_log")
+    if log_c:
+        await log_c.send(f"🎫 #{n:03d} opened by {inter.user.mention}: {t.mention}" + (f" — {topic}" if topic else ""))
+
+
+class TicketPanel(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎫 open a ticket", style=discord.ButtonStyle.primary, custom_id="fluff_ticket_open")
+    async def open_btn(self, inter: discord.Interaction, _):
+        await open_ticket(inter)
+
+
+class CloseTicket(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ close ticket", style=discord.ButtonStyle.secondary, custom_id="fluff_ticket_close")
+    async def close_btn(self, inter: discord.Interaction, _):
+        t = inter.channel
+        if not isinstance(t, discord.Thread):
+            return await inter.response.send_message("this only works in a ticket", ephemeral=True)
+        await inter.response.send_message(f"ticket closed by {inter.user.mention}. thank u! 💜")
+        log_c = bot.ch("tickets_log")
+        if log_c:
+            await log_c.send(f"✅ {t.name} closed by {inter.user.mention}")
+        await t.edit(archived=True, locked=True)
+
+
 class FluffBot(discord.Client):
     def __init__(self):
         super().__init__(intents=intents, activity=discord.Game("Fluff VR Stats :3"))
@@ -131,6 +185,8 @@ class FluffBot(discord.Client):
 
     async def setup_hook(self):
         self.add_view(RoleButtons())
+        self.add_view(TicketPanel())
+        self.add_view(CloseTicket())
         gid = CFG.get("guild_id")
         if gid:
             g = discord.Object(id=int(gid))
@@ -191,6 +247,10 @@ class FluffBot(discord.Client):
             save_cfg(CFG)
         update_client_cfg(app_id=str(self.application_id), guild_id=CFG.get("guild_id"),
                           invite=CFG.get("invite"))
+        if g is not None and not getattr(self, "_synced_guild", False):
+            self._synced_guild = True
+            self.tree.copy_global_to(guild=g)
+            await self.tree.sync(guild=g)
         if g is None:
             perms = 8
             print(f"\n  invite me to your server:\n  https://discord.com/oauth2/authorize?client_id="
@@ -331,6 +391,23 @@ def fetch_release():
 bot = FluffBot()
 
 
+@bot.tree.error
+async def on_app_error(inter: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        return                                    # staff_only already answered
+    log.warning("command error: %s", error)
+    msg = "oops, something went wrong >w< (staff can check the bot window)"
+    if isinstance(error, app_commands.CommandInvokeError) and isinstance(error.original, discord.Forbidden):
+        msg = "I don't have permission to do that here :c"
+    try:
+        if inter.response.is_done():
+            await inter.followup.send(msg, ephemeral=True)
+        else:
+            await inter.response.send_message(msg, ephemeral=True)
+    except discord.HTTPException:
+        pass
+
+
 # ----------------------------------------------------------- server build ---
 async def build_server(guild: discord.Guild, status):
     me = guild.me
@@ -411,10 +488,16 @@ async def build_server(guild: discord.Guild, status):
     for cat_name, access, items in C.LAYOUT:
         cat = await guild.create_category(cat_name, overwrites=overwrites(access), reason="Fluff Bot setup")
         for kind, key, name in items:
+            ow = overwrites(access)
+            if key in THREAD_CHANNELS:      # people can talk inside threads here (tickets, ideas, bugs)
+                ow[everyone] = discord.PermissionOverwrite(view_channel=True, send_messages=False,
+                                                           add_reactions=True, send_messages_in_threads=True,
+                                                           create_public_threads=False, create_private_threads=False,
+                                                           attach_files=True, embed_links=True)
             if kind == "voice":
-                c = await guild.create_voice_channel(name, category=cat, overwrites=overwrites(access))
+                c = await guild.create_voice_channel(name, category=cat, overwrites=ow)
             else:
-                c = await guild.create_text_channel(name, category=cat, overwrites=overwrites(access),
+                c = await guild.create_text_channel(name, category=cat, overwrites=ow,
                                                     topic=C.TOPICS.get(key))
             chans[key] = c
     CFG["channels"] = {k: c.id for k, c in chans.items()}
@@ -458,6 +541,8 @@ async def post_info(chans):
         for spec in specs:
             if key == "get_roles":
                 await c.send(embed=make_embed(spec), view=RoleButtons())
+            elif key == "support":
+                await c.send(embed=make_embed(spec), view=TicketPanel())
             else:
                 await c.send(embed=make_embed(spec))
 
@@ -626,6 +711,257 @@ async def purge_cmd(inter: discord.Interaction, amount: app_commands.Range[int, 
 async def slowmode_cmd(inter: discord.Interaction, seconds: app_commands.Range[int, 0, 21600]):
     await inter.channel.edit(slowmode_delay=seconds)
     await inter.response.send_message(f"slowmode: {seconds}s", ephemeral=True)
+
+
+# ---- client info commands (all post the same embeds as the info channels)
+def _info_cmd(name, key, desc, idx=0):
+    @bot.tree.command(name=name, description=desc)
+    async def _cmd(inter: discord.Interaction):
+        specs = [x for x in C.POSTS[key] if x.get("title") or x.get("description")]
+        await inter.response.send_message(embed=make_embed(specs[idx]))
+    return _cmd
+
+
+for _n, _k, _d in [("features", "features", "what Fluff VR Stats can do"),
+                   ("mods", "mods", "all the mods you can toggle"),
+                   ("themes", "themes", "themes + style options"),
+                   ("boost", "boost", "the FPS boost tweaks"),
+                   ("chatbox", "chatbox", "set up chatbox stats in VRChat"),
+                   ("ai", "ai", "give Fluff a brain (free)"),
+                   ("troubleshoot", "troubleshoot", "fix common problems"),
+                   ("roadmap", "roadmap", "what's coming next"),
+                   ("links", "links", "all the important links"),
+                   ("safe", "safety", "is Fluff VR Stats safe?"),
+                   ("requirements", "requirements", "what you need to run it")]:
+    _info_cmd(_n, _k, _d)
+
+
+@bot.tree.command(name="help", description="everything Fluff Bot can do")
+async def help_cmd(inter: discord.Interaction):
+    await inter.response.send_message(embed=make_embed(C.POSTS["commands"][0]), ephemeral=True)
+
+
+@bot.tree.command(name="version", description="the latest Fluff VR Stats version")
+async def version_cmd(inter: discord.Interaction):
+    v = CFG.get("last_release") or "v0.1.0"
+    e = discord.Embed(title=f"⬇️ latest: {v}", url=C.RELEASES, color=C.PINK,
+                      description=f"[download it here]({C.RELEASES}) · check 📝・changelog for what's new")
+    e.set_thumbnail(url=C.LOGO)
+    await inter.response.send_message(embed=e)
+
+
+@bot.tree.command(name="changelog", description="what changed in the latest version")
+async def changelog_cmd(inter: discord.Interaction):
+    await inter.response.send_message(embed=make_embed(C.POSTS["changelog"][0]))
+
+
+@bot.tree.command(name="invr", description="who's using Fluff VR Stats right now")
+async def invr_cmd(inter: discord.Interaction):
+    vr = [m for m in inter.guild.members if not m.bot and bot.using_fluff(m)]
+    if not vr:
+        return await inter.response.send_message("nobody's in VR with Fluff VR Stats right now... go be the first! 🥽")
+    lines = []
+    for m in vr[:25]:
+        act = next((a for a in m.activities if bot.using_fluff(type("x", (), {"activities": [a]})())), None)
+        extra = f" · {act.details}" if act is not None and getattr(act, "details", None) else ""
+        lines.append(f"🥽 **{m.display_name}**{extra}")
+    await inter.response.send_message(embed=discord.Embed(title=f"🥽 {len(vr)} in VR right now",
+                                                          description="\n".join(lines), color=C.PURPLE))
+
+
+@bot.tree.command(name="ticket", description="open a private help chat with staff")
+@app_commands.describe(topic="what do u need help with?")
+async def ticket_cmd(inter: discord.Interaction, topic: str = ""):
+    await open_ticket(inter, topic)
+
+
+@bot.tree.command(name="suggest", description="suggest an idea for the client or server")
+@app_commands.describe(idea="ur idea!")
+async def suggest_cmd(inter: discord.Interaction, idea: app_commands.Range[str, 5, 1500]):
+    c = bot.ch("suggestions")
+    if not c:
+        return await inter.response.send_message("suggestions aren't set up yet", ephemeral=True)
+    e = discord.Embed(description=idea, color=C.MINT)
+    e.set_author(name=f"💡 idea from {inter.user.display_name}", icon_url=inter.user.display_avatar.url)
+    msg = await c.send(embed=e)
+    await msg.add_reaction("👍")
+    await msg.add_reaction("👎")
+    await msg.create_thread(name=f"💬 {idea[:80]}")
+    await inter.response.send_message(f"posted ur idea in {c.mention}! 💡", ephemeral=True)
+
+
+@bot.tree.command(name="bug", description="report a bug in Fluff VR Stats")
+@app_commands.describe(title="short name for the bug", what_happened="what did u do + what went wrong?")
+async def bug_cmd(inter: discord.Interaction, title: app_commands.Range[str, 3, 100],
+                  what_happened: app_commands.Range[str, 5, 1500]):
+    c = bot.ch("bugs")
+    if not c:
+        return await inter.response.send_message("bug reports aren't set up yet", ephemeral=True)
+    n = CFG.get("bug_no", 0) + 1
+    CFG["bug_no"] = n
+    save_cfg(CFG)
+    e = discord.Embed(title=f"🐛 #{n:03d} {title}", description=what_happened, color=C.GOLD)
+    e.set_author(name=inter.user.display_name, icon_url=inter.user.display_avatar.url)
+    e.set_footer(text="status: 🟡 open")
+    msg = await c.send(embed=e)
+    t = await msg.create_thread(name=f"🐛 #{n:03d} {title}"[:100])
+    await t.send(f"{inter.user.mention} thanks for reporting! drop screenshots + `logs/fluffvr.log` here 🐾")
+    await inter.response.send_message(f"bug #{n:03d} posted in {c.mention} — thank u! 🐛", ephemeral=True)
+
+
+@bot.tree.command(name="vrtip", description="a random VR tip")
+async def vrtip_cmd(inter: discord.Interaction):
+    import random
+    await inter.response.send_message(f"💡 **VR tip:** {random.choice(C.VR_TIPS)}")
+
+
+@bot.tree.command(name="randomtheme", description="can't pick a theme? let Fluff pick")
+async def randomtheme_cmd(inter: discord.Interaction):
+    import random
+    themes = ["Pride Pastel", "Trans Soft", "Cotton Candy", "Gay Ocean", "Lava Dragon", "Honey Bear",
+              "Neon Rave", "Midnight Kitty", "Matcha Latte", "Sunset Fox", "Bubblegum", "Cyber Wolf"]
+    ears = ["cat", "fox", "wolf", "bunny", "bear", "dragon", "none"]
+    await inter.response.send_message(f"🎨 try **{random.choice(themes)}** with **{random.choice(ears)} ears**! "
+                                      "(🎨 Style tab)")
+
+
+def _action(name, desc, verb, emoji):
+    @bot.tree.command(name=name, description=desc)
+    async def _cmd(inter: discord.Interaction, who: discord.Member):
+        if who.id == inter.user.id:
+            return await inter.response.send_message(f"{emoji} {inter.user.mention} {verb} themselves... "
+                                                     "someone help this fluff out")
+        key = f"{name}_count"
+        counts = CFG.setdefault(key, {})
+        counts[str(who.id)] = counts.get(str(who.id), 0) + 1
+        save_cfg(CFG)
+        await inter.response.send_message(f"{emoji} {inter.user.mention} {verb} {who.mention}! "
+                                          f"(that's {counts[str(who.id)]} total)")
+    return _cmd
+
+
+_action("headpat", "give someone a headpat", "headpats", "🫳")
+_action("boop", "boop someone's snoot", "boops", "👉")
+_action("hug", "give someone a big fluffy hug", "hugs", "🫂")
+
+
+@bot.tree.command(name="fluffrate", description="how fluffy is someone?")
+async def fluffrate_cmd(inter: discord.Interaction, who: discord.Member = None):
+    who = who or inter.user
+    score = (who.id * 7 + 13) % 101           # same answer every time for the same person
+    bar = "🟪" * (score // 10) + "⬛" * (10 - score // 10)
+    await inter.response.send_message(f"☁️ {who.mention} is **{score}% fluffy**\n{bar}")
+
+
+@bot.tree.command(name="8ball", description="ask the magic floof a question")
+async def eightball_cmd(inter: discord.Interaction, question: str):
+    import random
+    await inter.response.send_message(f"🎱 **{question}**\n{random.choice(C.FUN_8BALL)}")
+
+
+@bot.tree.command(name="coinflip", description="flip a coin")
+async def coin_cmd(inter: discord.Interaction):
+    import random
+    await inter.response.send_message(random.choice(["🪙 heads!", "🪙 tails!", "🪙 it landed on its side?? (heads)"]))
+
+
+@bot.tree.command(name="pet", description="check on Lil Fluff")
+async def pet_cmd(inter: discord.Interaction):
+    import random
+    moods = [("( ˘ω˘ ) zzz", "napping. shhh."), ("ฅ^•ﻌ•^ฅ", "happy to see u!"),
+             ("(≧◡≦) ♪", "vibing to music"), ("(°ロ°) !!", "panicking about someone's fps"),
+             ("ε=ε=ε=┌(;*´Д`)ﾉ", "doing zoomies"), ("(=^･ω･^=)", "waiting for headpats")]
+    face, mood = random.choice(moods)
+    await inter.response.send_message(f"🐾 **Lil Fluff** `{face}`\n*{mood}*")
+
+
+# ---- staff tools
+@bot.tree.command(name="poll", description="(staff) post a poll in #polls")
+@app_commands.describe(question="the question", answers="answers split with | (up to 10)", hours="how long (1-168)")
+@staff_only()
+async def poll_cmd(inter: discord.Interaction, question: str, answers: str, hours: app_commands.Range[int, 1, 168] = 24):
+    c = bot.ch("polls") or inter.channel
+    opts = [a.strip() for a in answers.split("|") if a.strip()][:10]
+    if len(opts) < 2:
+        return await inter.response.send_message("give at least 2 answers, split with |", ephemeral=True)
+    poll = discord.Poll(question=question[:300], duration=datetime.timedelta(hours=hours))
+    for o in opts:
+        poll.add_answer(text=o[:55])
+    await c.send(poll=poll)
+    await inter.response.send_message(f"poll posted in {c.mention} 📊", ephemeral=True)
+
+
+@bot.tree.command(name="warn", description="(staff) warn someone")
+@staff_only()
+async def warn_cmd(inter: discord.Interaction, who: discord.Member, reason: str):
+    w = CFG.setdefault("warns", {}).setdefault(str(who.id), [])
+    w.append({"by": inter.user.id, "reason": reason[:300], "at": int(datetime.datetime.now().timestamp())})
+    save_cfg(CFG)
+    try:
+        await who.send(f"⚠️ you got a warning in **{inter.guild.name}**: {reason}\n(warning #{len(w)}). pls read the rules :3")
+    except discord.HTTPException:
+        pass
+    await inter.response.send_message(f"warned {who.mention} (#{len(w)})", ephemeral=True)
+    await bot.modlog(f"⚠️ {inter.user.mention} warned {who.mention} (#{len(w)}): {reason}", C.GOLD)
+
+
+@bot.tree.command(name="warnings", description="(staff) see someone's warnings")
+@staff_only()
+async def warnings_cmd(inter: discord.Interaction, who: discord.Member):
+    w = CFG.get("warns", {}).get(str(who.id), [])
+    if not w:
+        return await inter.response.send_message(f"{who.display_name} has no warnings ✨", ephemeral=True)
+    lines = [f"**#{i + 1}** <t:{x['at']}:R> by <@{x['by']}>: {x['reason']}" for i, x in enumerate(w[-15:])]
+    await inter.response.send_message(embed=discord.Embed(title=f"⚠️ {who.display_name}: {len(w)} warnings",
+                                                          description="\n".join(lines), color=C.GOLD), ephemeral=True)
+
+
+@bot.tree.command(name="timeout", description="(staff) time someone out")
+@staff_only()
+async def timeout_cmd(inter: discord.Interaction, who: discord.Member,
+                      minutes: app_commands.Range[int, 1, 40320], reason: str = "no reason given"):
+    await who.timeout(datetime.timedelta(minutes=minutes), reason=reason)
+    await inter.response.send_message(f"timed out {who.mention} for {minutes} min", ephemeral=True)
+    await bot.modlog(f"⏳ {inter.user.mention} timed out {who.mention} for {minutes} min: {reason}", C.GOLD)
+
+
+@bot.tree.command(name="say", description="(staff) make Fluff Bot post a message")
+@staff_only()
+async def say_cmd(inter: discord.Interaction, message: str, channel: discord.TextChannel = None):
+    c = channel or inter.channel
+    await c.send(message.replace("\\n", "\n"), allowed_mentions=discord.AllowedMentions.none())
+    await inter.response.send_message("sent :3", ephemeral=True)
+
+
+@bot.tree.command(name="lockdown", description="(staff) lock or unlock the community chats")
+@staff_only()
+async def lockdown_cmd(inter: discord.Interaction, locked: bool):
+    for key in ("main", "memes"):
+        c = bot.ch(key)
+        if c:
+            ow = c.overwrites_for(inter.guild.default_role)
+            ow.send_messages = not locked
+            await c.set_permissions(inter.guild.default_role, overwrite=ow)
+    await inter.response.send_message("🔒 chats locked" if locked else "🔓 chats open again!")
+    await bot.modlog(f"{'🔒' if locked else '🔓'} {inter.user.mention} {'locked' if locked else 'unlocked'} the community chats")
+
+
+@bot.tree.command(name="bugstatus", description="(staff) set a bug report's status (use inside its thread)")
+@app_commands.choices(status=[app_commands.Choice(name=n, value=n) for n in
+                              ["🟡 open", "🔵 investigating", "🟢 fixed", "⚪ can't reproduce", "🔴 won't fix"]])
+@staff_only()
+async def bugstatus_cmd(inter: discord.Interaction, status: app_commands.Choice[str]):
+    t = inter.channel
+    if not isinstance(t, discord.Thread):
+        return await inter.response.send_message("use this inside a bug's thread", ephemeral=True)
+    try:
+        start = await t.parent.fetch_message(t.id)
+        e = start.embeds[0]
+        e.set_footer(text=f"status: {status.value}")
+        await start.edit(embed=e)
+    except Exception:
+        pass
+    await inter.response.send_message(f"status → **{status.value}**")
 
 
 def main():
