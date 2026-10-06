@@ -256,19 +256,19 @@ POSTS = {
            "turn any of these on/off in the **🧩 Mods** tab.", PURPLE,
            fields=[
                ("⚡ Performance", "FPS counter · Frametime graph · GPU/CPU ms · Reprojection % · "
-                                 "PC usage · GPU temp + VRAM · Ping · Low FPS alert", False),
+                                 "PC usage · GPU temp + VRAM · Ping · Low FPS alert · Low battery alert", False),
                ("⌚ Wrist", "Clock · Batteries · Session timer · Now playing · Music controls · "
                            "AI reply on wrist · Look to show", False),
                ("🌍 VRChat", "World info · Join/leave alerts · Avatar toggles · Chatbox stats · "
                             "AI to chatbox · Typing bubble · Mute indicator · Headpat counter · AFK detection", False),
                ("🎉 Fun", "Lil Fluff pet · Timer/stopwatch · Zoomies meter · Weather · "
-                         "Break reminder · Discord status", False),
+                         "Break reminder · Discord status · Hydration buddy · VR milestones", False),
            ]),
     ],
     "themes": [
         _e("🎨 themes + style",
            "open the **🎨 Style** tab:\n\n"
-           "• **24 themes**: pride pastel, trans, bi, lesbian, cyber, sunset, matcha, "
+           "• **25 themes**: spooky floof 🎃, pride pastel, trans, bi, lesbian, cyber, sunset, matcha, "
            "midnight, bubblegum and more\n"
            "• **12 accent colors** + **9 backgrounds**\n"
            "• **7 ear styles**: cat, fox, wolf, bunny, bear...\n"
@@ -356,6 +356,13 @@ POSTS = {
         ]),
     ],
     "changelog": [
+        _e("📝 v0.1.1: Discord update :3",
+           "💜 **Discord status**: ur profile shows ur fps, world + song with Download / Join buttons\n"
+           "💜 **join our discord** button + online count on the <3 page\n"
+           "🎃 **new theme: Spooky Floof** (25 themes)\n"
+           "🔋 **Low battery alert** · 💧 **Hydration buddy** · 🎉 **VR milestones**\n"
+           "🩹 fixed lag on old installs + numpy installs automatically", PINK,
+           fields=[("download", RELEASES, False)]),
         _e("📝 v0.1.0: first public release :3",
            "**wrist HUD:** FPS, frametimes, reprojection, batteries, PC load, clock, music controls, "
            "Lil Fluff pet, timer, join/leave alerts, AFK + zoomies\n\n"

@@ -44,8 +44,8 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 | 🐱 **Avatar** | your avatar's toggles as buttons, read straight from VRChat's OSC files |
 | 🌍 **World** | world, instance, who's here, timer, today's recap |
 | 🖥️ **Screen** | your desktop floating in VR |
-| 🧩 **Mods** | 29 toggles |
-| 🎨 **Style** | 24 themes · 12 accents · 9 backgrounds · 7 ear styles |
+| 🧩 **Mods** | 33 toggles |
+| 🎨 **Style** | 25 themes · 12 accents · 9 backgrounds · 7 ear styles |
 | ⌚ **Wrist** | move / tilt / resize the wrist HUD |
 | 💖 **<3** | a thank-you page with a floof you can pat |
 

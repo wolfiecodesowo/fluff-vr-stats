@@ -87,6 +87,7 @@ DEFAULT_CFG = {
         "ai_to_chatbox": False, "chatbox_status": False, "chatbox_song": False,
         "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
         "discord_presence": True,
+        "battery_alert": True, "hydration_reminder": False, "vr_milestones": True,
     },
     "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
@@ -444,6 +445,9 @@ class App:
         self.clicks_logged = 0
         self.last_magic_check = 0
         self.last_break = time.time()
+        self.last_water = time.time()
+        self.low_batt_warned = set()
+        self.milestone_hours = 0
         self.low_fps_since = None
         self.last_low_alert = 0
         self.last_chatbox = 0
@@ -1058,6 +1062,31 @@ class App:
                 self.show_alert(BREAK_MSGS[int(now) % len(BREAK_MSGS)], secs=12)
         else:
             self.last_break = now
+        # low battery alert: once per device until it's charged back up
+        if m.get("battery_alert"):
+            for b in st.stats.get("batteries") or []:
+                name, pct, charging = (list(b) + [None, None, None])[:3]
+                if pct is None:
+                    continue
+                if pct <= 15 and not charging and name not in self.low_batt_warned:
+                    self.low_batt_warned.add(name)
+                    nice = {"HMD": "headset", "L": "left controller", "R": "right controller"}.get(name, name)
+                    self.show_alert(f"ur {nice} is at {pct:.0f}%! plug it in soon >w<", "warn", 10)
+                elif pct > 25 or charging:
+                    self.low_batt_warned.discard(name)
+        # hydration nudge every 30 min
+        if m.get("hydration_reminder"):
+            if now - self.last_water > 30 * 60:
+                self.last_water = now
+                self.show_alert("water break!! sip sip :3 Lil Fluff is drinking too", secs=8)
+        else:
+            self.last_water = now
+        # VR time milestones: 1h, 2h, 3h...
+        if m.get("vr_milestones"):
+            hrs = int((now - st.extras.get("session_start", now)) // 3600)
+            if hrs > self.milestone_hours:
+                self.milestone_hours = hrs
+                self.show_alert(f"{hrs} hour{'s' if hrs > 1 else ''} in VR!! 🎉 proud of u (stretch a lil?)", secs=10)
         # low fps alert (sustained for 5s, then cool down 2 min)
         fps, ref = st.stats.get("fps"), st.stats.get("refresh")
         if m.get("low_fps_alert") and fps is not None and ref:

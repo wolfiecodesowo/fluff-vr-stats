@@ -841,6 +841,7 @@ MOD_INFO = {
         ("gpu_temp", "GPU temp + VRAM", "Heat + video memory (NVIDIA)"),
         ("ping", "Ping", "Your internet latency"),
         ("low_fps_alert", "Low FPS alert", "Wrist pops up when FPS tanks"),
+        ("battery_alert", "Low battery alert", "Warns u before a controller dies"),
     ],
     "Wrist": [
         ("clock", "Clock", "Time + day on your wrist"),
@@ -869,6 +870,8 @@ MOD_INFO = {
         ("weather", "Weather", "Temp + sky where you are"),
         ("break_reminder", "Break reminder", "Water + stretch nudges"),
         ("discord_presence", "Discord status", "Shows the app on ur Discord profile"),
+        ("hydration_reminder", "Hydration buddy", "A water nudge every 30 min"),
+        ("vr_milestones", "VR milestones", "Celebrates every hour in VR"),
     ],
 }
 ALL_MODS = [m for cat in MOD_CATS for m in MOD_INFO[cat]]
@@ -1712,7 +1715,9 @@ def _tab_style(d, hit, box, state, t):
     cfg = state.cfg
     style = cfg.setdefault("style", {})
     # preset grid
-    cols, gap, chh = 4, 8, 38
+    cols, gap = 5 if len(PRESETS) > 24 else 4, 8
+    rows = -(-len(PRESETS) // cols)
+    chh = 38 if rows <= 6 else 32
     cw = (x1 - x0 - gap * (cols - 1)) / cols
     for i, (key, label, *_rest) in enumerate(PRESETS):
         th = preset_preview(key)
@@ -1721,13 +1726,14 @@ def _tab_style(d, hit, box, state, t):
         active = cfg["theme"] == key
         pill(d, [cx, cy, cx + cw, cy + chh], th["bg"][:3] + (255,),
              outline=th["primary"] if active else th["panel2"], width=3 if active else 1)
-        stripe(d, cx + 14, cy + 13, 26, 12, th["stripe"])
-        d.text((cx + 50, cy + chh / 2), label, font=font("head", 16), fill=th["text"], anchor="lm")
+        stripe(d, cx + 14, cy + chh / 2 - 6, 26 if cols == 4 else 20, 12, th["stripe"])
+        d.text((cx + (50 if cols == 4 else 42), cy + chh / 2), label, font=font("head", 16 if cols == 4 else 15),
+               fill=th["text"], anchor="lm")
         if active:
             heart(d, cx + cw - 20, cy + chh / 2 + 1, 7, th["primary"])
         hit.add([cx, cy, cx + cw, cy + chh], "theme", key)
 
-    rows_y = y0 + 6 * (chh + 6) + 12
+    rows_y = y0 + rows * (chh + 6) + 12
     lab_w = 128
     # accent colors
     d.text((x0, rows_y + 22), "Accent", font=font("head", 20), fill=t["text"], anchor="lm")

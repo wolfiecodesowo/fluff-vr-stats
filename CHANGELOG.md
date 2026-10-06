@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.1.1: Discord update :3
+- 🎃 **new theme: Spooky Floof** (25 themes now!)
+- 🔋 **Low battery alert**: ur wrist warns u before a controller or tracker dies
+- 💧 **Hydration buddy**: a water nudge every 30 min (off by default)
+- 🎉 **VR milestones**: celebrates every hour u spend in VR
 - 💜 **Discord status**: your profile shows your fps, world + song while you play, with Download / Join buttons.
 - 💜 **Join our Discord** button + online count on the <3 page.
 - 🤖 **Fluff Bot**: official Discord bot that builds the server, tracks who's in VR, welcomes people and posts releases.

@@ -10,6 +10,8 @@ from functools import lru_cache
 
 # (key, label, background, accent, stripe colors)
 PRESETS = [
+    ("spooky_floof", "Spooky Floof", (24, 14, 30), (255, 140, 40),
+     [(255, 120, 30), (160, 80, 220), (90, 200, 90), (255, 120, 30), (160, 80, 220)]),
     ("pride_pastel", "Pride Pastel", (34, 22, 46), (255, 150, 202),
      [(255, 140, 170), (255, 186, 130), (255, 234, 140), (150, 230, 170), (140, 200, 255), (196, 160, 255)]),
     ("pride_classic", "Pride Classic", (20, 18, 28), (255, 110, 170),
