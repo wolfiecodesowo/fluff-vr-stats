@@ -612,7 +612,7 @@ def render_hud(state):
     m = state.music or {}
     song = (f"{m['title']} - {m['artist']}" if m.get("artist") else m.get("title")) if m.get("title") \
         else state.extras.get("song")
-    want_ctrl = mods.get("music_controls")
+    want_ctrl = mods.get("music_controls") or mods.get("zoom_lens")
     if (mods.get("now_playing") and song) or want_ctrl:
         rows.append(("music", 52 if want_ctrl else 44))
     if mods["last_ai_reply"] and state.last_reply():
@@ -761,17 +761,22 @@ def render_hud(state):
                 # tap targets for the other hand's controller (see main.check_touch)
                 br = bh / 2 - 3
                 pressed = state.hud_pressed if time.time() - state.hud_pressed_t < 0.35 else None
-                for i, (kind2, cmd) in enumerate((("next", "next"),
-                                                  ("pause" if m.get("playing") else "play", "play_pause"),
-                                                  ("prev", "prev"))):
+                btns = []
+                if mods.get("music_controls"):
+                    btns += [("next", "next"), ("pause" if m.get("playing") else "play", "play_pause"), ("prev", "prev")]
+                if mods.get("zoom_lens"):
+                    btns.append(("zoom", "zoom"))
+                zoom_on = state.cfg.get("zoom", {}).get("enabled")
+                for i, (kind2, cmd) in enumerate(btns):
                     cx = R - 6 - br - i * (br * 2 + 8)
                     cyy = y + bh / 2
-                    fillc = t["primary"] if (cmd == "play_pause" or pressed == cmd) else t["panel2"]
+                    fillc = t["primary"] if (cmd == "play_pause" or pressed == cmd
+                                             or (cmd == "zoom" and zoom_on)) else t["panel2"]
                     d.ellipse([cx - br, cyy - br, cx + br, cyy + br], fill=fillc, outline=t["line_soft"], width=2)
                     media_icon(d, kind2, cx, cyy, br * 0.62,
                                t["on_primary"] if fillc == t["primary"] else t["text"])
                     state.hud_hits.append(([cx - br - 4, cyy - br - 4, cx + br + 4, cyy + br + 4], cmd))
-                right = R - 6 - 3 * (br * 2 + 8)
+                right = R - 6 - len(btns) * (br * 2 + 8)
             label = song or "nothing playing"
             d.text((x + 42, y + bh / 2), ellipsize(label, font("body", 16), right - x - 48),
                    font=font("body", 16), fill=t["text"] if song else t["sub"], anchor="lm")
@@ -872,6 +877,7 @@ MOD_INFO = {
         ("discord_presence", "Discord status", "Shows the app on ur Discord profile"),
         ("hydration_reminder", "Hydration buddy", "A water nudge every 30 min"),
         ("vr_milestones", "VR milestones", "Celebrates every hour in VR"),
+        ("zoom_lens", "Zoom lens", "Magnify what u see (Screen tab)"),
     ],
 }
 ALL_MODS = [m for cat in MOD_CATS for m in MOD_INFO[cat]]
@@ -1058,7 +1064,13 @@ def tab_icon(d, name, cx, cy, col, t):
 
 
 def media_icon(d, kind, cx, cy, r, col):
-    """prev / next / play / pause / vol_up / vol_down / mute glyphs."""
+    """prev / next / play / pause / vol_up / vol_down / mute / zoom glyphs."""
+    if kind == "zoom":                       # magnifying glass
+        rr = r * 0.48
+        d.ellipse([cx - r * 0.55, cy - r * 0.55, cx - r * 0.55 + rr * 2, cy - r * 0.55 + rr * 2],
+                  outline=col, width=max(2, int(r * 0.22)))
+        d.line([(cx + r * 0.25, cy + r * 0.25), (cx + r * 0.7, cy + r * 0.7)], fill=col, width=max(3, int(r * 0.3)))
+        return
     if kind == "play":
         d.polygon([(cx - r * 0.45, cy - r * 0.7), (cx - r * 0.45, cy + r * 0.7), (cx + r * 0.75, cy)], fill=col)
     elif kind == "pause":
@@ -1814,17 +1826,31 @@ def _tab_screen(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     sc = state.cfg["screen"]
     info = state.screen_info
-    # big on/off card
-    panel(d, [x0, y0, x1, y0 + 110], 22, t)
-    d.text((x0 + 26, y0 + 24), "Desktop in VR", font=font("title", 32), fill=t["text"])
-    d.text((x0 + 26, y0 + 68), "see your PC screen floating in front of you",
-           font=font("body2", 18), fill=t["sub"])
-    switch(d, x1 - 120, y0 + 34, sc["enabled"], t, scale=1.6)
-    hit.add([x0, y0, x1, y0 + 110], "screen_toggle")
-
     gap = 16
     half = (x1 - x0 - gap) / 2
-    ly = y0 + 126
+    top_h = 118
+    # left card: desktop on/off
+    panel(d, [x0, y0, x0 + half, y0 + top_h], 22, t)
+    d.text((x0 + 24, y0 + 20), "Desktop in VR", font=font("title", 28), fill=t["text"])
+    d.text((x0 + 24, y0 + 60), "ur PC screen floating", font=font("body2", 16), fill=t["sub"])
+    d.text((x0 + 24, y0 + 82), "in front of you", font=font("body2", 16), fill=t["sub"])
+    switch(d, x0 + half - 110, y0 + 38, sc["enabled"], t, scale=1.4)
+    hit.add([x0, y0, x0 + half, y0 + top_h], "screen_toggle")
+    # right card: zoom lens
+    zx = x0 + half + gap
+    z = state.cfg.get("zoom", {})
+    panel(d, [zx, y0, x1, y0 + top_h], 22, t)
+    d.text((zx + 24, y0 + 18), "Zoom lens", font=font("title", 28), fill=t["text"])
+    switch(d, x1 - 110, y0 + 16, bool(z.get("enabled")), t, scale=1.2)
+    hit.add([zx, y0, x1, y0 + 56], "zoom_toggle")
+    lv = [2, 3, 4, 6]
+    bw = (x1 - zx - 48 - 8 * (len(lv) - 1)) / len(lv)
+    for i, v in enumerate(lv):
+        bx = zx + 24 + i * (bw + 8)
+        button(d, hit, [bx, y0 + 62, bx + bw, y0 + 102], f"{v}x", t, "zoom_set", "level", v,
+               active=z.get("level", 3) == v, fsize=18)
+
+    ly = y0 + top_h + 14
     # left: where + which monitor
     panel(d, [x0, ly, x0 + half, y1], 22, t)
     d.text((x0 + 24, ly + 18), "Monitor", font=font("head", 22), fill=t["text"])

@@ -206,13 +206,13 @@ POSTS = {
     ],
     "install": [
         _e("📖 install guide (5 min)",
-           "**1. install Python**\n"
-           "go to python.org/downloads → download → run it.\n"
-           "⚠️ **tick \"Add python.exe to PATH\"** at the bottom of the first screen!\n\n"
-           "**2. download the client**\n"
+           "**1. download the client**\n"
            "grab the zip from 💾・download and unzip it.\n\n"
-           "**3. double-click `install.bat`**\n"
-           "it installs everything the app needs. takes about a minute.\n\n"
+           "**2. double-click `install.bat`**\n"
+           "it installs everything the app needs. **no Python? press Y** and it installs Python for you "
+           "too! takes a couple minutes.\n\n"
+           "**3. (just in case)** if it can't install Python, the python.org page opens. download it and "
+           "⚠️ **tick \"Add python.exe to PATH\"**, then run install.bat again.\n\n"
            "**4. (optional) double-click `setup_ai.bat`**\n"
            "gives Fluff a brain, free with Groq. see 🤖・ai-buddy-setup\n\n"
            "**5. double-click `run.bat`**\n"
@@ -262,7 +262,7 @@ POSTS = {
                ("🌍 VRChat", "World info · Join/leave alerts · Avatar toggles · Chatbox stats · "
                             "AI to chatbox · Typing bubble · Mute indicator · Headpat counter · AFK detection", False),
                ("🎉 Fun", "Lil Fluff pet · Timer/stopwatch · Zoomies meter · Weather · "
-                         "Break reminder · Discord status · Hydration buddy · VR milestones", False),
+                         "Break reminder · Discord status · Hydration buddy · VR milestones · Zoom lens", False),
            ]),
     ],
     "themes": [
@@ -341,8 +341,9 @@ POSTS = {
     ],
     "troubleshoot": [
         _e("🩹 troubleshooting", None, GOLD, fields=[
-            ("'python' is not recognized",
-             "reinstall Python and tick **Add python.exe to PATH**, then run install.bat again.", False),
+            ("'python' is not recognized / Python not found",
+             "get the newest version (v0.1.1+) and run **install.bat**, then press **Y** when it offers to "
+             "install Python. or install it from python.org and tick **Add python.exe to PATH**.", False),
             ("nothing on my wrist",
              "make sure SteamVR is running and controllers are on. check the HUD is on the right "
              "hand in the ⌚ Wrist tab. look at your wrist, it fades in!", False),
@@ -359,6 +360,8 @@ POSTS = {
         _e("📝 v0.1.1: Discord update :3",
            "💜 **Discord status**: ur profile shows ur fps, world + song with Download / Join buttons\n"
            "💜 **join our discord** button + online count on the <3 page\n"
+           "🔍 **Zoom lens**: magnify what u see, 2x to 6x\n"
+           "🐍 install.bat now installs Python for u if it's missing\n"
            "🎃 **new theme: Spooky Floof** (25 themes)\n"
            "🔋 **Low battery alert** · 💧 **Hydration buddy** · 🎉 **VR milestones**\n"
            "🩹 fixed lag on old installs + numpy installs automatically", PINK,
@@ -519,6 +522,12 @@ POSTS.update({
            "nothing is uploaded anywhere. it all stays on your PC.", PURPLE),
     ],
     "screen": [
+        _e("🔍 zoom lens",
+           "a little magnifier floating in front of ur eyes that **zooms into the middle of what u see** "
+           "(2x, 3x, 4x or 6x). great for reading signs, spotting friends across the world, or peeping at avatars.\n\n"
+           "**turn it on:** 🖥️ Screen tab → Zoom lens, or tap the **🔍** on ur wrist with ur other hand\n"
+           "**how it works:** it zooms the VRChat window on ur desktop, so keep VRChat's window open "
+           "(not minimized).", PURPLE),
         _e("🖥️ desktop in VR",
            "the **🖥️ Screen tab** puts your PC monitor in VR as a floating window.\n\n"
            "• pick which monitor\n• pin it in the world or to your hand\n"

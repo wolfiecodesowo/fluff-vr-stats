@@ -62,6 +62,7 @@ from extras import Extras
 from gltex import GLUploader
 from music import Music
 from discord_link import DiscordLink
+from zoom import Zoom
 from vrclog import VRCLog
 from avatar import Avatar
 from tweaks import Tweaks, TWEAKS
@@ -87,8 +88,9 @@ DEFAULT_CFG = {
         "ai_to_chatbox": False, "chatbox_status": False, "chatbox_song": False,
         "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
         "discord_presence": True,
-        "battery_alert": True, "hydration_reminder": False, "vr_milestones": True,
+        "battery_alert": True, "hydration_reminder": False, "vr_milestones": True, "zoom_lens": True,
     },
+    "zoom": {"enabled": False, "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
     "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
         "provider": "anthropic", "api_key": "", "model": "claude-haiku-4-5", "base_url": "",
@@ -407,6 +409,12 @@ class App:
         self.scr = self.ov.createOverlay("fluffvr.stats.screen", "Fluff VR Stats Screen")
         self.ov.setOverlaySortOrder(self.scr, 5)
         self.scr_placed = False
+        # zoom lens (magnifier that follows your head)
+        self.zoom = Zoom(self.cfg)
+        self.zoom_ov = self.ov.createOverlay("fluffvr.stats.zoom", "Fluff VR Stats Zoom")
+        self.ov.setOverlaySortOrder(self.zoom_ov, 6)
+        self.zoom_shown = False
+        self.zoom_placed = None
         self.scr_shown = False
 
         self.safe("icon", self.refresh_icon)
@@ -527,7 +535,7 @@ class App:
         if self.gl is not None:
             self.gl.close()
             self.gl = None
-        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None),
+        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None),
                      getattr(self, "music", None), getattr(self, "vrclog", None)):
             try:
                 part.stop()
@@ -640,6 +648,34 @@ class App:
             if not self.scr_shown and self.scr_placed:
                 self.ov.showOverlay(self.scr)
                 self.scr_shown = True
+
+    def update_zoom(self):
+        z = self.cfg["zoom"]
+        on = self.cfg["modules"].get("zoom_lens", True) and z.get("enabled")
+        if not on:
+            if self.zoom_shown:
+                self.ov.hideOverlay(self.zoom_ov)
+                self.zoom_shown = False
+            return
+        place = (z.get("size_m", 0.24), z.get("distance_m", 0.55))
+        if place != self.zoom_placed:          # stick it to the headset, straight ahead
+            self.zoom_placed = place
+            self.ov.setOverlayWidthInMeters(self.zoom_ov, place[0])
+            self.ov.setOverlayTransformTrackedDeviceRelative(
+                self.zoom_ov, openvr.k_unTrackedDeviceIndex_Hmd, to_hmd34(euler_to_rot(0, 0, 0), [0.0, -0.02, -place[1]]))
+        frame = self.zoom.take()
+        if frame:
+            self.push(self.zoom_ov, frame=frame)
+            if not self.zoom_shown:
+                self.ov.showOverlay(self.zoom_ov)
+                self.zoom_shown = True
+
+    def toggle_zoom(self):
+        z = self.cfg["zoom"]
+        z["enabled"] = not z.get("enabled")
+        self.cfg["modules"]["zoom_lens"] = True
+        self.state.dirty_cfg = self.state.dash_dirty = self.state.hud_dirty = True
+        self.show_alert(f"zoom {z.get('level', 3)}x on 🔍" if z["enabled"] else "zoom off", secs=3)
 
     def find_controller(self):
         role = openvr.TrackedControllerRole_LeftHand if self.cfg["wrist"]["hand"] == "left" \
@@ -813,6 +849,12 @@ class App:
         elif action == "pat_floof":
             cfg["floof_pats"] = cfg.get("floof_pats", 0) + 1
             st.last_pat = time.time()
+            st.dirty_cfg = True
+        elif action == "zoom_toggle":
+            self.toggle_zoom()
+        elif action == "zoom_set":
+            cfg["zoom"][args[0]] = args[1]
+            self.zoom_placed = None
             st.dirty_cfg = True
         elif action == "join_discord":
             link = self.discord.invite()
@@ -1262,7 +1304,8 @@ class App:
 
     # ---- tap your wrist with the other controller
     def check_touch(self):
-        if not self.cfg["modules"].get("music_controls") or self.ctrl_index is None \
+        if not (self.cfg["modules"].get("music_controls") or self.cfg["modules"].get("zoom_lens")) \
+                or self.ctrl_index is None \
                 or (self.hud_alpha or 0) < 0.3 or not self.state.hud_hits:
             return
         other_role = openvr.TrackedControllerRole_RightHand if self.cfg["wrist"]["hand"] == "left" \
@@ -1303,7 +1346,10 @@ class App:
             if x0 <= px <= x1 and y0 <= py <= y1:
                 self.touch_armed = False
                 self.last_touch = time.time()
-                self.music.command(cmd)
+                if cmd == "zoom":
+                    self.toggle_zoom()
+                else:
+                    self.music.command(cmd)
                 self.state.hud_pressed, self.state.hud_pressed_t = cmd, time.time()
                 self.state.hud_dirty = True
                 try:
@@ -1338,6 +1384,7 @@ class App:
             self.safe("fade", self.update_alpha)
             self.safe("wrist touch", self.check_touch)
             self.safe("desktop screen", self.update_screen)
+            self.safe("zoom", self.update_zoom)
             if st.dirty_cfg and now - self.t["save"] > 1:
                 st.dirty_cfg = False
                 self.t["save"] = now
@@ -1346,7 +1393,8 @@ class App:
                 raise ConnectionError("lost connection to SteamVR")
             # 20 Hz loop is plenty for the HUD; speed up only while the desktop mirror needs it
             sc = self.cfg["screen"]
-            time.sleep(0.02 if sc.get("enabled") and sc.get("fps", 15) > 15 else 0.05)
+            fast = (sc.get("enabled") and sc.get("fps", 15) > 15) or self.cfg["zoom"].get("enabled")
+            time.sleep(0.02 if fast else 0.05)
 
     def step_controllers(self, now):
         if now - self.last_ctrl_check > 3:

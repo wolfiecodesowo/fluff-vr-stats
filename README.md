@@ -43,8 +43,8 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 | 🗨️ **Chatbox** | MagicChatbox-style stats in the VRChat chatbox, with a live preview |
 | 🐱 **Avatar** | your avatar's toggles as buttons, read straight from VRChat's OSC files |
 | 🌍 **World** | world, instance, who's here, timer, today's recap |
-| 🖥️ **Screen** | your desktop floating in VR |
-| 🧩 **Mods** | 33 toggles |
+| 🖥️ **Screen** | your desktop floating in VR + a 🔍 **zoom lens** |
+| 🧩 **Mods** | 34 toggles |
 | 🎨 **Style** | 25 themes · 12 accents · 9 backgrounds · 7 ear styles |
 | ⌚ **Wrist** | move / tilt / resize the wrist HUD |
 | 💖 **<3** | a thank-you page with a floof you can pat |
@@ -63,12 +63,11 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 <img src="docs/images/error_cat.png" width="120" alt="error cat">
 
 ## 💾 Install (Windows)
-1. Install **Python 3.10+** from [python.org](https://www.python.org/downloads/). Tick **"Add python.exe to PATH"**.
-2. Download the latest **[release zip](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest)** and unzip it anywhere.
-3. Double-click **`install.bat`**.
-4. *(optional)* Double-click **`setup_ai.bat`** to give Fluff a brain. Groq is free.
-5. Double-click **`run.bat`**. It waits for SteamVR if SteamVR isn't open yet.
-6. *(optional)* Run `python autostart_with_steamvr.py` once to start it with SteamVR every time.
+1. Download the latest **[release](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest)** (**Source code (zip)**) and unzip it anywhere.
+2. Double-click **`install.bat`**. No Python? It offers to install it for you automatically (or install **Python 3.10+** from [python.org](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**).
+3. *(optional)* Double-click **`setup_ai.bat`** to give Fluff a brain. Groq is free.
+4. Double-click **`run.bat`**. It waits for SteamVR if SteamVR isn't open yet.
+5. *(optional)* Run `python autostart_with_steamvr.py` once to start it with SteamVR every time.
 
 **VRChat features** (chatbox, avatar toggles, mute, headpats) need OSC: in VRChat, go to Action Menu → Options → OSC → **Enabled**.
 - Close MagicChatbox while using the chatbox tab, or they'll fight over the chatbox.
