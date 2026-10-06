@@ -88,7 +88,7 @@ DEFAULT_CFG = {
         "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
         "discord_presence": True,
     },
-    "discord": {"app_id": "", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
+    "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
         "provider": "anthropic", "api_key": "", "model": "claude-haiku-4-5", "base_url": "",
         "max_tokens": 300,
