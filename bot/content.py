@@ -43,6 +43,7 @@ LAYOUT = [
     ]),
     ("📌 START HERE", "read", [
         ("text", "welcome", "👋・welcome"),
+        ("text", "joins", "🎉・new-fluffs"),
         ("text", "rules", "📜・rules"),
         ("text", "announcements", "📢・announcements"),
         ("text", "get_roles", "🎭・get-roles"),
@@ -626,3 +627,6 @@ POSTS["videos"] = [_e("🎬 feature videos", "quick looks at everything Fluff VR
 for _n, _t, _ch in VIDEOS:
     POSTS[_ch].append(_vid(_n, "🎬 see it in action"))
 TOPICS["videos"] = "short clips of every feature"
+TOPICS["joins"] = "say hi to the newest fluffs!! (welcomes go here, not in main-chat)"
+POSTS["joins"] = [_e("🎉 new fluffs", "every new member gets a welcome here. "
+                     "wave hi in 💬・main-chat!", PINK)]

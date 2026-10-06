@@ -280,7 +280,7 @@ class FluffBot(discord.Client):
                 await m.add_roles(role, reason="new fluff")
             except discord.HTTPException:
                 pass
-        main = self.ch("main")
+        main = self.ch("joins") or self.ch("main")
         if main:
             e = discord.Embed(description=f"welcome {m.mention}!! 🐾 grab the client in "
                                           f"{self.ch('download').mention if self.ch('download') else '#download'} "
