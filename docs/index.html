@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluff VR Stats :3</title>
+<meta name="description" content="A cute, furry, open source overlay for SteamVR + VRChat: wrist stats, an AI buddy, music controls, chatbox stats, avatar toggles and FPS boost.">
+<meta property="og:title" content="Fluff VR Stats :3">
+<meta property="og:description" content="a cute furry overlay for SteamVR + VRChat">
+<meta property="og:image" content="images/banner.png">
+<link rel="icon" href="images/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #22162e; --bg2: #2e1f3e; --panel: #382650; --panel2: #483262;
+    --ink: #180e22; --text: #fff5fc; --sub: #d8c0e8;
+    --pink: #ff96ca; --yellow: #ffe246; --cyan: #78e6fa; --mint: #96ecb0;
+    --r: 26px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Nunito", system-ui, sans-serif; font-weight: 600; line-height: 1.55;
+    background-image: radial-gradient(circle at 15% 10%, #ff8cc833 0, transparent 40%),
+                      radial-gradient(circle at 85% 30%, #8cc8ff26 0, transparent 40%);
+  }
+  .stripe { height: 12px; background: linear-gradient(90deg, #ff8caa 0 16.6%, #ffba82 0 33.3%, #ffea8c 0 50%,
+            #96e6aa 0 66.6%, #8cc8ff 0 83.3%, #c4a0ff 0); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+  h1, h2, h3 { font-family: "Lilita One", sans-serif; font-weight: 400; letter-spacing: .5px; margin: 0; }
+  .hand { font-family: "Gochi Hand", cursive; }
+  .ink { -webkit-text-stroke: 0; text-shadow: 3px 3px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink); }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 30px; align-items: center; padding: 56px 0 30px; }
+  .hero h1 { font-size: clamp(48px, 8vw, 96px); line-height: .95; }
+  .hero h1 .c3 { color: var(--pink); }
+  .hero .tag { font-size: clamp(22px, 3vw, 30px); color: var(--sub); margin: 14px 0 26px; }
+  .sticker { width: min(300px, 70%); transform: rotate(-5deg); filter: drop-shadow(10px 10px 0 var(--ink)); animation: bob 3s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: rotate(-2deg) translateY(-8px); } }
+  .btns { display: flex; flex-wrap: wrap; gap: 14px; }
+  .btn { font-family: "Lilita One", sans-serif; font-size: 22px; text-decoration: none; color: var(--ink);
+         background: var(--pink); padding: 14px 28px; border-radius: 999px; border: 4px solid var(--ink);
+         box-shadow: 6px 6px 0 var(--ink); transition: transform .12s, box-shadow .12s; display: inline-block; }
+  .btn:hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
+  .btn:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
+  .btn.alt { background: var(--yellow); }
+  .btn.ghost { background: var(--panel2); color: var(--text); }
+  .note { font-size: 15px; color: var(--sub); margin-top: 14px; }
+  .hud { width: 100%; max-width: 380px; transform: rotate(4deg); filter: drop-shadow(10px 10px 0 var(--ink)); justify-self: center; }
+
+  /* trailer */
+  .trailer { display: grid; grid-template-columns: 340px 1fr; gap: 34px; align-items: center; margin: 40px 0; }
+  video { width: 100%; border-radius: var(--r); border: 5px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); background: #000; }
+  .sec-title { font-size: clamp(34px, 5vw, 52px); margin-bottom: 10px; }
+  .sec-title .hl { color: var(--yellow); }
+
+  /* cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin: 22px 0 10px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: var(--r); padding: 20px 22px;
+          box-shadow: 7px 7px 0 var(--ink); position: relative; }
+  .card h3 { font-size: 24px; margin-bottom: 4px; }
+  .card p { margin: 0; color: var(--sub); font-size: 16px; }
+  .card .ico { font-size: 30px; display: block; margin-bottom: 6px; }
+  .card:nth-child(3n+1) h3 { color: var(--pink); } .card:nth-child(3n+2) h3 { color: var(--cyan); } .card:nth-child(3n) h3 { color: var(--mint); }
+
+  /* screenshots */
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin: 22px 0; }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; display: block; border-radius: 18px; border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink); background: var(--bg2); }
+  .shots figcaption { font-family: "Gochi Hand", cursive; font-size: 22px; color: var(--sub); margin-top: 8px; text-align: center; }
+
+  /* steps */
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 22px 0; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; background: var(--panel); border: 4px solid var(--ink); border-radius: 20px;
+                padding: 16px 20px 16px 74px; position: relative; box-shadow: 6px 6px 0 var(--ink); }
+  ol.steps li::before { content: counter(s); position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+                        width: 40px; height: 40px; border-radius: 50%; background: var(--pink); color: var(--ink);
+                        font-family: "Lilita One"; font-size: 22px; display: grid; place-items: center; border: 3px solid var(--ink); }
+  code { background: var(--ink); color: var(--yellow); padding: 2px 8px; border-radius: 8px; font-size: .95em; }
+  a { color: var(--pink); }
+
+  .faq details { background: var(--panel); border: 4px solid var(--ink); border-radius: 20px; padding: 14px 20px; margin: 12px 0; box-shadow: 6px 6px 0 var(--ink); }
+  .faq summary { font-family: "Lilita One"; font-size: 21px; cursor: pointer; }
+  .faq p { color: var(--sub); margin: 10px 0 2px; }
+
+  footer { text-align: center; padding: 40px 0 60px; color: var(--sub); }
+  footer .err { width: 90px; transform: rotate(-6deg); }
+  section { padding: 30px 0; }
+
+  @media (max-width: 800px) {
+    .hero, .trailer { grid-template-columns: 1fr; }
+    .hero { text-align: center; padding-top: 34px; }
+    .btns { justify-content: center; }
+    .hud { max-width: 300px; }
+    .trailer video { max-width: 340px; justify-self: center; }
+  }
+</style>
+</head>
+<body>
+<div class="stripe"></div>
+<div class="wrap">
+
+  <header class="hero">
+    <div>
+      <img class="sticker" src="images/logo.png" alt="Fluff VR Stats mascot sticker">
+      <h1 class="ink">Fluff VR Stats <span class="c3">:3</span></h1>
+      <p class="tag hand">a cute furry overlay for SteamVR + VRChat</p>
+      <div class="btns">
+        <a class="btn" href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest">⬇ Download free</a>
+        <a class="btn ghost" href="https://github.com/wolfiecodesowo/fluff-vr-stats">★ GitHub</a>
+      </div>
+      <p class="note">Windows · SteamVR · open source (MIT) · no mods or injection, safe with EAC</p>
+    </div>
+    <img class="hud" src="images/wrist_hud.png" alt="the wrist HUD showing FPS, battery, music and a little pet">
+  </header>
+
+  <section class="trailer">
+    <video src="trailer.mp4" controls playsinline loop preload="metadata" poster="images/banner.png"></video>
+    <div>
+      <h2 class="sec-title ink">it's <span class="hl">SO</span> furry</h2>
+      <p>Your stats live on your wrist inside cute hand-drawn panels with ears and a fluffy tail. A whole menu waits in your SteamVR dashboard. Fluff, your AI buddy, is always there to chat.</p>
+      <p class="hand" style="font-size:24px;color:var(--yellow)">even the error screen is cute. (it never crashes btw)</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec-title ink">what's <span class="hl">inside</span></h2>
+    <div class="grid">
+      <div class="card"><span class="ico">📊</span><h3>Wrist stats</h3><p>FPS, frame times, reprojection, batteries and PC load. Fades in when you look.</p></div>
+      <div class="card"><span class="ico">⚡</span><h3>FPS Boost</h3><p>One-tap safe PC tweaks for VR. Everything's undoable, no admin needed.</p></div>
+      <div class="card"><span class="ico">💬</span><h3>AI buddy</h3><p>Chat with Fluff in VR. Works free with Groq.</p></div>
+      <div class="card"><span class="ico">🎵</span><h3>Music controls</h3><p>Album art + controls, plus buttons on your wrist that you tap with your other hand.</p></div>
+      <div class="card"><span class="ico">🗨️</span><h3>Chatbox stats</h3><p>MagicChatbox-style status, song, time, world & more in the VRChat chatbox.</p></div>
+      <div class="card"><span class="ico">🐱</span><h3>Avatar toggles</h3><p>Your avatar's toggles as buttons, read automatically from VRChat.</p></div>
+      <div class="card"><span class="ico">🌍</span><h3>World info</h3><p>World, instance, who's here, plus "Kitsu joined" popups on your wrist.</p></div>
+      <div class="card"><span class="ico">🐾</span><h3>Lil Fluff pet</h3><p>A tiny buddy on your wrist. Sleeps when you're AFK, vibes to music, loves headpats.</p></div>
+      <div class="card"><span class="ico">🎨</span><h3>24 themes</h3><p>Pride flags, pastels, goth, neon... plus 7 ear styles: cat, fox, wolf, bunny, bear, dragon.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec-title ink">peek at the <span class="hl">menu</span></h2>
+    <div class="shots">
+      <figure><img src="images/menu_stats.png" alt="Stats tab" loading="lazy"><figcaption>all ur stats</figcaption></figure>
+      <figure><img src="images/menu_boost.png" alt="Boost tab" loading="lazy"><figcaption>one-tap FPS boost</figcaption></figure>
+      <figure><img src="images/menu_chatbox.png" alt="Chatbox tab" loading="lazy"><figcaption>chatbox flex</figcaption></figure>
+      <figure><img src="images/menu_avatar.png" alt="Avatar tab" loading="lazy"><figcaption>avatar toggles</figcaption></figure>
+      <figure><img src="images/menu_music.png" alt="Music tab" loading="lazy"><figcaption>music controls</figcaption></figure>
+      <figure><img src="images/menu_style.png" alt="Style tab" loading="lazy"><figcaption>make it urs</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2 class="sec-title ink">install in <span class="hl">2 min</span></h2>
+    <ol class="steps">
+      <li>Install <b>Python 3.10+</b> from <a href="https://www.python.org/downloads/">python.org</a> and tick <b>"Add python.exe to PATH"</b>.</li>
+      <li>Download the <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest">latest release</a> and unzip it anywhere.</li>
+      <li>Double-click <code>install.bat</code>.</li>
+      <li><i>(optional)</i> Double-click <code>setup_ai.bat</code> to connect Fluff's AI. Groq is free.</li>
+      <li>Double-click <code>run.bat</code>, put your headset on, and look at your wrist :3</li>
+    </ol>
+    <p class="note">In VRChat, turn on OSC (Action Menu → Options → OSC → Enabled) for the chatbox, avatar toggles and headpats.</p>
+  </section>
+
+  <section class="faq">
+    <h2 class="sec-title ink">questions</h2>
+    <details><summary>Is it safe with VRChat / EAC?</summary><p>Yes. It's a separate SteamVR overlay app. It never touches VRChat's files or memory and talks to VRChat only through official OSC.</p></details>
+    <details><summary>Does it lower my FPS?</summary><p>Barely. The wrist HUD redraws twice a second, the menu only redraws while it's open, and it runs at low CPU priority. The Boost tab can raise your FPS.</p></details>
+    <details><summary>Is the AI free?</summary><p>With Groq, yes: free with no card needed. You can also use Claude, OpenAI, or a local model.</p></details>
+    <details><summary>What does it send online?</summary><p>Only your AI chats, sent to the provider you choose, plus weather/ping if you turn them on. World and player info is read from VRChat's own log file on your PC.</p></details>
+    <details><summary>Can I make my own themes / mods?</summary><p>Yes! It's open source. Add a theme with one line in <code>themes.py</code>, and pull requests are welcome.</p></details>
+  </section>
+
+  <footer>
+    <img class="err" src="images/error_cat.png" alt="the derpy error cat">
+    <p class="hand" style="font-size:26px">made with love for the fluffy community &lt;3</p>
+    <p>by <a href="https://github.com/wolfiecodesowo">wolfiecodesowo</a> · code MIT · sticker art © the original artists</p>
+  </footer>
+</div>
+</body>
+</html>

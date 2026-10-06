@@ -1,0 +1,8 @@
+openvr
+pillow
+psutil
+nvidia-ml-py
+mss
+glfw
+PyOpenGL
+numpy

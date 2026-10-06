@@ -1,0 +1,16 @@
+# your personal settings (has your AI key!) - never upload this
+config.json
+config.json.tmp
+config.broken-*.json
+
+# made by the app at runtime
+logs/
+icon.png
+fluffvr_stats.vrmanifest
+__pycache__/
+*.pyc
+
+# trailer renders
+*.wav.tmp
+trailer*.mp4
+!docs/trailer.mp4
