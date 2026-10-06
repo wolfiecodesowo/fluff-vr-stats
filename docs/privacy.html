@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Policy · Fluff VR Stats</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1d1426;--card:#2a1e36;--text:#f6eefc;--sub:#c9b6da;--pink:#ff8fc7;--line:#ffffff1a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:17px/1.65 Nunito,system-ui,sans-serif}
+.stripe{height:6px;background:linear-gradient(90deg,#ff7aa8,#ffb36b,#ffe36e,#8ee08a,#6ec8ff,#b58cff)}
+main{max-width:760px;margin:0 auto;padding:40px 18px 80px}
+h1{font-family:"Lilita One";font-size:44px;margin:.2em 0 .1em;color:var(--pink)}
+h2{font-family:"Lilita One";font-weight:400;font-size:24px;margin:1.6em 0 .3em}
+.sub{color:var(--sub)}a{color:var(--pink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px 24px 18px;margin-top:24px}
+li{margin:.25em 0}footer{margin-top:40px;color:var(--sub);font-size:14px}
+</style></head><body><div class="stripe"></div><main>
+<a href="./">← Fluff VR Stats</a>
+<h1>Privacy Policy</h1><p class="sub">for the Fluff VR Stats app and Fluff Bot · last updated October 6, 2026</p>
+<div class="card">
+<h2>the short version</h2>
+<p>we don't sell anything, we don't run analytics, and we don't keep a database of you. the app runs on your PC. the bot only remembers what it needs to run the server :3</p>
+<h2>Fluff Bot: what it uses</h2>
+<ul>
+<li><b>server setup info:</b> the IDs of the channels and roles it creates, saved in a small settings file on the computer that runs the bot.</li>
+<li><b>presence:</b> it checks whether members are currently using Fluff VR Stats (from their Discord activity) to give the "In VR Now" role and show a live count. it doesn't store this history.</li>
+<li><b>members:</b> it uses member join and leave events to welcome people and give the default role.</li>
+<li><b>messages:</b> it checks messages for invite-link spam. when a message is edited or deleted, the bot posts a copy in the server's private staff mod-log channel so moderators can see it. the bot itself doesn't save messages anywhere else.</li>
+<li><b>GitHub:</b> it checks the public GitHub releases page to announce updates.</li>
+</ul>
+<h2>Fluff VR Stats app: what it uses</h2>
+<ul>
+<li>everything runs locally on your PC. your settings (including any AI API key) stay in <code>config.json</code> on your computer.</li>
+<li><b>AI chat</b> (optional): your messages go to the AI provider you pick, under their privacy policy.</li>
+<li><b>Discord status</b> (optional, on by default): the app tells your local Discord app what to show on your profile, like your fps, world name and song. turn it off in Mods → Fun → Discord status.</li>
+<li><b>Discord server info:</b> the app reads the public widget of the Fluff VR Stats server to show how many people are online.</li>
+<li><b>weather and ping</b> (optional): only if you turn them on.</li>
+<li>world and player info comes from VRChat's own log file on your PC and never leaves it.</li>
+</ul>
+<h2>sharing</h2>
+<p>we don't sell, rent, or share your data with anyone. data only goes to the services listed above when you use those features.</p>
+<h2>removing your data</h2>
+<p>leave the server and the bot stops seeing you. delete the app folder to remove all app data from your PC. want something removed from a mod-log? ask a server admin, or contact us below.</p>
+<h2>kids</h2>
+<p>the app and bot are for people who meet Discord's and VRChat's minimum age requirements.</p>
+<h2>changes</h2>
+<p>if this policy changes, the date at the top changes too.</p>
+</div><footer>questions? open an issue on <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/issues">GitHub</a> or ask in the Fluff VR Stats Discord. made with love by wolfiecodesowo :3</footer></main></body></html>
