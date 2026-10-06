@@ -3,6 +3,10 @@ config.json
 config.json.tmp
 config.broken-*.json
 
+# Fluff Bot token - never upload
+bot/bot_config.json
+bot/bot_config.json.tmp
+
 # made by the app at runtime
 logs/
 icon.png

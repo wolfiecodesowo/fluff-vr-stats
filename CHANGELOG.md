@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- 💜 **Discord status**: your profile shows your fps, world + song while you play, with Download / Join buttons.
+- 💜 **Join our Discord** button + online count on the <3 page.
+- 🤖 **Fluff Bot**: official Discord bot that builds the server, tracks who's in VR, welcomes people and posts releases.
+- 🩹 Fixed lag from the frame-timing bug on old installs, and numpy now installs automatically.
+
 ## v0.1.0: first public release :3
 **Wrist HUD**
 - FPS, frametimes, reprojection, batteries, PC load, clock.

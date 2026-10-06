@@ -868,6 +868,7 @@ MOD_INFO = {
         ("distance", "Zoomies meter", "Distance walked + running"),
         ("weather", "Weather", "Temp + sky where you are"),
         ("break_reminder", "Break reminder", "Water + stretch nudges"),
+        ("discord_presence", "Discord status", "Shows the app on ur Discord profile"),
     ],
 }
 ALL_MODS = [m for cat in MOD_CATS for m in MOD_INFO[cat]]
@@ -1505,6 +1506,16 @@ def _tab_thanks(d, hit, box, state, t):
     pats = cfg.get("floof_pats", 0)
     button(d, hit, [tx, by, tx + 210, by + 50], "pat the floof", t, "pat_floof", primary=True, fsize=24)
     d.text((tx + 226, by + 25), f"floof pats: {pats}", font=font("title", 22), fill=t["sub"], anchor="lm")
+    # discord: online count + join button
+    dc = getattr(state, "discord", {}) or {}
+    bx1 = x1 - 24
+    button(d, hit, [bx1 - 176, by, bx1, by + 50], "join discord", t, "join_discord", fsize=19)
+    line = "our Discord"
+    if dc.get("online") is not None:
+        line = f"Discord: {dc['online']} online"
+    if dc.get("rpc") == "connected":
+        line += "  ·  ur status is live"
+    d.text((bx1, by - 12), line, font=font("body2", 15), fill=t["sub"], anchor="rs")
     if time.time() - state.last_pat < 1.4:
         state.anim_slots.append(("hearts", state.last_pat, (tx + 105, by), t))
     credit = []
@@ -1513,9 +1524,9 @@ def _tab_thanks(d, hit, box, state, t):
     if cfg.get("support_link"):
         credit.append(f"support me: {cfg['support_link']}")
     credit.append("sticker art by the original artists (signatures kept) <3")
-    d.text((x1 - 24, y0 + 340), "  ·  ".join(credit[:2]), font=font("body2", 14), fill=t["sub"], anchor="ra")
+    d.text((x1 - 24, y0 + 322), "  ·  ".join(credit[:2]), font=font("body2", 14), fill=t["sub"], anchor="ra")
     if len(credit) > 2:
-        d.text((x1 - 24, y0 + 360), credit[2], font=font("body2", 14), fill=t["sub"], anchor="ra")
+        d.text((x1 - 24, y0 + 342), credit[2], font=font("body2", 14), fill=t["sub"], anchor="ra")
 
 
 def _stat_tile(d, box, label, value, unit, t, col=None):

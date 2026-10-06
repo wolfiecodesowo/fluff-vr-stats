@@ -17,6 +17,7 @@ st.stats = {"fps": 86, "refresh": 90, "gpu_ms": 9.4, "cpu_ms": 6.1, "reproj_pct"
 st.extras = {"session_start": time.time() - 5000, "ping": 24, "weather": "64°F Sunny",
              "headpats": 12, "muted": True, "song": "Midnight City - M83"}
 st.screen_info = {"monitors": 2}
+st.discord = {"rpc": "connected", "online": 23, "server": "Fluff VR Stats :3"}
 from PIL import Image as _I, ImageDraw as _D
 _art = _I.new("RGBA", (300, 300), (40, 20, 70, 255)); _dd = _D.Draw(_art)
 for _i in range(12):

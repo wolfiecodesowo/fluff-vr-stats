@@ -73,10 +73,19 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 **VRChat features** (chatbox, avatar toggles, mute, headpats) need OSC: in VRChat, go to Action Menu → Options → OSC → **Enabled**.
 - Close MagicChatbox while using the chatbox tab, or they'll fight over the chatbox.
 
+## 💜 Discord
+- **Discord status:** while the app runs, your Discord profile shows *"Fluff VR Stats :3 · 90 fps in The Black Cat"* with Download / Join buttons. Just keep the Discord app open. Toggle it in Mods → Fun.
+- **Fluff Bot** (`bot/`): the official server bot.
+  - `/setup` builds the whole server: roles, channels, staff-only info channels, role buttons and all the info posts.
+  - It gives anyone running the app the **🥽 In VR Now** role and keeps a live counter.
+  - It welcomes people, logs to #mod-log, blocks invite spam and auto-posts GitHub releases.
+  - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
+
 ## 🔒 Privacy
 - Everything runs on your PC.
 - The only things that go online:
   - AI chat, sent to the provider you picked
+  - Discord status, sent to your local Discord app (turn off in Mods)
   - weather, if you turn it on
   - ping, if you turn it on
 - World and player info comes from VRChat's own log file on your PC.
@@ -87,7 +96,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 python preview.py        # renders every screen to PNGs, no headset needed
 python tools/make_sound.py   # rebuild the startup sound
 ```
-- **Code map:** `main.py` (app + VR), `ui.py` (all drawing), `themes.py`, `stats.py`, `music.py`, `chatbox.py`, `vrclog.py`, `avatar.py`, `tweaks.py`, `gltex.py` (flicker-free GPU textures).
+- **Code map:** `main.py` (app + VR), `ui.py` (all drawing), `themes.py`, `stats.py`, `music.py`, `chatbox.py`, `vrclog.py`, `avatar.py`, `tweaks.py`, `discord_link.py` (Discord status), `gltex.py` (flicker-free GPU textures), `bot/` (Fluff Bot).
 - **New theme:** add one line to `PRESETS` in `themes.py`.
 - **New mod:** add it to `MOD_INFO` in `ui.py` and `DEFAULT_CFG["modules"]` in `main.py`.
 

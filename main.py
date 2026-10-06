@@ -61,6 +61,7 @@ import ui
 from extras import Extras
 from gltex import GLUploader
 from music import Music
+from discord_link import DiscordLink
 from vrclog import VRCLog
 from avatar import Avatar
 from tweaks import Tweaks, TWEAKS
@@ -85,7 +86,9 @@ DEFAULT_CFG = {
         "distance": True, "wrist_pet": True, "timer": True,
         "ai_to_chatbox": False, "chatbox_status": False, "chatbox_song": False,
         "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
+        "discord_presence": True,
     },
+    "discord": {"app_id": "", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
         "provider": "anthropic", "api_key": "", "model": "claude-haiku-4-5", "base_url": "",
         "max_tokens": 300,
@@ -311,6 +314,7 @@ class State:
         self.errors_dismissed = False
         self.last_pat = 0
         self.music = {}
+        self.discord = {}
         self.hud_hits = []
         self.hud_size = (1, 1)
         self.hud_pressed = None
@@ -415,6 +419,8 @@ class App:
         self.music = Music()
         self.extras = Extras(self.cfg)
         self.extras.music = self.music
+        self.discord = DiscordLink(self.cfg)
+        self.last_discord_feed = 0
         self.vrclog = VRCLog()
         self.tweaks = Tweaks(self.cfg)
         self.last_prio = 0
@@ -517,7 +523,7 @@ class App:
         if self.gl is not None:
             self.gl.close()
             self.gl = None
-        for part in (getattr(self, "extras", None), getattr(self, "mirror", None),
+        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None),
                      getattr(self, "music", None), getattr(self, "vrclog", None)):
             try:
                 part.stop()
@@ -804,6 +810,14 @@ class App:
             cfg["floof_pats"] = cfg.get("floof_pats", 0) + 1
             st.last_pat = time.time()
             st.dirty_cfg = True
+        elif action == "join_discord":
+            link = self.discord.invite()
+            if link:
+                import webbrowser
+                webbrowser.open(link)
+                self.show_alert("opened the Discord invite on ur desktop :3", secs=5)
+            else:
+                self.show_alert("no Discord invite set yet", "warn", 5)
         elif action == "scroll":
             self.scroll(args[0] * 120)
         st.dash_dirty = True
@@ -1019,6 +1033,20 @@ class App:
                 st.dirty_cfg = True
                 self.show_alert(f"headpat #{st.extras['headpats']}! good fluff~", secs=3)
             st.hud_dirty = st.dash_dirty = True
+        # feed Discord rich presence (it only sends every 15s itself)
+        if now - self.last_discord_feed > 5:
+            self.last_discord_feed = now
+            mu = st.music or {}
+            song = None
+            if mu.get("title") and mu.get("playing") is not False:
+                song = f"{mu['title']} - {mu['artist']}" if mu.get("artist") else mu["title"]
+            self.discord.status = {
+                "fps": st.stats.get("fps"), "world": st.extras.get("world_name") or None,
+                "song": song, "session_start": st.extras.get("session_start")}
+            if self.discord.changed:
+                self.discord.changed = False
+                st.discord = self.discord.snapshot()
+                st.dash_dirty = True
         # alert expired -> redraw so the banner goes away
         if st.alert and now > st.alert["until"]:
             st.alert = None
@@ -1377,14 +1405,14 @@ def connect_steamvr():
 def ensure_gl_packages():
     """One-time self-install of the GPU texture packages if they're missing."""
     import importlib.util
-    need = [p for p, mod in (("glfw", "glfw"), ("PyOpenGL", "OpenGL"), ("numpy", "numpy"))
+    need = [p for p, mod in (("glfw", "glfw"), ("PyOpenGL", "OpenGL"), ("numpy", "numpy"), ("pypresence", "pypresence"))
             if importlib.util.find_spec(mod) is None]
     if not need:
         return
     import importlib
     import subprocess
     import gltex
-    print("  installing GPU texture support (one time, ~20s)...")
+    print("  installing GPU + Discord support (one time, ~20s)...")
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", *need],
                        timeout=180, check=True,

@@ -36,7 +36,8 @@
     "chatbox_song": false,
     "typing_indicator": true,
     "mute_indicator": false,
-    "headpat_counter": false
+    "headpat_counter": false,
+    "discord_presence": true
   },
   "ai": {
     "provider": "anthropic",
@@ -132,5 +133,11 @@
   "touch_depth_m": 0.03,
   "mouse_y": "auto",
   "afk_minutes": 5,
-  "cursor": "paw"
+  "cursor": "paw",
+  "discord": {
+    "app_id": "",
+    "guild_id": "1557135963510280202",
+    "invite": "",
+    "show_song": true
+  }
 }
