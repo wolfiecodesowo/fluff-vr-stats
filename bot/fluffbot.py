@@ -539,6 +539,9 @@ async def post_info(chans):
         if not c:
             continue
         for spec in specs:
+            if spec.get("content"):              # plain message (video links auto-play in Discord)
+                await c.send(spec["content"])
+                continue
             if key == "get_roles":
                 await c.send(embed=make_embed(spec), view=RoleButtons())
             elif key == "support":
@@ -807,6 +810,16 @@ async def bug_cmd(inter: discord.Interaction, title: app_commands.Range[str, 3, 
     t = await msg.create_thread(name=f"🐛 #{n:03d} {title}"[:100])
     await t.send(f"{inter.user.mention} thanks for reporting! drop screenshots + `logs/fluffvr.log` here 🐾")
     await inter.response.send_message(f"bug #{n:03d} posted in {c.mention} — thank u! 🐛", ephemeral=True)
+
+
+@bot.tree.command(name="videos", description="watch Fluff VR Stats in action")
+@app_commands.choices(which=[app_commands.Choice(name=t, value=n) for n, t, _ in C.VIDEOS])
+async def videos_cmd(inter: discord.Interaction, which: app_commands.Choice[str] = None):
+    if which:
+        return await inter.response.send_message(f"**{which.name}**\n{C.VIDEO}{which.value}.mp4")
+    lines = "\n".join(f"• [{t}]({C.VIDEO}{n}.mp4)" for n, t, _ in C.VIDEOS)
+    await inter.response.send_message(embed=discord.Embed(title="🎬 feature videos", description=lines,
+                                                          color=C.PINK))
 
 
 @bot.tree.command(name="vrtip", description="a random VR tip")

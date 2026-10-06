@@ -90,6 +90,7 @@ LAYOUT = [
         ("text", "memes", "😹・memes"),
     ]),
     ("🌟 SHOWCASE", "read", [
+        ("text", "videos", "🎬・feature-videos"),
         ("text", "featured", "📸・featured-setups"),
         ("text", "themes_gallery", "🌈・theme-gallery"),
         ("text", "hall", "🏆・hall-of-fluff"),
@@ -600,3 +601,28 @@ VR_TIPS = [
 FUN_8BALL = ["yes!! :3", "absolutely", "the floof says yes", "hmm ask again after a headpat",
              "probably not", "nope", "the stars (and the paws) say maybe", "100%", "uhh no comment",
              "ask Lil Fluff, he's napping", "signs point to zoomies", "definitely not lol"]
+
+
+# ---- feature videos (hosted on the website so Discord plays them inline)
+VIDEO = "https://wolfiecodesowo.github.io/fluff-vr-stats/videos/"
+VIDEOS = [
+    ("wrist_hud", "⌚ ur stats on ur wrist", "wrist"),
+    ("menu_tour", "🧭 the 12-tab SteamVR menu", "menu"),
+    ("themes", "🎨 24 themes + 7 ear styles", "themes"),
+    ("chatbox", "🗨️ chatbox stats over ur head", "chatbox"),
+    ("ai_buddy", "🤖 Fluff, ur AI buddy", "ai"),
+    ("fps_boost", "⚡ one-tap FPS boost", "boost"),
+    ("discord_status", "💜 Discord status", "discordlink"),
+]
+
+
+def _vid(name, title):
+    return {"content": f"**{title}**\n{VIDEO}{name}.mp4"}
+
+
+POSTS["videos"] = [_e("🎬 feature videos", "quick looks at everything Fluff VR Stats does. "
+                     "real in-VR clips are coming too!", PINK)] + [_vid(n, t) for n, t, _ in VIDEOS] + \
+                  [{"content": f"**🎉 the full trailer**\nhttps://wolfiecodesowo.github.io/fluff-vr-stats/trailer.mp4"}]
+for _n, _t, _ch in VIDEOS:
+    POSTS[_ch].append(_vid(_n, "🎬 see it in action"))
+TOPICS["videos"] = "short clips of every feature"
