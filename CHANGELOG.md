@@ -1,6 +1,8 @@
 # Changelog
 
-## v0.3.0 + Quest Edition v0.6.0: the big revamp + global chat
+## v0.3.1 + Quest Edition v0.6.0: the big revamp
+(v0.3.0 had global chat, the furry glow-up + AI removal; v0.3.1 adds the new menu look + new mods)
+
 - 🐾 **Furrier look everywhere, matching the art**: soft pencil-style outlines that get thicker/thinner like a real pen, big fluffy cream ears with pink insides + fur poking out, a big fluffy cream tail, fur tufts on every card, ears on cards + buttons (they follow ur ear style), lil blush marks. drawn in HD
 - 💎 **Whole new menu look**: velvet glass cards with a glossy rim + soft shadows, a glowing accent behind the menu, a sleek **sidebar** with every tab named, fluffy cream ears on the big cards. ur themes all still work
 - 🧩 **New mods (PC)**: Pat combo (combo meter + big alerts), Vibe meter (how much u're moving/dancing), Daily VR goal, Time in world, People met today, Lucky paw (daily fortune), Night dim, Hot GPU alert, RAM full alert, FPS drop log, Hourly chime. new chatbox lines for combo, vibe, goal + fortune. 60 mods total now
