@@ -1461,6 +1461,7 @@ class App:
         # motion: distance walked, zoomies, AFK
         if now - self.last_motion > 0.2:
             self.safe("motion", self.step_motion, now)
+            self.safe("game motion", self.step_game_motion, now)
         # timer
         tm = st.timer
         if tm["running"] and tm["mode"] == "timer" and now >= tm["end"]:
@@ -1492,6 +1493,26 @@ class App:
                     self.last_chatbox_text, self.last_chatbox_sent = text, now
                     osc.chatbox(text, self.cfg.get("osc_port", 9000))
 
+    def step_game_motion(self, now):
+        """Zoomies from VRChat itself (thumbstick walking/running), not just walking around ur room."""
+        st = self.state
+        last = getattr(self, "_game_motion_t", None)
+        self._game_motion_t = now
+        if last is None:
+            return
+        dt = min(now - last, 1.0)
+        v = 0.0 if self.extras.data.get("seated") else getattr(self.extras, "vel_h", 0.0)
+        if 0.3 < v < 15:                              # ignore tiny drift + teleports / flying worlds
+            st.walked += v * dt
+            self.cfg["walked_total_m"] = self.cfg.get("walked_total_m", 0) + v * dt
+            self.last_active = now
+        self.game_speed = v
+        zoom = self.speed > 1.3 or v > 3.2            # running irl, or sprinting in VRChat
+        if zoom != getattr(st, "zoomies", False):
+            st.zoomies = zoom
+            st.hud_dirty = True
+        st.speed = max(self.speed, v)
+
     def step_motion(self, now):
         st, m = self.state, self.cfg["modules"]
         dt = now - self.last_motion if self.last_motion else 0.2
@@ -1516,7 +1537,7 @@ class App:
                 self.last_active = now
         self.last_pos, self.last_rot = pos, fwd
         # zoomies!!
-        if self.speed > 1.3:
+        if self.speed > 1.3 or getattr(self, "game_speed", 0) > 3.2:
             self.zoom_since = self.zoom_since or now
         else:
             self.zoom_since = None

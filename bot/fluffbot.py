@@ -103,7 +103,7 @@ class RoleButtons(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         labels = {"pings": "📢 Update Pings", "beta": "🧪 Beta Tester",
-                  "vrchat": "🌍 VRChat Player", "artist": "🎨 Artist"}
+                  "vrchat": "🌍 VRChat Player", "artist": "🎨 Artist", "bumper": "🔔 Bumper"}
         for key in C.SELF_ROLES:
             b = discord.ui.Button(label=labels[key], style=discord.ButtonStyle.secondary,
                                   custom_id=f"fluff_role:{key}")
@@ -196,6 +196,7 @@ class FluffBot(discord.Client):
             await self.tree.sync()
         self.stats_loop.start()
         self.release_loop.start()
+        self.bump_loop.start()
 
     # ---- helpers
     def guild(self):
@@ -306,6 +307,9 @@ class FluffBot(discord.Client):
                           f"**before:** {before.content}\n**after:** {after.content}")
 
     async def on_message(self, msg):
+        if msg.guild and msg.author.id == C.DISBOARD_ID:
+            await self.on_disboard(msg)
+            return
         if msg.author.bot or not msg.guild or not isinstance(msg.author, discord.Member):
             return
         if INVITE_RE.search(msg.content or "") and not self.is_staff(msg.author):
@@ -315,6 +319,80 @@ class FluffBot(discord.Client):
                 await self.modlog(f"🚫 removed an invite link from {msg.author.mention} in {msg.channel.mention}")
             except discord.HTTPException:
                 pass
+
+    # ---- bumping (DISBOARD)
+    BUMP_COOLDOWN = 2 * 3600
+
+    def bump_data(self):
+        return CFG.setdefault("bump", {"last": 0, "by": None, "reminded": True, "counts": {}})
+
+    async def ensure_bump(self, guild):
+        """makes the 🔔 Bumper role + 🔔・bump channel if the server was built before they existed"""
+        changed = False
+        if not self.role("bumper"):
+            try:
+                r = await guild.create_role(name="🔔 Bumper", colour=discord.Colour(0x96ECB0), mentionable=False,
+                                            reason="Fluff Bot bump reminders")
+                CFG.setdefault("roles", {})["bumper"] = r.id
+                changed = True
+            except discord.HTTPException:
+                pass
+        if not self.ch("bump"):
+            main = self.ch("main")
+            try:
+                c = await guild.create_text_channel("🔔・bump", category=main.category if main else None,
+                                                    topic=C.TOPICS.get("bump"), reason="Fluff Bot bump reminders")
+                CFG.setdefault("channels", {})["bump"] = c.id
+                for spec in C.POSTS.get("bump", []):
+                    await c.send(embed=make_embed(spec))
+                changed = True
+            except discord.HTTPException:
+                pass
+        if changed:
+            save_cfg(CFG)
+
+    async def on_disboard(self, msg):
+        """DISBOARD said 'Bump done!' -> thank the bumper, count it, start the 2h timer"""
+        text = " ".join((e.description or "") + " " + (e.title or "") for e in msg.embeds).lower()
+        if not ("bump done" in text or ":thumbsup:" in text or "👍" in text):
+            return
+        meta = getattr(msg, "interaction_metadata", None) or getattr(msg, "interaction", None)
+        user = getattr(meta, "user", None)
+        b = self.bump_data()
+        b.update(last=msg.created_at.timestamp(), by=user.id if user else None, reminded=False)
+        if user:
+            b["counts"][str(user.id)] = b["counts"].get(str(user.id), 0) + 1
+        save_cfg(CFG)
+        n = b["counts"].get(str(user.id), 0) if user else 0
+        nxt = int(b["last"] + self.BUMP_COOLDOWN)
+        e = discord.Embed(description=(f"thank u {user.mention}!! 💚 that's bump **#{n}** from u :3\n" if user else "thanks for the bump!! 💚\n")
+                          + f"next bump <t:{nxt}:R>. i'll ping 🔔 Bumpers when it's time", color=C.MINT)
+        try:
+            await msg.channel.send(embed=e)
+        except discord.HTTPException:
+            pass
+
+    @tasks.loop(minutes=1)
+    async def bump_loop(self):
+        g = self.guild()
+        if not g:
+            return
+        if not getattr(self, "_bump_ready", False):
+            self._bump_ready = True
+            await self.ensure_bump(g)
+        b = self.bump_data()
+        if b.get("last") and not b.get("reminded") and datetime.datetime.now().timestamp() >= b["last"] + self.BUMP_COOLDOWN:
+            b["reminded"] = True
+            save_cfg(CFG)
+            c, r = self.ch("bump"), self.role("bumper")
+            if c:
+                e = discord.Embed(title="🔔 bump time!!", description="type `/bump` (the **DISBOARD** one) to push us up the list "
+                                  "so more fluffs find us :3", color=C.MINT)
+                await c.send(content=r.mention if r else None, embed=e, allowed_mentions=discord.AllowedMentions(roles=True))
+
+    @bump_loop.before_loop
+    async def _wait3(self):
+        await self.wait_until_ready()
 
     # ---- background loops
     @tasks.loop(minutes=10)      # Discord allows 2 channel renames per 10 min
@@ -975,6 +1053,65 @@ async def bugstatus_cmd(inter: discord.Interaction, status: app_commands.Choice[
     except Exception:
         pass
     await inter.response.send_message(f"status → **{status.value}**")
+
+
+# ---- bumping + growth
+@bot.tree.command(name="bumpstatus", description="when can we bump on DISBOARD next?")
+async def bumpstatus_cmd(inter: discord.Interaction):
+    b = bot.bump_data()
+    nxt = b.get("last", 0) + FluffBot.BUMP_COOLDOWN
+    now = datetime.datetime.now().timestamp()
+    if not b.get("last") or now >= nxt:
+        msg = "✅ **we can bump right now!** type `/bump` and pick the one with the **DISBOARD** icon :3"
+    else:
+        msg = f"⏳ next bump <t:{int(nxt)}:R> (<t:{int(nxt)}:t>). grab 🔔 Bumper and i'll ping u!"
+    if b.get("by"):
+        msg += f"\nlast bump by <@{b['by']}> <t:{int(b['last'])}:R>"
+    await inter.response.send_message(embed=discord.Embed(description=msg, color=C.MINT))
+
+
+@bot.tree.command(name="bumpers", description="top DISBOARD bumpers 🏆")
+async def bumpers_cmd(inter: discord.Interaction):
+    counts = bot.bump_data().get("counts", {})
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[:10]
+    if not top:
+        return await inter.response.send_message("no bumps yet!! be the first: `/bump` (DISBOARD) 🔔")
+    medals = ["🥇", "🥈", "🥉"] + ["🐾"] * 7
+    lines = [f"{medals[i]} <@{uid}> · **{n}** bump{'s' if n != 1 else ''}" for i, (uid, n) in enumerate(top)]
+    e = discord.Embed(title="🏆 top bumpers", description="\n".join(lines), color=C.GOLD)
+    await inter.response.send_message(embed=e, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="bumpremind", description="get (or stop) a ping when it's time to bump")
+async def bumpremind_cmd(inter: discord.Interaction):
+    r = bot.role("bumper")
+    if r is None:
+        return await inter.response.send_message("the 🔔 Bumper role isn't made yet, give me a minute :3", ephemeral=True)
+    if r in inter.user.roles:
+        await inter.user.remove_roles(r, reason="bump reminders off")
+        await inter.response.send_message("ok! no more bump pings 🔕", ephemeral=True)
+    else:
+        await inter.user.add_roles(r, reason="bump reminders on")
+        await inter.response.send_message("yay!! i'll ping u every time we can bump 🔔", ephemeral=True)
+
+
+@bot.tree.command(name="invite", description="get the server invite + a lil message to share it")
+async def invite_cmd(inter: discord.Interaction):
+    link = CFG.get("invite") or ""
+    if not link:
+        try:
+            ch = bot.ch("main") or inter.channel
+            inv = await ch.create_invite(max_age=0, max_uses=0, unique=False, reason="/invite")
+            link = inv.url
+            CFG["invite"] = link
+            save_cfg(CFG)
+        except discord.HTTPException:
+            return await inter.response.send_message("i can't make invites here, ask staff :3", ephemeral=True)
+    share = (f"come hang with us!! 🐾 Fluff VR Stats :3 is a free cute wrist HUD + mods for VRChat "
+             f"(PC + Quest). get help, show ur setup + meet fluffs: {link}")
+    e = discord.Embed(title="💌 invite ur friends!", color=C.PINK,
+                      description=f"**link:** {link}\n\n**copy + paste this anywhere:**\n```{share}```")
+    await inter.response.send_message(embed=e)
 
 
 def main():

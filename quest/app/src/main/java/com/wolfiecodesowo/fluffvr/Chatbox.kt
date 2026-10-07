@@ -229,7 +229,7 @@ object Chatbox {
         if (extra.isNotEmpty()) lines += extra.joinToString("  ")
         val more = mutableListOf<String>()
         if (s.line("yap")) QuestMods.talkSeconds(now).takeIf { it >= 30 }?.let { more += tag("yap", "yapped ${dur(it)}") }
-        if (s.line("zoomies") && s.walkedM >= 1) more += tag("zoomies", if (s.walkedM >= 1000) "walked ${"%.2f".format(s.walkedM / 1000)}km" else "walked ${s.walkedM.toInt()}m")
+        if (s.line("zoomies") && s.walkedM >= 1) more += tag("zoomies", (if (QuestMods.zoomies) "ZOOMIES!! " else "") + if (s.walkedM >= 1000) "walked ${"%.2f".format(s.walkedM / 1000)}km" else "walked ${s.walkedM.toInt()}m")
         if (s.line("height")) QuestMods.heightM?.let { h -> val ft = h * 3.28084; more += tag("height", "%.2fm (%d'%d\")".format(h, ft.toInt(), Math.round((ft % 1) * 12).toInt())) }
         if (more.isNotEmpty()) lines += more.joinToString("  ")
         if (s.line("countdown")) countdownText(s, now)?.let { lines += tag("countdown", short(it, 40)) }

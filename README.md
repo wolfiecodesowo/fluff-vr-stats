@@ -106,7 +106,8 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
   - `/setup` builds the whole server: roles, channels, staff-only info channels, role buttons and all the info posts.
   - It gives anyone running the app the **🥽 In VR Now** role and keeps a live counter.
   - It welcomes people, logs to #mod-log, blocks invite spam and auto-posts GitHub releases.
-  - **45 slash commands:** client guides (`/download`, `/install`, `/mods`, `/boost`...), `/ticket` private support, `/suggest` + `/bug` with voting threads, `/invr`, fun ones (`/headpat`, `/boop`, `/fluffrate`, `/8ball`) and staff tools (`/poll`, `/warn`, `/timeout`, `/lockdown`).
+  - **49 slash commands:** client guides (`/download`, `/install`, `/mods`, `/boost`...), `/ticket` private support, `/suggest` + `/bug` with voting threads, `/invr`, fun ones (`/headpat`, `/boop`, `/fluffrate`, `/8ball`) and staff tools (`/poll`, `/warn`, `/timeout`, `/lockdown`).
+  - **🔔 bump helper:** thanks whoever bumps on DISBOARD, keeps a `/bumpers` leaderboard and pings 🔔 Bumpers every 2 hours when it's time to bump again. `/invite` gives a share-ready invite.
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
 
 ## 🥽 Quest (standalone)

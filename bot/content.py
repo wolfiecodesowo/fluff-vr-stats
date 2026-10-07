@@ -24,10 +24,11 @@ ROLES = [
     {"key": "artist", "name": "🎨 Artist", "color": 0xFF9F6E, "hoist": False, "perms": None},
     {"key": "vrchat", "name": "🌍 VRChat Player", "color": 0x9FE870, "hoist": False, "perms": None},
     {"key": "pings", "name": "📢 Update Pings", "color": 0xFFB3D9, "hoist": False, "perms": None},
+    {"key": "bumper", "name": "🔔 Bumper", "color": 0x96ECB0, "hoist": False, "perms": None},
     {"key": "member", "name": "🐾 Fluff", "color": 0xFFC6E4, "hoist": False, "perms": None},
 ]
 # self-assign buttons in #get-roles
-SELF_ROLES = ["pings", "beta", "vrchat", "artist"]
+SELF_ROLES = ["pings", "beta", "vrchat", "artist", "bumper"]
 
 # Channel layout. access:
 #   "read"  = everyone can read, only Owner/Staff/bot can post
@@ -89,6 +90,7 @@ LAYOUT = [
     ("💬 COMMUNITY", "open", [
         ("text", "main", "💬・main-chat"),
         ("text", "memes", "😹・memes"),
+        ("text", "bump", "🔔・bump"),
     ]),
     ("🌟 SHOWCASE", "read", [
         ("text", "videos", "🎬・feature-videos"),
@@ -437,6 +439,8 @@ POSTS.update({
             ("🥽 VR", "`/invr` who's using Fluff VR Stats right now\n`/stats` server stats\n"
                      "`/vrtip` a random VR tip\n`/randomtheme` pick a theme for you", False),
             ("🐾 fun", "`/headpat` `/boop` `/hug` `/fluffrate` `/8ball` `/coinflip` `/pet`", False),
+            ("🔔 grow the server", "`/bump` (the DISBOARD one) every 2h · `/bumpstatus` next bump\n"
+                                  "`/bumpers` leaderboard · `/bumpremind` get pinged · `/invite` share us", False),
         ], footer="staff commands are in 📌・staff-notes"),
     ],
     "requirements": [
@@ -648,3 +652,13 @@ TOPICS["videos"] = "short clips of every feature"
 TOPICS["joins"] = "say hi to the newest fluffs!! (welcomes go here, not in main-chat)"
 POSTS["joins"] = [_e("🎉 new fluffs", "every new member gets a welcome here. "
                      "wave hi in 💬・main-chat!", PINK)]
+
+# ---- bumping (Disboard): helps the server show up higher on disboard.org so more fluffs find us
+DISBOARD_ID = 302050872383242240
+TOPICS["bump"] = "type /bump (the DISBOARD one) every 2 hours to push us up the server list! Fluff Bot pings 🔔 Bumpers when it's time"
+POSTS["bump"] = [_e("🔔 help the server grow!!",
+    "every **2 hours** anyone can bump us on DISBOARD so we show up higher on disboard.org and more fluffs find us :3\n\n"
+    "**how:** type `/bump` and pick the one with the **DISBOARD** icon\n"
+    "**get reminded:** grab the 🔔 Bumper role in #get-roles (or use `/bumpremind`)\n"
+    "**leaderboard:** `/bumpers` shows the top bumpers 🏆\n"
+    "**next bump:** `/bumpstatus`", MINT)]

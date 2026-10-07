@@ -573,7 +573,7 @@ def hud_chips(state):
     if m.get("distance"):
         wk = state.walked
         out.append(("walked", f"{wk / 1000:.2f}km" if wk >= 1000 else f"{wk:.0f}m", None))
-        if getattr(state, "speed", 0) > 1.3:
+        if getattr(state, "zoomies", False):
             out.append(("", "ZOOMIES!!", "warn"))
     if m.get("afk_detect") and state.afk:
         out.append(("", "afk " + fmt_dur(time.time() - (state.afk_since or time.time())), "warn"))

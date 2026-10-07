@@ -48,6 +48,7 @@ class ChatboxService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             val s = Settings(this@ChatboxService)
+            try { QuestMods.moveTick(s) } catch (_: Exception) {}
             try {
                 MusicState.refresh(this@ChatboxService)
                 val text = Chatbox.compose(this@ChatboxService, s)

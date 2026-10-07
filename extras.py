@@ -157,6 +157,8 @@ class Extras:
                      "talk_s": 0.0, "height_m": None, "pat_param": None, "boop_param": None,
                      "song": None, "ping": None, "weather": None, "muted": None}
         self._contact = {}          # param name -> (on?, last count time)
+        self._vel = {}
+        self.vel_h = 0.0            # how fast ur avatar is moving in VRChat (m/s, thumbstick too)
         self.learn = None           # {"kind": "headpats"/"boops", "until": t, "seen": {name: was_on}}
         self.recent = []            # last few avatar params VRChat sent (for the status line)
         self._talk_since = None
@@ -201,6 +203,7 @@ class Extras:
         now = time.time() if now is None else now
         if addr == "/avatar/change":
             self._contact.clear(); self._grounded = None
+            self._vel.clear(); self.vel_h = 0.0
             self._set("pat_param", None); self._set("boop_param", None); self._set("height_m", None)
             return
         if not addr.startswith("/avatar/parameters/"):
@@ -238,6 +241,10 @@ class Extras:
                 self._set("jumps", self.data["jumps"] + 1)
                 self.cfg["jumps_total"] = self.data["jumps"]
             self._grounded = g
+            return
+        if name in ("VelocityX", "VelocityZ") and isinstance(v, (int, float)):
+            self._vel[name] = float(v)
+            self.vel_h = (self._vel.get("VelocityX", 0.0) ** 2 + self._vel.get("VelocityZ", 0.0) ** 2) ** 0.5
             return
         if name in ("Seated", "InStation"):
             self.data["seated"] = bool(v)
@@ -364,7 +371,7 @@ class Extras:
         sock = None
         while self.running:
             want = any(self.on(k) for k in ("mute_indicator", "headpat_counter", "avatar_toggles", "boop_counter",
-                                            "yap_meter", "jump_counter", "avatar_height", "mute_reminder"))
+                                            "yap_meter", "jump_counter", "avatar_height", "mute_reminder", "distance"))
             if not want:
                 if sock:
                     sock.close()

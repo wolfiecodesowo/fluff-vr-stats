@@ -129,8 +129,21 @@ object QuestMods {
     private var grounded: Boolean? = null
     private var talkSince = 0L
     @Volatile var talkMs = 0L
-    private var lastVel = 0f
-    private var lastVelAt = 0L
+    @Volatile private var velX = 0f
+    @Volatile private var velZ = 0f
+    private var lastMoveTick = 0L
+    @Volatile var speed = 0f              // how fast ur avatar moves in VRChat (thumbstick too), m/s
+
+    /** called a few times a second: adds up the distance u moved (VRChat only sends speed when it changes) */
+    fun moveTick(s: Settings, now: Long = System.currentTimeMillis()) {
+        val last = lastMoveTick
+        lastMoveTick = now
+        if (last == 0L) return
+        val dt = minOf(now - last, 15_000L) / 1000f
+        speed = if (seated || now - oscSeen > 30_000) 0f else Math.sqrt((velX * velX + velZ * velZ).toDouble()).toFloat()
+        if (speed in 0.3f..15f) s.walkedM = s.walkedM + speed * dt
+    }
+    val zoomies get() = speed > 3.2f
     @Volatile var mutedSince = 0L
 
     private val kindCache = HashMap<String, String>()
@@ -150,7 +163,7 @@ object QuestMods {
         val v = args.firstOrNull() ?: return
         if (addr == "/avatar/change") {
             avatarId = v.toString(); params.clear(); contact.clear(); grounded = null
-            patParam = null; boopParam = null; heightM = null; return
+            patParam = null; boopParam = null; heightM = null; velX = 0f; velZ = 0f; return
         }
         if (!addr.startsWith("/avatar/parameters/")) return
         val name = addr.removePrefix("/avatar/parameters/")
@@ -186,13 +199,9 @@ object QuestMods {
             }
             "Seated", "InStation" -> { seated = v == true; return }
             "EyeHeightAsMeters" -> { (v as? Float)?.let { heightM = Math.round(it * 100) / 100.0 }; return }
-            "VelocityMagnitude" -> {
-                val f = v as? Float ?: return
-                if (lastVelAt > 0) {
-                    val dt = (now - lastVelAt) / 1000f
-                    if (dt in 0f..2f && lastVel in 0.3f..12f && !seated) s.walkedM = s.walkedM + lastVel * dt
-                }
-                lastVel = f; lastVelAt = now; return
+            "VelocityX", "VelocityZ" -> {
+                (v as? Float)?.let { if (name == "VelocityX") velX = it else velZ = it }
+                return
             }
         }
         // classify each param name once (VRChat sends hundreds of updates a second)
