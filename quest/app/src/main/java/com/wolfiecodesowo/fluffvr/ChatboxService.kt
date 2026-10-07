@@ -53,6 +53,7 @@ class ChatboxService : Service() {
         override fun run() {
             val s = Settings(this@ChatboxService)
             try { QuestMods.moveTick(s) } catch (_: Exception) {}
+            try { QuestMods.newModsTick(this@ChatboxService, s) } catch (_: Exception) {}
             try {
                 MusicState.refresh(this@ChatboxService)
                 val text = Chatbox.compose(this@ChatboxService, s)
@@ -86,6 +87,11 @@ class ChatboxService : Service() {
     private var milestone = 0
     private var muteWarned = false
     private var bedNight = ""
+    private var goalDay = ""
+    private var chimeHour = -1
+    private var lastRamAlert = 0L
+    private var lastHotAlert = 0L
+    private var battStep = 101
 
     /** VR today + streak, milestones and gentle reminders (runs every 15s) */
     private fun reminders(s: Settings) {
@@ -106,6 +112,18 @@ class ChatboxService : Service() {
             val ms = QuestMods.mutedSince
             if (QuestMods.muted == true && ms > 0 && now - ms > 10 * 60_000) { if (!muteWarned) { muteWarned = true; QuestMods.alert(this, "ur still muted! (10+ min) just a heads up") } }
             else muteWarned = false
+        }
+        if (s.line("goal") && QuestMods.goalPct(s) >= 100 && goalDay != today) { goalDay = today; QuestMods.alert(this, "daily goal done!! ${s.goalMin} min in VR today 🎯") }
+        val cal = java.util.Calendar.getInstance()
+        if (s.line("chime") && cal.get(java.util.Calendar.MINUTE) == 0 && chimeHour != cal.get(java.util.Calendar.HOUR_OF_DAY)) {
+            chimeHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            QuestMods.alert(this, "it's ${java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()).format(java.util.Date(now))} ~ ding!")
+        }
+        if (s.line("ram_alert")) QuestMods.freeRamGb(this)?.let { if (it < 0.6 && now - lastRamAlert > 600_000) { lastRamAlert = now; QuestMods.alert(this, "Quest is almost out of memory (${"%.1f".format(it)} GB free)! close other apps") } }
+        if (s.line("hot_alert")) QuestMods.tempC(this)?.let { if (it >= 42 && now - lastHotAlert > 600_000) { lastHotAlert = now; QuestMods.alert(this, "ur headset is toasty (${Math.round(it)}°C)! take a lil break") } }
+        if (s.line("batt_alerts")) Chatbox.battery(this)?.let { (p, chg) ->
+            if (chg) battStep = 101
+            else for (step in listOf(50, 30, 15)) if (p <= step && battStep > step) { battStep = step; QuestMods.alert(this, "battery at $p% 🔋"); break }
         }
         if (s.line("bedtime")) {
             val parts = s.bedtime.split(":").mapNotNull { it.toIntOrNull() }

@@ -62,7 +62,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 **👆 Wrist buttons**
 - tap them with your other hand: zoom, chatbox on/off, 5 min timer, kitty, global chat, pat Fluff... pick your 6 in the Wrist tab
 
-**In your SteamVR dashboard**
+**In your SteamVR dashboard** (a sleek sidebar menu with velvet glass cards)
 
 | | |
 |---|---|
@@ -75,7 +75,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 | 🐱 **Avatar** | your avatar's toggles as buttons, read straight from VRChat's OSC files |
 | 🌍 **World** | world, instance, who's here, timer, today's recap |
 | 🖥️ **Screen** | your desktop floating in VR + a 🔍 **zoom lens** |
-| 🧩 **Mods** | 49 toggles in 6 groups: Performance, Wrist, VRChat, Counters, Fun, Comfy |
+| 🧩 **Mods** | 60 toggles in 6 groups: Performance, Wrist, VRChat, Counters, Fun, Comfy |
 | 🎨 **Style** | 25 themes · 12 accents · 9 backgrounds · 7 ear styles |
 | ⌚ **Wrist** | move / tilt / resize the wrist HUD + pick your wrist buttons |
 | ⚙️ **Settings** | start mode, auto-updates, sounds, units and more |

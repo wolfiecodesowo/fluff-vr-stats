@@ -96,7 +96,11 @@ DEFAULT_CFG = {
         "vr_streak": True, "quote_of_hour": False, "theme_shuffle": False,
         "eye_break": False, "posture_reminder": False, "bedtime_alert": False, "pat_party": True,
         "wrist_kitty": True, "global_chat": True, "wrist_buttons": True,
+        "pat_combo": True, "vibe_meter": False, "daily_goal": False, "world_timer": False, "met_today": False,
+        "lucky_paw": False, "night_dim": False, "hot_gpu_alert": True, "ram_alert": True, "hourly_chime": False,
+        "fps_drop_log": False, "battery_eta": False,
     },
+    "vr_goal_min": 60,
     "wrist_actions": ["zoom", "chatbox", "timer", "kitty", "gchat", "pat"],
     "gchat": {"name": "", "muted": [], "hud": True},
     "countdown": {"name": "my birthday", "date": ""},
@@ -147,6 +151,11 @@ DEFAULT_CFG = {
     "cursor": "paw",
 }
 CFG_NOTICE = []   # problems found while loading config, shown once the app is up
+
+LUCKY = ["today's luck: ✨ amazing", "lucky paw says: get headpats", "fortune: someone thinks ur cute",
+         "today's luck: big cuddle energy", "fortune: a new friend is near", "lucky paw: wear the cute outfit",
+         "today's luck: 100% fluff", "fortune: dance like nobody's watching", "lucky paw: drink water, then vibe",
+         "today's luck: tail wags incoming", "fortune: ur gonna laugh so hard", "lucky paw: be silly on purpose"]
 
 BREAK_MSGS = [
     "hydrate check! sip some water ~",
@@ -886,6 +895,10 @@ class App:
 
     def update_alpha(self):
         target = self.cfg["wrist"]["opacity"]
+        if self.cfg["modules"].get("night_dim"):
+            hr = time.localtime().tm_hour
+            if hr >= 22 or hr < 6:
+                target *= 0.6                     # softer at night so it's not blinding in a dark room
         alerting = self.state.alert and time.time() < self.state.alert["until"]
         if self.cfg["modules"]["look_to_show"] and self.ctrl_index is not None and not alerting:
             poses = (openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount)()
@@ -1362,9 +1375,66 @@ class App:
         self.extras._set("vr_today_s", int(vd["today_s"]))
         self.extras._set("vr_streak", vd.get("streak", 1))
 
+    def tick_new_mods(self, now):
+        """v0.3 mods: pat combo, vibe meter, daily goal, world timer, people met, lucky paw, chime, PC alerts."""
+        st, m, x, s = self.state, self.cfg["modules"], self.state.extras, self.state.stats
+        nm = self.__dict__.setdefault("_nm", {"pats": None, "pat_t": [], "combo_best": 0, "vibe": 0.0, "goal_day": None,
+                                             "gpu_t": 0, "ram_t": 0, "chime_h": None, "low_t": 0, "drops": []})
+        # pat combo: pats in the last 20s
+        pats = x.get("headpats", 0) + x.get("boops", 0)
+        if nm["pats"] is not None and pats > nm["pats"]:
+            nm["pat_t"] += [now] * min(5, pats - nm["pats"])
+        nm["pats"] = pats
+        nm["pat_t"] = [t for t in nm["pat_t"] if now - t < 20]
+        combo = len(nm["pat_t"])
+        if m.get("pat_combo"):
+            if combo != x.get("combo", 0):
+                x["combo"] = combo
+                st.hud_dirty = True
+                if combo in (5, 10, 20, 50):
+                    self.show_alert({5: "pat combo x5!! :3", 10: "PAT COMBO x10!!! ur so loved", 20: "x20 COMBO?! headpat frenzy",
+                                     50: "x50!!! LEGENDARY PATS"}[combo], secs=4)
+        # vibe meter: how much u're moving (irl walking/dancing + in-game) as 0-100
+        mv = min(1.0, (self.speed or 0) / 1.6 + (getattr(self.extras, "vel_h", 0) or 0) / 6)
+        nm["vibe"] = nm["vibe"] * 0.9 + mv * 100 * 0.1
+        x["vibe"] = int(nm["vibe"])
+        # daily goal
+        goal = max(10, int(self.cfg.get("vr_goal_min", 60)))
+        x["goal_pct"] = min(100, int((x.get("vr_today_s", 0) or 0) / 60 * 100 / goal))
+        today = time.strftime("%Y-%m-%d")
+        if m.get("daily_goal") and x["goal_pct"] >= 100 and nm["goal_day"] != today:
+            nm["goal_day"] = today
+            self.show_alert(f"daily goal done!! {goal} min in VR today 🎯", secs=8)
+        # world timer + people met (from VRChat's log)
+        w = st.world or {}
+        x["world_s"] = (now - w["world_since"]) if w.get("world_since") else None
+        x["met"] = w.get("people_met")
+        # lucky paw: one fortune a day
+        x["fortune"] = LUCKY[sum(map(ord, today)) % len(LUCKY)]
+        # PC alerts
+        if m.get("hot_gpu_alert") and (s.get("gpu_temp") or 0) >= 84 and now - nm["gpu_t"] > 600:
+            nm["gpu_t"] = now
+            self.show_alert(f"ur GPU is toasty ({s['gpu_temp']:.0f}°C)! check ur fans / lower settings", "warn", 8)
+        if m.get("ram_alert") and (s.get("ram_pct") or 0) >= 92 and now - nm["ram_t"] > 600:
+            nm["ram_t"] = now
+            self.show_alert(f"RAM is almost full ({s['ram_pct']:.0f}%)! close some apps so VRChat doesn't hitch", "warn", 8)
+        # fps drop log: remember the last few big drops (shown in Stats)
+        fps, ref = s.get("fps"), s.get("refresh")
+        if m.get("fps_drop_log") and fps and ref and fps < ref * 0.5 and now - nm["low_t"] > 30:
+            nm["low_t"] = now
+            nm["drops"] = (nm["drops"] + [(now, int(fps), x.get("world_name") or "?")])[-5:]
+            x["fps_drops"] = list(nm["drops"])
+        # hourly chime
+        lt = time.localtime(now)
+        if m.get("hourly_chime") and lt.tm_min == 0 and nm["chime_h"] != lt.tm_hour:
+            nm["chime_h"] = lt.tm_hour
+            self.safe("ding", self.play_ding)
+            self.show_alert(f"it's {time.strftime('%I %p', lt).lstrip('0')} ~ ding!", secs=5)
+
     def tick_more_mods(self, now):
         st, m = self.state, self.cfg["modules"]
         x = st.extras
+        self.safe("new mods", self.tick_new_mods, now)
         # VR time today + streak (every minute)
         if now - self.last_vr_tick >= 60:
             self.update_vr_days(now - self.last_vr_tick)

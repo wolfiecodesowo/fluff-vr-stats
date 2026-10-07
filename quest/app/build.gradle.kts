@@ -10,8 +10,8 @@ android {
         applicationId = "com.wolfiecodesowo.fluffvr"
         minSdk = 29
         targetSdk = 32          // Quest-friendly, no extra foreground-service paperwork
-        versionCode = 9
-        versionName = "0.5.0-quest"
+        versionCode = 10
+        versionName = "0.6.0-quest"
     }
     buildTypes {
         release {

@@ -10,14 +10,14 @@ import time
 
 LINE_KEYS = ["status", "afk", "time", "date", "song", "song_bar", "world", "fps", "pc", "gpu_temp", "session",
              "today", "streak", "distance", "headpats", "boops", "jumps", "yap", "height", "countdown", "quote",
-             "kaomoji"]
+             "combo", "vibe", "goal", "fortune", "kaomoji"]
 LINE_LABELS = {
     "status": "Status text", "time": "Time", "song": "Song", "song_bar": "Song progress",
     "fps": "FPS", "pc": "CPU / GPU %", "gpu_temp": "GPU temp", "session": "Time in VR",
     "headpats": "Headpats", "afk": "AFK timer", "world": "World", "distance": "Distance",
     "date": "Date", "today": "VR today", "streak": "VR streak", "boops": "Boops", "jumps": "Jumps",
     "yap": "Yap meter", "height": "Avi height", "countdown": "Countdown", "quote": "Cute quote",
-    "kaomoji": "Kaomoji",
+    "kaomoji": "Kaomoji", "combo": "Pat combo", "vibe": "Vibe meter", "goal": "Daily goal", "fortune": "Lucky paw",
 }
 QUOTES = ["u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
           "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
@@ -31,7 +31,8 @@ DEFAULT = {
               "pc": False, "gpu_temp": False, "session": False, "headpats": False,
               "afk": True, "world": False, "distance": False, "date": False, "today": False,
               "streak": False, "boops": False, "jumps": False, "yap": False, "height": False,
-              "countdown": False, "quote": False, "kaomoji": False},
+              "countdown": False, "quote": False, "kaomoji": False, "combo": False, "vibe": False,
+              "goal": False, "fortune": False},
     "statuses": ["fluffy vibes only :3", "pls give headpats", "running on Fluff VR Stats <3"],
     "status_index": 0,
     "rotate": True,
@@ -42,7 +43,8 @@ ICONS = {
     "cute":   {"status": "✨", "time": "⏰", "song": "🎵", "fps": "🎮", "pc": "🖥️", "gpu_temp": "🌡️",
                "session": "⏱️", "headpats": "🐾", "afk": "💤", "world": "🌍", "distance": "👣",
                "date": "📅", "today": "🥽", "streak": "🔥", "boops": "👃", "jumps": "🐇", "yap": "🗣️",
-               "height": "📏", "countdown": "🎉", "quote": "💭"},
+               "height": "📏", "countdown": "🎉", "quote": "💭", "combo": "💥", "vibe": "🕺", "goal": "🎯",
+               "fortune": "🍀"},
     "simple": {"status": "♡", "time": "", "song": "♪", "fps": "", "pc": "", "gpu_temp": "",
                "session": "", "headpats": "", "afk": "zzz", "world": "@", "distance": ""},
 }
@@ -187,6 +189,18 @@ def compose(cfg, stats, extras, music, now=None):
         c = countdown_text(cfg.get("countdown", {}), now)
         if c:
             lines.append(tag("countdown", _short(c, 40)))
+    row = []
+    if on.get("combo") and extras.get("combo", 0) >= 3:
+        row.append(tag("combo", f"pat combo x{extras['combo']}"))
+    if on.get("vibe") and extras.get("vibe") is not None:
+        v = extras["vibe"]
+        row.append(tag("vibe", "vibing hard" if v > 60 else "vibing" if v > 25 else "chillin"))
+    if on.get("goal") and extras.get("goal_pct") is not None:
+        row.append(tag("goal", f"goal {extras['goal_pct']}%"))
+    if row:
+        lines.append("  ".join(row))
+    if on.get("fortune") and extras.get("fortune"):
+        lines.append(tag("fortune", _short(extras["fortune"], 44)))
     if on.get("quote"):
         lines.append(tag("quote", QUOTES[int(now // 3600) % len(QUOTES)]))
     if on.get("kaomoji") and lines:

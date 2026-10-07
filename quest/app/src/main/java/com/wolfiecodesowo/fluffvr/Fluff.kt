@@ -15,11 +15,12 @@ import android.graphics.drawable.Drawable
 class FluffDrawable(
     private val fill: Int, private val ink: Int, private val inner: Int, private val radius: Float,
     private val d: Float, private val ears: String = "none", private val tufts: Boolean = true, private val seed: Int = 7,
+    private val accent: Int = inner, private val glow: Boolean = false,
 ) : Drawable() {
     val earH = if (ears == "none") 0f else 13 * d
     val insetTop get() = (earH + 3 * d).toInt()
     val insetSide get() = (6 * d).toInt()
-    val insetBottom get() = ((if (tufts) 8 else 4) * d).toInt()
+    val insetBottom get() = (6 * d).toInt()
 
     private val pFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill; style = Paint.Style.FILL }
     private val pInk = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -37,7 +38,7 @@ class FluffDrawable(
         val rr = minOf(radius, r.height() / 2)
         shapes += Path().apply { addRoundRect(r, rr, rr, Path.Direction.CW) }
         val rnd = java.util.Random((seed * 31 + b.width() * 7 + b.height()).toLong())
-        if (tufts) {
+        if (false && tufts) {
             // tuft on the bottom edge + one on a side
             val bx = r.left + rr + rnd.nextFloat() * (r.width() * 0.35f)
             for (k in 0 until 3) {
@@ -98,14 +99,29 @@ class FluffDrawable(
                 }
             }
         }
+        // fluffy cream ears (pencil outlined) behind the card
         for (p in earShapes) c.drawPath(p, pInk)
-        for (p in shapes) c.drawPath(p, pInk)
         for (p in earShapes) c.drawPath(p, pEar)
         for (p in innerEars) c.drawPath(p, pInner)
         for (p in fluff) c.drawPath(p, pFluff)
-        for (p in shapes) c.drawPath(p, pFill)
+        // velvet glass card: glow / soft shadow, glossy gradient, light rim fading down
+        if (glow) c.drawRoundRect(RectF(r.left - 3 * d, r.top - 2 * d, r.right + 3 * d, r.bottom + 4 * d), rr + 3 * d, rr + 3 * d,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (accent and 0x00FFFFFF) or (0x44 shl 24) })
+        c.drawRoundRect(RectF(r.left, r.top + 3 * d, r.right, r.bottom + 3 * d), rr, rr,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x55000000 })
+        pFill.shader = android.graphics.LinearGradient(0f, r.top, 0f, r.bottom, blend(fill, 0xFFFFFFFF.toInt(), 0.09f),
+            blend(fill, 0xFF000000.toInt(), 0.18f), android.graphics.Shader.TileMode.CLAMP)
+        c.drawRoundRect(r, rr, rr, pFill)
+        val rimTop = (blend(fill, if (fill == accent) 0xFFFFFFFF.toInt() else accent, 0.6f) and 0x00FFFFFF) or (0xC8 shl 24)
+        val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 1.6f * d
+            shader = android.graphics.LinearGradient(0f, r.top, 0f, r.top + r.height() * 0.6f, rimTop, rimTop and 0x00FFFFFF,
+                android.graphics.Shader.TileMode.CLAMP)
+        }
+        c.drawRoundRect(RectF(r.left + 0.8f * d, r.top + 0.8f * d, r.right - 0.8f * d, r.bottom - 0.8f * d), rr, rr, rim)
+        if (false) for (p in shapes) c.drawPath(p, pFill)
         // doodled fur strokes in the bottom-right corner
-        if (r.height() > 60 * d && r.width() > 120 * d) {
+        if (false) {
             val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(fill, ink, 0.45f); style = Paint.Style.STROKE; strokeWidth = 2 * d; strokeCap = Paint.Cap.ROUND }
             val fx = r.right - rr * 0.9f; val fy = r.bottom - 12 * d
             for (k in 0 until 2) c.drawArc(RectF(fx - 7 * d, fy - k * 8 * d - 5 * d, fx + 7 * d, fy - k * 8 * d + 5 * d), 20f + k * 15, 130f, false, soft)

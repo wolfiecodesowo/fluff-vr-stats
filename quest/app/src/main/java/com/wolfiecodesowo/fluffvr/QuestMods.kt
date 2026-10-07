@@ -144,6 +144,34 @@ object QuestMods {
         if (speed in 0.3f..15f) s.walkedM = s.walkedM + speed * dt
     }
     val zoomies get() = speed > 3.2f
+
+    // ---- v0.5.1 mods: pat combo, vibe meter, daily goal, lucky paw
+    private var lastPats = -1
+    private val comboTimes = ArrayList<Long>()
+    @Volatile var combo = 0
+    @Volatile var vibe = 0f                // 0-100, how much u're moving / dancing
+    val LUCKY = listOf("today's luck: ✨ amazing", "lucky paw says: get headpats", "fortune: someone thinks ur cute",
+        "today's luck: big cuddle energy", "fortune: a new friend is near", "lucky paw: wear the cute outfit",
+        "today's luck: 100% fluff", "fortune: dance like nobody's watching", "lucky paw: drink water, then vibe",
+        "today's luck: tail wags incoming", "fortune: ur gonna laugh so hard", "lucky paw: be silly on purpose")
+    fun fortune(now: Long = System.currentTimeMillis()): String {
+        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now))
+        return LUCKY[day.sumOf { it.code } % LUCKY.size]
+    }
+    fun goalPct(s: Settings) = minOf(100, (s.vrTodayS * 100 / 60 / maxOf(10, s.goalMin)).toInt())
+
+    fun newModsTick(ctx: Context, s: Settings, now: Long = System.currentTimeMillis()) {
+        val pats = s.headpats + s.boops
+        if (lastPats in 0 until pats) repeat(minOf(5, pats - lastPats)) { comboTimes += now }
+        lastPats = pats
+        comboTimes.removeAll { now - it > 20_000 }
+        val c = comboTimes.size
+        if (c != combo) {
+            combo = c
+            if (s.line("combo") && c in listOf(5, 10, 20, 50)) alert(ctx, when (c) { 5 -> "pat combo x5!! :3"; 10 -> "PAT COMBO x10!!! ur so loved"; 20 -> "x20 COMBO?! headpat frenzy"; else -> "x50!!! LEGENDARY PATS" })
+        }
+        vibe = vibe * 0.9f + minOf(1f, speed / 6f) * 100f * 0.1f
+    }
     @Volatile var mutedSince = 0L
 
     private val kindCache = HashMap<String, String>()

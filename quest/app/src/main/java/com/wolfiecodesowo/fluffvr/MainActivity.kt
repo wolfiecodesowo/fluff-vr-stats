@@ -146,9 +146,9 @@ class MainActivity : Activity() {
     private fun text(t: String, size: Float = 16f, color: Int = TEXT, font: Typeface? = fBody) =
         TextView(this).apply { text = t; textSize = size; setTextColor(color); typeface = font }
 
-    private fun fluff(fill: Int, ears: Boolean = false, tufts: Boolean = true, radius: Int = 22) =
+    private fun fluff(fill: Int, ears: Boolean = false, tufts: Boolean = true, radius: Int = 22, glow: Boolean = false) =
         FluffDrawable(fill, INK, INNER_EAR, dp(radius).toFloat(), resources.displayMetrics.density,
-            if (ears) s.ears else "none", tufts, (fill and 0xff) + radius)
+            if (ears) s.ears else "none", tufts, (fill and 0xff) + radius, PINK, glow)
 
     private fun card(parent: LinearLayout, title: String? = null, ears: Boolean = title != null, fill: Int = PANEL): LinearLayout {
         val bg = fluff(fill, ears)
@@ -206,7 +206,17 @@ class MainActivity : Activity() {
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
         gchatList = null; kittyView = null; kittyText = null; gchatSig = -1
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(14), dp(12), dp(14), dp(8))
+            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(8))
+            background = android.graphics.drawable.LayerDrawable(arrayOf(
+                android.graphics.drawable.ColorDrawable(BG),
+                GradientDrawable().apply {          // soft accent glow in the top corner
+                    gradientType = GradientDrawable.RADIAL_GRADIENT; gradientRadius = dp(420).toFloat()
+                    setGradientCenter(0.1f, 0.05f); colors = intArrayOf((PINK and 0x00FFFFFF) or (0x30 shl 24), 0x00000000)
+                },
+                GradientDrawable().apply {
+                    gradientType = GradientDrawable.RADIAL_GRADIENT; gradientRadius = dp(380).toFloat()
+                    setGradientCenter(0.95f, 0.95f); colors = intArrayOf((STRIPE[4] and 0x00FFFFFF) or (0x22 shl 24), 0x00000000)
+                }))
         }
         // header: sticker logo + hand-lettered name + version
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -252,7 +262,7 @@ class MainActivity : Activity() {
             val on = t == tab
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                val bg = if (on) fluff(PINK, ears = true, tufts = false, radius = 18) else null
+                val bg = if (on) fluff(PINK, ears = true, tufts = false, radius = 18, glow = true) else null
                 background = bg
                 setPadding(0, (bg?.insetTop ?: dp(14)) - dp(2), 0, (bg?.insetBottom ?: dp(4)) + dp(2))
                 addView(text(icon, 18f, TEXT).apply { gravity = Gravity.CENTER })
@@ -895,6 +905,10 @@ class MainActivity : Activity() {
         chip(gr, if (s.gchatOn) "chat on" else "chat off", s.gchatOn) { s.gchatOn = !s.gchatOn }
         chip(gr, if (s.gchatNotify) "notify me ✓" else "notify me", s.gchatNotify) { s.gchatNotify = !s.gchatNotify }
         if (s.gchatMuted.isNotEmpty()) chip(gr, "unmute ${s.gchatMuted.size}", false) { s.gchatMuted = emptySet() }
+
+        val gl = card(body, "🎯 daily VR goal")
+        val glr = row(gl)
+        for (m in listOf(30, 60, 90, 120, 180)) chip(glr, "$m min", s.goalMin == m) { s.goalMin = m }
 
         val k = card(body, "🐾 lil kitty")
         val kn = edit(s.kittyName, "name ur kitty")

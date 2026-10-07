@@ -316,12 +316,57 @@ _CUR = {}   # theme currently being drawn (for the soft lineart on inner panels)
 
 
 def pill(d, box, fill, outline=None, width=2):
-    r = (box[3] - box[1]) / 2
-    if outline is None and _CUR:
-        outline, width = _CUR["line"], max(width, 3)          # hand-inked edge, like the furry frame
-    elif outline is False:
-        outline = None
-    d.rounded_rectangle(box, radius=r, fill=fill, outline=outline, width=width)
+    """Glossy velvet pill: soft vertical gradient + a thin light rim on top."""
+    x0, y0, x1, y1 = [int(round(v)) for v in box]
+    w, h = x1 - x0, y1 - y0
+    if w < 4 or h < 4 or fill is None or not hasattr(d, "_image"):
+        r = (box[3] - box[1]) / 2
+        d.rounded_rectangle(box, radius=r, fill=fill, outline=None if outline is False else outline, width=width)
+        return
+    t = _CUR or {}
+    rim = outline is not False
+    img = _velvet(w, h, h // 2, tuple(fill[:3]), tuple(t.get("text", (255, 255, 255))[:3]),
+                  tuple(t.get("line", (0, 0, 0))[:3]), rim, False, None)
+    _paste_clipped(d._image, img[0], x0 - img[1], y0 - img[1])
+
+
+@lru_cache(maxsize=1500)
+def _velvet(w, h, radius, fill, text, line, rim, shadow, accent):
+    """Cached glossy card/pill. Returns (RGBA image, pad). Gradient: a touch lighter on top, deeper at the
+    bottom; a thin highlight rim along the top edge; optional accent glow rim + soft drop shadow."""
+    pad = 10 if shadow else 0
+    W, H = w + pad * 2, h + pad * 2
+    S = 2
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if shadow:
+        sh = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(sh).rounded_rectangle([pad, pad + 4, pad + w, pad + h + 4], radius=radius, fill=110)
+        sh = sh.filter(ImageFilter.GaussianBlur(6))
+        img.paste(Image.new("RGBA", (W, H), line + (255,)), (0, 0), sh)
+    m = Image.new("L", (w * S, h * S), 0)
+    ImageDraw.Draw(m).rounded_rectangle([0, 0, w * S - 1, h * S - 1], radius=radius * S, fill=255)
+    m = m.resize((w, h), Image.LANCZOS)
+    top, bot = mix(fill, text, 0.09), mix(fill, line, 0.18)
+    grad = Image.new("RGBA", (1, h))
+    for y in range(h):
+        k = y / max(1, h - 1)
+        grad.putpixel((0, y), mix(top, bot, k) + (255,))
+    grad = grad.resize((w, h))
+    card = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    card.paste(grad, (0, 0), m)
+    if rim:
+        rm = Image.new("L", (w * S, h * S), 0)
+        rd = ImageDraw.Draw(rm)
+        rd.rounded_rectangle([0, 0, w * S - 1, h * S - 1], radius=radius * S, outline=255, width=2 * S)
+        rm = rm.resize((w, h), Image.LANCZOS)
+        fade = Image.new("L", (1, h))
+        for y in range(h):
+            fade.putpixel((0, y), int(150 * max(0.0, 1 - y / max(1, h * 0.55))) + 30)
+        rm = ImageChops.multiply(rm, fade.resize((w, h)))
+        rc = accent if accent else mix(fill, text, 0.45)
+        card.paste(Image.new("RGBA", (w, h), rc + (255,)), (0, 0), rm)
+    img.alpha_composite(card, (pad, pad))
+    return img, pad
 
 
 @lru_cache(maxsize=400)
@@ -378,16 +423,50 @@ def fluff_shape(w, h, radius, fill, ink, inner, ears_kind, ear_size, tufts, seed
     return img, (side, pad)
 
 
-def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tufts=True, seed=0):
-    """Paste a furry card onto the image behind draw `d` (the same image the box coords are in)."""
+def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tufts=True, seed=0, glow=False):
+    """Velvet glass card (soft gradient, glossy rim, drop shadow), optional fluffy cream ears like the art."""
     x0, y0, x1, y1 = [int(round(v)) for v in box]
     w, h = max(8, x1 - x0), max(8, y1 - y0)
     fill = tuple((fill or t["panel"])[:3])
-    kind = t.get("ears", "cat") if ears_on else "none"
-    es = int(ear_size or max(12, min(20, h * 0.13)))
-    img, (ox, oy) = fluff_shape(w, h, int(min(radius, h / 2)), fill, tuple(pencil(t)[:3]), tuple(t["inner_ear"][:3]),
-                                kind, es, tufts, seed or (w * 31 + h * 7))
-    _paste_clipped(d._image, img, x0 - ox, y0 - oy)
+    if ears_on and t.get("ears", "cat") != "none":
+        es = int(ear_size or max(13, min(22, h * 0.15)))
+        img = _card_ears(w, es, t.get("ears", "cat"), tuple(fur_white(t)[:3]), tuple(t["inner_ear"][:3]),
+                         tuple(pencil(t)[:3]))
+        _paste_clipped(d._image, img, x0, y0 - img.height + int(es * 0.12))
+    if glow:
+        g = _glow(w, h, int(min(radius, h / 2)), tuple(t["primary"][:3]))
+        _paste_clipped(d._image, g[0], x0 - g[1], y0 - g[1])
+    img, pad = _velvet(w, h, int(min(radius, h / 2)), fill, tuple(t["text"][:3]), tuple(t["line"][:3]), True, True,
+                       tuple(mix(fill, t["primary"], 0.55)[:3]) if fill != tuple(t["primary"][:3]) else None)
+    _paste_clipped(d._image, img, x0 - pad, y0 - pad)
+
+
+@lru_cache(maxsize=64)
+def _glow(w, h, radius, color):
+    pad = 18
+    m = Image.new("L", (w + pad * 2, h + pad * 2), 0)
+    ImageDraw.Draw(m).rounded_rectangle([pad, pad, pad + w, pad + h], radius=radius, fill=150)
+    m = m.filter(ImageFilter.GaussianBlur(9))
+    img = Image.new("RGBA", m.size, color + (0,))
+    img.putalpha(m)
+    return img, pad
+
+
+@lru_cache(maxsize=64)
+def _card_ears(w, es, kind, fur, inner, pen):
+    """Two lil fluffy cream ears that sit behind a card's top corners."""
+    S = 4
+    H = int(es * 2.4)
+    big = Image.new("RGBA", (w * S, H * S), (0, 0, 0, 0))
+    m = Image.new("L", big.size, 0)
+    ears(ImageDraw.Draw(m), 0, w * S, H * S, es * S * EAR_HEIGHT.get(kind, 1.5) * 0.75,
+         {"ears": kind, "bg": (255, 255, 255), "inner_ear": 255}, outer=255, inner=None)
+    ink = m.filter(ImageFilter.MaxFilter(2 * S + 1))
+    big.paste(Image.new("RGBA", big.size, pen + (255,)), (0, 0), ink)
+    big.paste(Image.new("RGBA", big.size, fur + (255,)), (0, 0), m)
+    ears(ImageDraw.Draw(big), 0, w * S, H * S, es * S * EAR_HEIGHT.get(kind, 1.5) * 0.75,
+         {"ears": kind, "bg": fur, "inner_ear": inner + (255,)}, outer=None, inner=inner + (255,))
+    return big.resize((w, H), Image.LANCZOS)
 
 
 def _paste_clipped(base, img, x, y):
@@ -671,6 +750,13 @@ def doodle_star(d, cx, cy, r, fill, line):
 def hud_bg(key, w, h):
     t = from_key(key)
     img = furry_frame(key, w, h, (14, HUD_EAR, HUD_W - 14, h - 18), 26, HUD_EAR, tail=True).copy()
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))            # soft ambient accent glow inside the card
+    ImageDraw.Draw(glow).ellipse([-200, HUD_EAR - 120, 380, HUD_EAR + 300], fill=t["primary"][:3] + (36,))
+    glow = glow.filter(ImageFilter.GaussianBlur(60))
+    cm = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(cm).rounded_rectangle([14, HUD_EAR, HUD_W - 14, h - 18], radius=26, fill=255)
+    glow.putalpha(ImageChops.multiply(glow.getchannel("A"), cm))
+    img.alpha_composite(glow)
     d = ImageDraw.Draw(img)
     d.text((HUD_W - 40, h - 30), ":3", font=font("title", 22), fill=t["sub"], anchor="rs")
     return img
@@ -680,6 +766,22 @@ def hud_bg(key, w, h):
 def dash_bg(key, w, h):
     t = from_key(key)
     img = furry_frame(key, w, h, (16, 60, w - 16, h - 18), 36, 60).copy()
+    # soft ambient glow (accent top-left, 2nd stripe color bottom-right) + faint paw prints, inside the card
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    c2 = t["stripe"][len(t["stripe"]) // 2] if t.get("stripe") else t["primary"]
+    gd.ellipse([-160, -60, 520, 420], fill=t["primary"][:3] + (34,))
+    gd.ellipse([w - 520, h - 380, w + 160, h + 160], fill=tuple(c2[:3]) + (26,))
+    glow = glow.filter(ImageFilter.GaussianBlur(70))
+    rnd = random.Random(7)
+    pd = ImageDraw.Draw(glow)
+    for _ in range(18):
+        px, py = rnd.uniform(60, w - 60), rnd.uniform(110, h - 50)
+        paw(pd, px, py, rnd.uniform(5, 9), t["text"][:3] + (10,))
+    cm = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(cm).rounded_rectangle([16, 60, w - 16, h - 18], radius=36, fill=255)
+    glow.putalpha(ImageChops.multiply(glow.getchannel("A"), cm))
+    img.alpha_composite(glow)
     d = ImageDraw.Draw(img)
     # tiny doodles in the bottom corners
     doodle_star(d, w - 40, h - 22, 7, t["warn"], t["line"])
@@ -754,6 +856,19 @@ def hud_chips(state):
         out.append(("walked", f"{wk / 1000:.2f}km" if wk >= 1000 else f"{wk:.0f}m", None))
         if getattr(state, "zoomies", False):
             out.append(("", "ZOOMIES!!", "warn"))
+    if m.get("pat_combo") and x.get("combo", 0) >= 3:
+        out.append(("combo", f"x{x['combo']}", "warn"))
+    if m.get("vibe_meter"):
+        v = x.get("vibe", 0)
+        out.append(("vibe", "HYPE" if v > 60 else "vibin" if v > 25 else "chill", "good" if v > 60 else None))
+    if m.get("daily_goal"):
+        out.append(("goal", f"{x.get('goal_pct', 0)}%", "good" if x.get("goal_pct", 0) >= 100 else None))
+    if m.get("world_timer") and x.get("world_s"):
+        out.append(("here", fmt_dur(x["world_s"]), None))
+    if m.get("met_today") and x.get("met"):
+        out.append(("met", str(x["met"]), None))
+    if m.get("lucky_paw") and x.get("fortune"):
+        out.append(("", ellipsize(x["fortune"], font("body", 16), 300), None))
     if m.get("afk_detect") and state.afk:
         out.append(("", "afk " + fmt_dur(time.time() - (state.afk_since or time.time())), "warn"))
     return out
@@ -842,7 +957,7 @@ def wrist_button(d, box, kind, label, t, on=False, pressed=False, tint=None, bad
     x0, y0, x1, y1 = box
     fill = t["primary"] if (on or pressed) else (tint or t["panel2"])
     ink = t["on_primary"] if (on or pressed) else t["text"]
-    es = max(7, min(11, (x1 - x0) * 0.13))
+    es = max(11, min(16, (x1 - x0) * 0.2))
     fluff_card(d, [x0, y0 + es * 0.6, x1, y1], t, radius=min(20, (y1 - y0) * 0.34), fill=fill, ears_on=True,
                ear_size=es, tufts=False)
     y0 += es * 0.6
@@ -1111,8 +1226,9 @@ def render_hud(state):
 
 
 # ============================================================= DASHBOARD ===
-DASH_W, DASH_H = 1024, 724
-LOGO_H, LOGO_POS = 92, (32, 74)
+DASH_W, DASH_H = 1180, 664
+LOGO_H, LOGO_POS = 92, (56, 72)
+SIDE_X0, SIDE_X1 = 30, 196        # left sidebar
 
 
 def add_logo(base, frame_idx, slots=()):
@@ -1161,6 +1277,9 @@ MOD_INFO = {
         ("ping", "Ping", "Your internet latency"),
         ("low_fps_alert", "Low FPS alert", "Wrist pops up when FPS tanks"),
         ("battery_alert", "Low battery alert", "Warns u before a controller dies"),
+        ("hot_gpu_alert", "Hot GPU alert", "Warns u when ur GPU hits 84°C"),
+        ("ram_alert", "RAM full alert", "Warns u before RAM fills up"),
+        ("fps_drop_log", "FPS drop log", "Remembers where ur fps tanked (Stats)"),
     ],
     "Wrist": [
         ("clock", "Clock", "Time + day on your wrist"),
@@ -1171,6 +1290,7 @@ MOD_INFO = {
         ("look_to_show", "Look to show", "HUD fades in when you look"),
         ("wrist_kitty", "Lil Kitty", "Pettable cat on ur other wrist"),
         ("wrist_buttons", "Wrist buttons", "Zoom, chatbox, timer... tap to use"),
+        ("night_dim", "Night dim", "Wrist gets softer after 10pm"),
     ],
     "VRChat": [
         ("world_info", "World info", "World name, instance, players"),
@@ -1181,6 +1301,8 @@ MOD_INFO = {
         ("mute_reminder", "Still-muted nudge", "Reminds u after 10 min muted"),
         ("afk_detect", "AFK detection", "Knows when u walk away"),
         ("avatar_height", "Avatar height", "How tall ur avi is (m + ft)"),
+        ("world_timer", "Time in world", "How long u've been in this world"),
+        ("met_today", "People met", "How many fluffs u met today"),
     ],
     "Counters": [
         ("headpat_counter", "Headpat counter", "Auto-finds ur avatar's pat contact"),
@@ -1190,6 +1312,9 @@ MOD_INFO = {
         ("yap_meter", "Yap meter", "How long u've been talking"),
         ("distance", "Zoomies meter", "Distance walked + running"),
         ("vr_streak", "VR streak", "Time in VR today + days in a row"),
+        ("pat_combo", "Pat combo", "Combo meter for back-to-back pats"),
+        ("vibe_meter", "Vibe meter", "How much u're moving / dancing"),
+        ("daily_goal", "Daily VR goal", "Progress to ur daily VR time goal"),
     ],
     "Fun": [
         ("wrist_pet", "Lil Fluff pet", "Tiny buddy w/ moods on ur wrist"),
@@ -1203,6 +1328,7 @@ MOD_INFO = {
         ("kaomoji", "Kaomoji", "Cute face at the end of ur chatbox"),
         ("quote_of_hour", "Cute quote", "A new sweet quote every hour"),
         ("theme_shuffle", "Theme shuffle", "Random theme every launch"),
+        ("lucky_paw", "Lucky paw", "A cute fortune every day"),
     ],
     "Comfy": [
         ("break_reminder", "Break reminder", "Water + stretch nudges"),
@@ -1211,6 +1337,7 @@ MOD_INFO = {
         ("posture_reminder", "Posture check", "Sit up straight nudges"),
         ("bedtime_alert", "Bedtime alert", "Gentle nudge at ur bedtime"),
         ("vr_milestones", "VR milestones", "Celebrates every hour in VR"),
+        ("hourly_chime", "Hourly chime", "A soft ding every hour"),
     ],
 }
 # turning these mods on also adds their line to the chatbox
@@ -1304,13 +1431,11 @@ def render_dashboard(state):
     # header: animated sticker logo + hand-lettered name
     top = 78
     frames, _ = sticker_frames(LOGO_H)
-    if frames:
-        if state.logo_frame is not None:     # None = leave room, main.py animates it
-            img.alpha_composite(frames[state.logo_frame % len(frames)], LOGO_POS)
-        tx0 = LOGO_POS[0] + frames[0].width + 8
-    else:
-        paw(d, 56, top + 40, 15, t["primary"])
-        tx0 = 84
+    if frames and state.logo_frame is not None:     # None = leave room, main.py animates it
+        img.alpha_composite(frames[state.logo_frame % len(frames)], LOGO_POS)
+    elif not frames:
+        paw(d, (SIDE_X0 + SIDE_X1) / 2, top + 40, 22, t["primary"])
+    tx0 = SIDE_X1 + 22
     ft = font("title", 34)
     d.text((tx0, top + 46), "Fluff VR Stats", font=ft, fill=t["text"], anchor="ls")
     cx3 = tx0 + ft.getlength("Fluff VR Stats") + 8
@@ -1323,9 +1448,9 @@ def render_dashboard(state):
            fill=t["sub"], anchor="ls")
 
     _header_status(d, hit, state, t, top)
-    _nav_dock(d, hit, state, t)
+    _sidebar(d, hit, state, t)
 
-    body = [40, top + 96, DASH_W - 40, DASH_H - 98]
+    body = [SIDE_X1 + 20, top + 96, DASH_W - 36, DASH_H - 38]
     state.anim_slots = []
     {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings,
      "Stats": _tab_stats,
@@ -1338,7 +1463,38 @@ def render_dashboard(state):
     return img, hit
 
 
-TAB_LABEL = {"<3": "thanks", "Chatbox": "Chatbox"}
+TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox"}
+
+
+def _sidebar(d, hit, state, t):
+    """Left nav: logo up top, every tab as a sleek row. The open one glows."""
+    tabs = visible_tabs(state.cfg)
+    y0 = 176
+    y1 = DASH_H - 34
+    fluff_card(d, [SIDE_X0, y0 - 8, SIDE_X1, y1 + 4], t, radius=24, fill=mix(t["panel"], t["bg"][:3], 0.45))
+    rh = (y1 - y0 - 4) / len(tabs)
+    unread = getattr(getattr(state, "gchat", None), "unread", 0)
+    f = font("head", 16)
+    for i, name in enumerate(tabs):
+        ry = y0 + i * rh
+        box = [SIDE_X0 + 8, ry + 1, SIDE_X1 - 8, ry + rh - 1]
+        active = state.tab == name
+        if active:
+            fluff_card(d, box, t, radius=int(rh / 2), fill=t["primary"], glow=True)
+            d.rounded_rectangle([box[0] - 6, ry + rh * 0.25, box[0] - 3, ry + rh * 0.75], radius=2, fill=t["primary"])
+        col = t["on_primary"] if active else t["text"]
+        tab_icon(d, name, box[0] + 18, (box[1] + box[3]) / 2, col, t) if rh >= 30 else None
+        if rh < 30:
+            tab_icon_small = (box[0] + 16, (box[1] + box[3]) / 2)
+            d.ellipse([tab_icon_small[0] - 3, tab_icon_small[1] - 3, tab_icon_small[0] + 3, tab_icon_small[1] + 3],
+                      fill=col if active else t["sub"])
+        d.text((box[0] + 38, (box[1] + box[3]) / 2), TAB_LABEL.get(name, name).lower(), font=f,
+               fill=col if active else t["sub"], anchor="lm")
+        if name == "Global" and unread and not active:
+            bx = box[2] - 14
+            d.ellipse([bx - 9, (box[1] + box[3]) / 2 - 9, bx + 9, (box[1] + box[3]) / 2 + 9], fill=t["bad"])
+            d.text((bx, (box[1] + box[3]) / 2), str(min(unread, 9)), font=font("body", 11), fill=(255, 255, 255), anchor="mm")
+        hit.add(box, "tab", name)
 
 
 def _nav_dock(d, hit, state, t):
@@ -1706,7 +1862,8 @@ def _tab_settings(d, hit, box, state, t):
         ("Weather units", "°" + cfg.get("weather_units", "F"), ("set", "weather_units", "__cycle__", ["F", "C"]), None, None),
         ("Clock", "24h" if cfg["chatbox"].get("time_24h") else "12h", ("cb_set", "time_24h", not cfg["chatbox"].get("time_24h")), None, None),
         ("Wrist buttons", f"{len(cfg.get('wrist_actions', []))} picked", ("tab", "Wrist"), None, "choose them in the Wrist tab"),
-        ("VRChat OSC", f"send {cfg.get('osc_port', 9000)} · listen {cfg.get('osc_listen_port', 9001)}", (None,), None, None),
+        ("Daily VR goal", f"{cfg.get('vr_goal_min', 60)} min", ("set", "vr_goal_min", "__cycle__", [30, 60, 90, 120, 180]), None,
+         "turn on Daily VR goal in Mods > Counters"),
         ("Version", getattr(state, "version", "") or "dev", ("open_link", "https://github.com/wolfiecodesowo/fluff-vr-stats/releases"),
          None, "click to see what's new"),
     ]

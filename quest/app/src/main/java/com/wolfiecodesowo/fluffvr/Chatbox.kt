@@ -60,6 +60,7 @@ class Settings(ctx: Context) {
         .joinToString("").also { p.edit().putString("gc_sid", it).apply() }
     var gchatMuted: Set<String> get() = p.getStringSet("gc_muted", emptySet())!!.toSet(); set(v) = p.edit().putStringSet("gc_muted", v).apply()
     var kittyPats: Int get() = p.getInt("kitty_pats", 0); set(v) = p.edit().putInt("kitty_pats", v).apply()
+    var goalMin: Int get() = p.getInt("goal_min", 60); set(v) = p.edit().putInt("goal_min", v).apply()
     var ears: String get() = p.getString("ears", "cat")!!; set(v) = p.edit().putString("ears", v).apply()
     var kittyName: String get() = p.getString("kitty_name", "Mochi")!!; set(v) = p.edit().putString("kitty_name", v).apply()
 
@@ -127,6 +128,14 @@ class Settings(ctx: Context) {
             Triple("eye_break", "👀 Eye break", "20-20-20 rule for tired eyes"),
             Triple("posture", "🧍 Posture check", "sit up straight nudges"),
             Triple("bedtime", "🌙 Bedtime alert", "gentle nudge at ur bedtime"),
+            Triple("combo", "💥 Pat combo", "combo meter for back-to-back pats + big alerts"),
+            Triple("vibe", "🕺 Vibe meter", "chillin / vibing / vibing hard, from how much u move"),
+            Triple("goal", "🎯 Daily VR goal", "progress to ur daily VR time goal"),
+            Triple("fortune", "🍀 Lucky paw", "a cute fortune every day"),
+            Triple("chime", "🔔 Hourly chime", "a soft notification every hour"),
+            Triple("ram_alert", "🧠 Low memory alert", "warns u when the Quest is almost out of RAM"),
+            Triple("hot_alert", "🔥 Too hot alert", "warns u when ur headset is cooking (42°C+)"),
+            Triple("batt_alerts", "🔋 Battery steps", "a heads up at 50%, 30% and 15%"),
         )
         val QUOTES = listOf("u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
             "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
@@ -145,7 +154,8 @@ object Chatbox {
         "afk" to "💤", "wifi" to "📶", "ping" to "🏓", "timer" to "⏳", "weather" to "🌤️", "headpats" to "🐾", "muted" to "🔇",
         "temp" to "🌡️", "ram" to "🧠", "lowbatt" to "🪫", "hydrate" to "💧", "counter" to "🔢", "date" to "📅",
         "boops" to "👃", "jumps" to "🐇", "yap" to "🗣️", "zoomies" to "👣", "height" to "📏", "batt_eta" to "⌛",
-        "countdown" to "🎉", "today" to "🥽", "streak" to "🔥", "quote" to "💭")
+        "countdown" to "🎉", "today" to "🥽", "streak" to "🔥", "quote" to "💭", "combo" to "💥", "vibe" to "🕺",
+        "goal" to "🎯", "fortune" to "🍀")
     private val KAO = listOf("(=^･ω･^=)", "(◕ᴗ◕✿)", "(｡•ᴗ•｡)", "ʕ•ᴥ•ʔ", "(≧◡≦)", "(•ω•)", "ฅ^•ﻌ•^ฅ", "(｡♥‿♥｡)")
     private val SIMPLE = mapOf("status" to "♡", "song" to "♪", "afk" to "zzz")
 
@@ -243,6 +253,12 @@ object Chatbox {
         if (s.line("zoomies") && s.walkedM >= 1) more += tag("zoomies", (if (QuestMods.zoomies) "ZOOMIES!! " else "") + if (s.walkedM >= 1000) "walked ${"%.2f".format(s.walkedM / 1000)}km" else "walked ${s.walkedM.toInt()}m")
         if (s.line("height")) QuestMods.heightM?.let { h -> val ft = h * 3.28084; more += tag("height", "%.2fm (%d'%d\")".format(h, ft.toInt(), Math.round((ft % 1) * 12).toInt())) }
         if (more.isNotEmpty()) lines += more.joinToString("  ")
+        val fun3 = mutableListOf<String>()
+        if (s.line("combo") && QuestMods.combo >= 3) fun3 += tag("combo", "pat combo x${QuestMods.combo}")
+        if (s.line("vibe")) fun3 += tag("vibe", if (QuestMods.vibe > 60) "vibing hard" else if (QuestMods.vibe > 25) "vibing" else "chillin")
+        if (s.line("goal")) fun3 += tag("goal", "goal ${QuestMods.goalPct(s)}%")
+        if (fun3.isNotEmpty()) lines += fun3.joinToString("  ")
+        if (s.line("fortune")) lines += tag("fortune", short(QuestMods.fortune(now), 44))
         if (s.line("countdown")) countdownText(s, now)?.let { lines += tag("countdown", short(it, 40)) }
         if (s.line("quote")) lines += tag("quote", Settings.QUOTES[((now / 3_600_000) % Settings.QUOTES.size).toInt()])
         val al = QuestMods.alertText
