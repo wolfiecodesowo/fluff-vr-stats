@@ -82,6 +82,7 @@ object RemoteLink {
             "clear" -> { s.timerEnd = 0L; s.stopwatchStart = 0L }
             "counter" -> s.counter = maxOf(0, s.counter + m.optInt("delta", 1))
             "counter_reset" -> s.counter = 0
+            "learn" -> QuestMods.startLearn(m.optString("kind", "pat"))
             "reset_counts" -> { s.headpats = 0; s.boops = 0; s.jumps = 0; s.walkedM = 0f }
             "music" -> MusicState.command(m.optString("cmd"))
             "line" -> s.setLine(m.optString("key"), m.optBoolean("on"))
@@ -104,6 +105,8 @@ object RemoteLink {
             .put("counter", s.counter).put("counterLabel", s.counterLabel)
             .put("headpats", s.headpats).put("boops", s.boops).put("jumps", s.jumps)
             .put("patParam", QuestMods.patParam ?: "")
+            .put("learnKind", QuestMods.learnKind ?: "").put("learnResult", QuestMods.learnResult)
+            .put("oscMsgs", QuestMods.oscMsgs)
             .put("alert", QuestMods.alertText).put("alertAt", QuestMods.alertAt)
         Chatbox.battery(ctx)?.let { (p, c) -> o.put("battery", p).put("charging", c) }
         QuestMods.tempC(ctx)?.let { o.put("temp", it) }

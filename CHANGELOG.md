@@ -4,6 +4,10 @@
 - 🚀 **Less lag**: Lil Kitty draws ~3.5x faster (her text is cached) and only animates fast while u play with her
 - 🖱️ **Desktop mode feels way smoother**: uses ur normal mouse cursor (the drawn paw cursor was stuttering) and redraws the window much faster
 - 🐾 Headpat/boop detection now checks each VRChat parameter name once instead of hundreds of times a second
+- 🐾 **"Learn my headpat / boop" buttons** (PC: Mods → Counters, Quest: Mods tab + phone remote): tap it, get a headpat, done. works with ANY contact name
+- 🟢 **Live OSC status** shows if VRChat is actually talking to the app + which params it sees, so u can tell why counts aren't going up
+- 🔎 auto-find catches more names (Touch_Head, Contact_Nose, OSC_Pat...) and no longer mistakes things like "Patreon" for a pat
+- 🥽 Quest Edition v0.4.1 with the same fixes
 
 ## v0.2.0: kitty + desktop update :3
 - 🐱 **Lil Kitty**: a fluffy cat on ur other wrist. pat her with ur free hand (she mews + purrs), pat her 20 times to make friends, then feed her. boop her nose, poke her tail, she naps when ignored

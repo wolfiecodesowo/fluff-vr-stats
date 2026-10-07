@@ -827,6 +827,12 @@ class App:
             cur = cfg.get(args[0], 20)
             cfg[args[0]] = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else 20
             st.dirty_cfg = st.dash_dirty = True
+        elif action == "learn_contact":
+            kind = args[0]
+            self.extras.start_learn(kind)
+            what = "pat ur own head (or get a friend to)" if kind == "headpats" else "boop ur own nose (or get a friend to)"
+            self.show_alert(f"learning... {what} in the next 25s!", secs=8)
+            st.dash_dirty = True
         elif action == "mod_reset_counts":
             for k, tot in (("headpats", "headpats_total"), ("boops", "boops_total"), ("jumps", "jumps_total")):
                 cfg[tot] = 0
@@ -1284,6 +1290,18 @@ class App:
             if m.get("song_toast") and key and self.last_song_key is not None and mu.get("playing") is not False:
                 self.show_alert(f"now playing: {mu['title']}" + (f" - {mu['artist']}" if mu.get("artist") else ""), secs=5)
             self.last_song_key = key
+        # learn mode finished?
+        res = x.get("learn_result")
+        if res and res != getattr(self, "_last_learn", None):
+            self._last_learn = res
+            ok, kind, name = res
+            if ok == "ok":
+                self.show_alert(f"got it!! {kind} = '{name}' :3", secs=8)
+            else:
+                self.show_alert(f"didn't see a contact turn on. is OSC on, and is the contact in ur Expression Parameters?", "warn", 10)
+            st.dirty_cfg = st.dash_dirty = True
+        if self.extras.learn and now > self.extras.learn["until"]:
+            self.extras._learn_step("", 0, now)
         # headpat/boop help: avatar loaded but no contact param found
         av = st.avatar or {}
         if (m.get("headpat_counter") or m.get("boop_counter")) and av.get("id") and av.get("params") and self.contact_note_for != av["id"]:

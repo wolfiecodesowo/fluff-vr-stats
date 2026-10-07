@@ -1769,9 +1769,21 @@ def _tab_mods(d, hit, box, state, t):
     if cat == "Counters":
         x = state.extras
         pat = x.get("pat_param") or "auto"
-        btns = [(f"pat param: {pat} ✎", "mod_edit", "headpat_param"),
-                (f"boop param: {x.get('boop_param') or 'auto'} ✎", "mod_edit", "boop_param"),
+        learning = x.get("learn")
+        btns = [("listening for a pat..." if learning == "headpats" else "learn my headpat", "learn_contact", "headpats"),
+                ("listening for a boop..." if learning == "boops" else "learn my boop", "learn_contact", "boops"),
+                (f"pat: {pat} ✎", "mod_edit", "headpat_param"),
                 ("reset counts", "mod_reset_counts", None)]
+        # live status: is VRChat even talking to us?
+        last = x.get("osc_last")
+        if last and time.time() - last < 15:
+            status = f"VRChat OSC: {x.get('osc_msgs', 0)} msgs, it's working!   recent: {', '.join(x.get('osc_recent', [])[-3:]) or '-'}"
+            scol = t["good"] if "good" in t else t["sub"]
+        else:
+            status = x.get("note_vrchat") or "not hearing VRChat yet: turn on OSC in VRChat (Action Menu → Options → OSC)"
+            scol = t["bad"]
+        d.text((x0 + 6, y1 - 8), ellipsize(status, font("body2", 15), x1 - x0 - 12), font=font("body2", 15),
+               fill=scol, anchor="ls")
     elif cat == "Fun":
         cd = cfg.get("countdown", {})
         btns = [(f"countdown: {cd.get('name') or 'name'} ✎", "mod_edit", "countdown_name"),
@@ -1788,10 +1800,12 @@ def _tab_mods(d, hit, box, state, t):
     bx = x0
     for lab, act, arg in btns:
         w = min(font("body", 16).getlength(lab) + 30, 330)
+        if bx + w > x1:
+            bx, sy = x0, sy + 46
         if sy + 40 <= y1 - 24:
             button(d, hit, [bx, sy, bx + w, sy + 38], ellipsize(lab, font("body", 16), w - 20), t, act, arg, fsize=16)
         bx += w + 8
-    note = state.extras.get("note_" + cat.lower())
+    note = state.extras.get("note_" + cat.lower()) if cat != "Counters" else None
     if note:
         d.text((x0 + 6, y1 - 8), ellipsize(note, font("body2", 16), x1 - x0 - 12),
                font=font("body2", 16), fill=t["sub"], anchor="ls")

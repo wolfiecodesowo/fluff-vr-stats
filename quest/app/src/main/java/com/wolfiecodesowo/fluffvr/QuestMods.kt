@@ -103,8 +103,24 @@ object QuestMods {
     }
 
     // ---- contact detection (headpats + boops): finds the param by name, works with bool/int/float contacts
-    private val PAT_RE = Regex("(head.?pat|headpat|pat(ted|ting|s)?$|^pat|head.?(touch|contact|rub)|pett?ing|^pets?$)", RegexOption.IGNORE_CASE)
-    private val BOOP_RE = Regex("(boop|nose.?(touch|contact|boop))", RegexOption.IGNORE_CASE)
+    private val PAT_RE = Regex("(head.?pat|headpat|(^|[_ .-])pat(ted|ting|s)?$|^pat($|s$|ted|ting|[_ .-])|head.?(touch|contact|rub)|(touch|contact|rub).?head|pett?ing|^pets?$|^head$)", RegexOption.IGNORE_CASE)
+    private val BOOP_RE = Regex("(boop|nose.?(touch|contact|boop)|(touch|contact).?nose|^nose$)", RegexOption.IGNORE_CASE)
+    private val BUILTIN = setOf("VelocityX", "VelocityY", "VelocityZ", "VelocityMagnitude", "AngularY", "Upright",
+        "Grounded", "Seated", "AFK", "TrackingType", "VRMode", "MuteSelf", "InStation", "Earmuffs", "IsLocal",
+        "Viseme", "Voice", "GestureLeft", "GestureRight", "GestureLeftWeight", "GestureRightWeight",
+        "IsOnFriendsList", "AvatarVersion", "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
+        "EyeHeightAsPercent", "IsAnimatorEnabled", "PreviewMode")
+    @Volatile var oscMsgs = 0L
+    @Volatile var recent: List<String> = emptyList()
+    // learn mode: "pat me now" -> whatever avatar param turns on becomes the headpat/boop param
+    @Volatile var learnKind: String? = null
+    @Volatile var learnUntil = 0L
+    @Volatile var learnResult = ""
+    private val learnSeen = HashMap<String, Boolean>()
+    fun startLearn(kind: String) { learnSeen.clear(); learnKind = kind; learnUntil = System.currentTimeMillis() + 60_000; learnResult = "" }
+    fun learnTick(now: Long = System.currentTimeMillis()) {
+        if (learnKind != null && now > learnUntil) { learnKind = null; learnResult = "didn't see a contact turn on. is OSC on, and is it in ur Expression Parameters?" }
+    }
     private val contact = HashMap<String, Pair<Boolean, Long>>()
     @Volatile var patParam: String? = null
     @Volatile var boopParam: String? = null
@@ -117,6 +133,8 @@ object QuestMods {
     private var lastVelAt = 0L
     @Volatile var mutedSince = 0L
 
+    private val kindCache = HashMap<String, String>()
+    private var kindKey = ""
     private fun names(v: String) = v.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() && it != "auto" }.toSet()
     private fun isContact(name: String, cfg: String, rx: Regex) = name.lowercase() in names(cfg) || rx.containsMatchIn(name)
     private fun contactOn(v: Any, was: Boolean) = when (v) {
@@ -137,7 +155,22 @@ object QuestMods {
         if (!addr.startsWith("/avatar/parameters/")) return
         val name = addr.removePrefix("/avatar/parameters/")
         params[name] = v
+        oscMsgs++
+        if (name !in BUILTIN && recent.lastOrNull() != name) recent = (recent + name).takeLast(4)
         val s = Settings(ctx)
+        val lk = learnKind
+        if (lk != null && name !in BUILTIN) {
+            learnTick(now)
+            val was = learnSeen[name] ?: false
+            val on = contactOn(v, was)
+            learnSeen[name] = on
+            if (on && !was && learnKind != null) {
+                if (lk == "pat") s.headpatParam = name else s.boopParam = name
+                learnKind = null
+                learnResult = "got it!! ${if (lk == "pat") "headpats" else "boops"} = \"$name\" :3"
+                alert(ctx, learnResult)
+            }
+        }
         when (name) {
             "MuteSelf" -> { muted = v == true; mutedSince = if (v == true) (if (mutedSince == 0L) now else mutedSince) else 0L; return }
             "Voice" -> {
@@ -162,9 +195,15 @@ object QuestMods {
                 lastVel = f; lastVelAt = now; return
             }
         }
+        // classify each param name once (VRChat sends hundreds of updates a second)
+        val key = s.headpatParam + "|" + s.boopParam
+        if (key != kindKey) { kindKey = key; kindCache.clear() }
+        val kindOf = kindCache.getOrPut(name) {
+            if (name in BUILTIN) "" else if (isContact(name, s.headpatParam, PAT_RE)) "pat" else if (isContact(name, s.boopParam, BOOP_RE)) "boop" else ""
+        }
+        if (kindOf.isEmpty()) return
         for ((kind, rx) in listOf("pat" to PAT_RE, "boop" to BOOP_RE)) {
-            val cfg = if (kind == "pat") s.headpatParam else s.boopParam
-            if (isContact(name, cfg, rx)) {
+            if (kind == kindOf) {
                 val (was, last) = contact[name] ?: (false to 0L)
                 val on = contactOn(v, was)
                 var l = last

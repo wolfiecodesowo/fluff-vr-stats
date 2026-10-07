@@ -114,8 +114,15 @@ def parse_osc(data):
 
 # ------------------------------------------------------- contact detection ---
 import re as _re
-PAT_RE = _re.compile(r"(head.?pat|headpat|pat(ted|ting|s)?$|^pat|head.?(touch|contact|rub)|pett?ing|^pets?$)", _re.I)
-BOOP_RE = _re.compile(r"(boop|nose.?(touch|contact|boop))", _re.I)
+PAT_RE = _re.compile(r"(head.?pat|headpat|(^|[_ .-])pat(ted|ting|s)?$|^pat($|s$|ted|ting|[_ .-])|head.?(touch|contact|rub)|(touch|contact|rub).?head|"
+                     r"pett?ing|^pets?$|^head$)", _re.I)
+BOOP_RE = _re.compile(r"(boop|nose.?(touch|contact|boop)|(touch|contact).?nose|^nose$)", _re.I)
+# VRChat's own parameters: never a headpat/boop
+BUILTIN = {"VelocityX", "VelocityY", "VelocityZ", "VelocityMagnitude", "AngularY", "Upright", "Grounded", "Seated",
+           "AFK", "TrackingType", "VRMode", "MuteSelf", "InStation", "Earmuffs", "IsLocal", "Viseme", "Voice",
+           "GestureLeft", "GestureRight", "GestureLeftWeight", "GestureRightWeight", "IsOnFriendsList",
+           "AvatarVersion", "ScaleModified", "ScaleFactor", "ScaleFactorInverse", "EyeHeightAsMeters",
+           "EyeHeightAsPercent", "IsAnimatorEnabled", "PreviewMode"}
 
 
 def contact_on(v, was_on):
@@ -150,6 +157,8 @@ class Extras:
                      "talk_s": 0.0, "height_m": None, "pat_param": None, "boop_param": None,
                      "song": None, "ping": None, "weather": None, "muted": None}
         self._contact = {}          # param name -> (on?, last count time)
+        self.learn = None           # {"kind": "headpats"/"boops", "until": t, "seen": {name: was_on}}
+        self.recent = []            # last few avatar params VRChat sent (for the status line)
         self._talk_since = None
         self._grounded = None
         self.notes = {}
@@ -197,6 +206,16 @@ class Extras:
         if not addr.startswith("/avatar/parameters/"):
             return
         name = addr[len("/avatar/parameters/"):]
+        self.data["osc_msgs"] = self.data.get("osc_msgs", 0) + 1
+        self.data["osc_last"] = now
+        if now - self.data.get("_osc_flag", 0) > 1:      # refresh the status line ~1x/s
+            self.data["_osc_flag"] = now
+            self.changed = True
+        if name not in BUILTIN and (not self.recent or self.recent[-1] != name):
+            self.recent = (self.recent + [name])[-4:]
+            self.data["osc_recent"] = list(self.recent)
+        if self.learn and name not in BUILTIN:
+            self._learn_step(name, v, now)
         if name == "MuteSelf":
             self._set("muted", bool(v))
             if v:
@@ -249,6 +268,29 @@ class Extras:
                 self._contact[name] = (on, last)
                 self._set(kind[:-1].replace("headpat", "pat") + "_param", name)
                 return
+
+    # ---- learn mode: "pat me now" -> whatever avatar param turns ON becomes the headpat/boop param
+    def start_learn(self, kind, secs=25):
+        self.learn = {"kind": kind, "until": time.time() + secs, "seen": {}}
+        self._set("learn", kind)
+
+    def _learn_step(self, name, v, now):
+        L = self.learn
+        if now > L["until"]:
+            self.learn = None
+            self._set("learn", None)
+            self._set("learn_result", ("timeout", L["kind"], None))
+            return
+        was = L["seen"].get(name)
+        on = contact_on(v, bool(was))
+        L["seen"][name] = on
+        if on and not was:                     # VRChat only sends changes, so "on" now = it just turned on
+            key = "headpat_param" if L["kind"] == "headpats" else "boop_param"
+            self.cfg[key] = name
+            self._kind_key = None              # re-classify params with the new name
+            self.learn = None
+            self._set("learn", None)
+            self._set("learn_result", ("ok", L["kind"], name))
 
     def talk_seconds(self, now=None):
         now = time.time() if now is None else now

@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private var liveView: TextView? = null
     private var remoteView: TextView? = null
     private var remoteSig = ""
+    private var modsSig = ""
     @Volatile private var polling = false
 
     // ---- colors (same palette as the PC app's Pride Pastel theme)
@@ -79,6 +80,11 @@ class MainActivity : Activity() {
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
             liveView?.text = liveText()
+            if (tab == "Mods") {
+                QuestMods.learnTick()
+                val sig = "${QuestMods.learnKind}|${QuestMods.learnResult}|${QuestMods.patParam}"
+                if (sig != modsSig) { val first = modsSig.isEmpty(); modsSig = sig; if (!first) { build(); return } }
+            }
             if (tab == "Remote") {
                 if (!polling && RemoteLink.questIp.isNotEmpty()) { polling = true; Thread { RemoteLink.poll(); polling = false }.start() }
                 remoteView?.text = remoteText()
@@ -392,7 +398,17 @@ class MainActivity : Activity() {
         hp.addView(text(QuestMods.patParam?.let { "✓ watching \"$it\" for headpats" }
             ?: "auto-finding ur headpat contact… (it needs to be in ur avatar's Expression Parameters. if it never shows up, VRChat → OSC → Reset Config)",
             14f, if (QuestMods.patParam != null) PINK else SUB))
-        hp.addView(text("only type a name if auto-find picks the wrong one:", 13f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+        // live status: is VRChat even talking to us?
+        val alive = QuestMods.oscSeen > 0 && System.currentTimeMillis() - QuestMods.oscSeen < 15_000
+        hp.addView(text(if (alive) "🟢 VRChat OSC: ${QuestMods.oscMsgs} msgs. recent: ${QuestMods.recent.takeLast(3).joinToString(", ").ifEmpty { "-" }}"
+            else if (!ChatboxService.running) "⚪ tap start chatbox first (the counter listens while it runs)"
+            else "🔴 not hearing VRChat: turn on OSC (Action Menu → Options → OSC → Enabled)", 13f, if (alive) TEXT else SUB)
+            .apply { setPadding(0, dp(6), 0, 0) })
+        val lr = row(hp); lr.setPadding(0, dp(6), 0, 0)
+        chip(lr, if (QuestMods.learnKind == "pat") "listening… pat ur head!" else "learn my headpat", QuestMods.learnKind == "pat") { QuestMods.startLearn("pat") }
+        chip(lr, if (QuestMods.learnKind == "boop") "listening… boop ur nose!" else "learn my boop", QuestMods.learnKind == "boop") { QuestMods.startLearn("boop") }
+        if (QuestMods.learnResult.isNotEmpty()) hp.addView(text(QuestMods.learnResult, 13f, PINK))
+        hp.addView(text("tap learn, then pat ur own head (or get a friend to) within 60s (go back into VRChat, it keeps listening). or type the name:", 13f, SUB).apply { setPadding(0, dp(6), 0, 0) })
         val pp = edit(s.headpatParam, "HeadPat")
         hp.addView(pp, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         val hr = row(hp)
@@ -544,6 +560,11 @@ class MainActivity : Activity() {
         chip(t2, "− count", false) { rsend("counter", "delta" to -1) }
         chip(t2, "+ count", true) { rsend("counter", "delta" to 1) }
         chip(t2, "reset", false) { rsend("counter_reset") }
+        val t3 = row(tm); t3.setPadding(0, dp(6), 0, 0)
+        chip(t3, "learn my headpat", false) { rsend("learn", "kind" to "pat") }
+        chip(t3, "learn my boop", false) { rsend("learn", "kind" to "boop") }
+        r.optString("learnResult").takeIf { it.isNotEmpty() }?.let { tm.addView(text(it, 13f, PINK)) }
+        r.optString("learnKind").takeIf { it.isNotEmpty() }?.let { tm.addView(text("listening… get a headpat / boop now!", 13f, SUB)) }
 
         val ln = card(body, "🧩 what the chatbox shows")
         val lines = r.optJSONObject("lines")
