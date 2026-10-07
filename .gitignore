@@ -19,3 +19,6 @@ __pycache__/
 trailer*.mp4
 !docs/trailer.mp4
 
+
+# auto-updater backups
+.update_backup/

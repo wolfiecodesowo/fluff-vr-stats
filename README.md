@@ -117,6 +117,9 @@ There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs rig
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
 
+## 🔄 Updates install themselves
+Every time you start Fluff VR Stats it checks for a new version. If there is one, it downloads it, swaps in the new files and restarts, all by itself (about 10 seconds). Your settings, AI key and bot token are never touched, and the old files are backed up in `.update_backup/`. Don't want that? Set `"auto_update": false` in `config.json`.
+
 ## 🖥️ Desktop mode
 Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_desktop.bat`).
 - the full menu opens in a normal window: click with your mouse, scroll, type with your keyboard

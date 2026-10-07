@@ -135,6 +135,7 @@ DEFAULT_CFG = {
     "startup_sound": True,
     "first_run": True,
     "launch_mode": "ask",
+    "auto_update": True,
     "floof_pats": 0,
     "made_by": "wolfiecodesowo",
     "support_link": "",
@@ -461,6 +462,12 @@ class App:
         self.last_prio = 0
         self.avatar = Avatar()
         self.extras.avatar = self.avatar
+        try:                   # a new version came out while u were playing -> tell u (installs next launch)
+            import updater
+            updater.check_in_background(lambda tag: self.show_alert(
+                f"update {tag} is out!! restart the app to get it :3", secs=12))
+        except Exception:
+            pass
         self.last_motion = 0
         self.last_pos = None
         self.last_rot = None
@@ -1924,6 +1931,11 @@ def choose_mode(cfg):
 
 def main():
     lower_priority()
+    try:                       # new release on GitHub? download it, swap the files, restart (keeps ur settings)
+        import updater
+        updater.check_and_update(load_cfg(), log=log)
+    except Exception as e:
+        log.warning("updater: %s", e)
     mode = choose_mode(load_cfg())
     if mode is None:          # closed the picker
         return
