@@ -35,6 +35,11 @@ class Settings(ctx: Context) {
     var counter: Int get() = p.getInt("cnt", 0); set(v) = p.edit().putInt("cnt", v).apply()
     var hydrateMin: Int get() = p.getInt("hydrate_min", 30); set(v) = p.edit().putInt("hydrate_min", v).apply()
 
+    /** 4-digit code the phone remote needs (made once, random) */
+    val pairCode: String get() = p.getString("pair", null) ?: (1000 + java.util.Random().nextInt(9000)).toString().also { p.edit().putString("pair", it).apply() }
+    var remoteIp: String get() = p.getString("remote_ip", "")!!; set(v) = p.edit().putString("remote_ip", v).apply()
+    var remoteCode: String get() = p.getString("remote_code", "")!!; set(v) = p.edit().putString("remote_code", v).apply()
+
     fun line(key: String): Boolean = p.getBoolean("line_$key", key in DEFAULT_ON)
     fun setLine(key: String, on: Boolean) = p.edit().putBoolean("line_$key", on).apply()
 

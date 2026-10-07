@@ -39,6 +39,7 @@ class ChatboxService : Service() {
         handler.post(tick)
         handler.post(slow)
         QuestMods.startListener(this)
+        RemoteLink.startServer(this)
         registerReceiver(screen, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         })
@@ -106,6 +107,7 @@ class ChatboxService : Service() {
         running = false
         try { unregisterReceiver(screen) } catch (_: Exception) {}
         QuestMods.stopListener()
+        RemoteLink.stopServer()
         handler.removeCallbacksAndMessages(null)
         thread.quitSafely()
         wake?.let { if (it.isHeld) it.release() }

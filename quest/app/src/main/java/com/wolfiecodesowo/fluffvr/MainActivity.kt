@@ -34,6 +34,9 @@ class MainActivity : Activity() {
     private var startBtn: Button? = null
     private var musicView: TextView? = null
     private var liveView: TextView? = null
+    private var remoteView: TextView? = null
+    private var remoteSig = ""
+    @Volatile private var polling = false
 
     // ---- colors (same palette as the PC app's Pride Pastel theme)
     private val BG = Color.rgb(34, 22, 46)
@@ -76,6 +79,12 @@ class MainActivity : Activity() {
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
             liveView?.text = liveText()
+            if (tab == "Remote") {
+                if (!polling && RemoteLink.questIp.isNotEmpty()) { polling = true; Thread { RemoteLink.poll(); polling = false }.start() }
+                remoteView?.text = remoteText()
+                val sig = RemoteLink.last?.optJSONArray("params")?.toString() + RemoteLink.connected() + RemoteLink.found.keys + RemoteLink.badCode
+                if (sig != remoteSig) { remoteSig = sig; build(); return }
+            }
             ui.postDelayed(this, 1000)
         }
     }
@@ -140,7 +149,7 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------------- build ---
     private fun build() {
-        previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null
+        previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(20), dp(16), dp(20), dp(10))
         }
@@ -155,7 +164,7 @@ class MainActivity : Activity() {
         // tabs
         val tabs = row(root)
         tabs.setPadding(0, dp(12), 0, dp(10))
-        for (t in listOf("Chatbox", "Mods", "Avatar", "Music", "Perf", "Settings", "<3")) chip(tabs, t, t == tab) { tab = t }
+        for (t in listOf("Chatbox", "Mods", "Avatar", "Music", "Remote", "Perf", "Settings", "<3")) chip(tabs, t, t == tab) { tab = t }
         // body
         val scroll = ScrollView(this)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -167,6 +176,7 @@ class MainActivity : Activity() {
             "Music" -> buildMusic()
             "Mods" -> buildMods()
             "Perf" -> buildPerf()
+            "Remote" -> buildRemote()
             "Settings" -> buildSettings()
             else -> buildThanks()
         }
@@ -388,6 +398,114 @@ class MainActivity : Activity() {
         val hy = card(body, "💧 hydration reminder")
         val hyr = row(hy)
         for (m in listOf(15, 30, 45, 60)) chip(hyr, "every ${m}m", s.hydrateMin == m) { s.hydrateMin = m }
+    }
+
+    private fun remoteText(): String {
+        val r = RemoteLink.last
+        if (RemoteLink.badCode) return "❌ wrong pair code. check the code on ur Quest's Remote tab"
+        if (r == null || !RemoteLink.connected()) return if (RemoteLink.questIp.isEmpty()) "not paired yet" else "⏳ looking for ur Quest at ${RemoteLink.questIp}…"
+        val sb = StringBuilder("🟢 connected to ur Quest\n")
+        sb.append(if (r.optBoolean("running")) "💜 chatbox is on" else "⏸ chatbox is off (start it on the Quest)").append("\n")
+        sb.append(if (r.optBoolean("osc")) "🟢 VRChat OSC talking" else "⚪ VRChat not heard yet").append("\n")
+        if (r.has("battery")) sb.append("🔋 ${r.optInt("battery")}%${if (r.optBoolean("charging")) " ⚡" else ""}   ")
+        if (r.has("temp")) sb.append("🌡️ ${"%.0f".format(r.optDouble("temp"))}°C")
+        sb.append("\n")
+        r.optString("song").takeIf { it.isNotEmpty() }?.let { sb.append("🎵 $it\n") }
+        r.optString("timer").takeIf { it.isNotEmpty() }?.let { sb.append("⏳ $it\n") }
+        sb.append("🔢 ${r.optInt("counter")} ${r.optString("counterLabel")}   🐾 ${r.optInt("headpats")} pats")
+        r.optString("preview").takeIf { it.isNotEmpty() }?.let { sb.append("\n\nchatbox:\n$it") }
+        return sb.toString()
+    }
+
+    private fun rsend(t: String, vararg kv: Pair<String, Any>) {
+        val o = org.json.JSONObject().put("t", t); kv.forEach { (k, v) -> o.put(k, v) }; RemoteLink.send(o)
+    }
+
+    private fun buildRemote() {
+        if (RemoteLink.questIp.isEmpty() && s.remoteIp.isNotEmpty()) { RemoteLink.questIp = s.remoteIp; RemoteLink.code = s.remoteCode }
+        val me = card(body, "📱 phone remote")
+        me.addView(text("Quest can't show menus on top of VRChat, so ur phone is the menu! install this same app on an Android phone, " +
+            "same Wi-Fi as ur Quest, and control everything while u play.", 14f, SUB))
+        me.addView(text("on the Quest: start chatbox, then on ur phone tap find my Quest.", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+
+        val q = card(body, "🥽 if this is the Quest")
+        q.addView(text("pair code:  ${s.pairCode}", 26f, PINK, fTitle))
+        q.addView(text("Quest IP: ${RemoteLink.myIp()}  ·  the chatbox must be started for the remote to work", 13f, SUB))
+
+        val ph = card(body, "📱 if this is the phone")
+        val pr = row(ph)
+        chip(pr, "🔍 find my Quest", true) {
+            Thread { RemoteLink.discover(); ui.post { build() } }.start()
+        }
+        if (RemoteLink.found.isNotEmpty()) {
+            ph.addView(text("found:", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+            val fr = row(ph)
+            RemoteLink.found.forEach { (ip, name) -> chip(fr, "$name ($ip)", ip == RemoteLink.questIp) { RemoteLink.questIp = ip; s.remoteIp = ip } }
+        }
+        val ipEd = edit(RemoteLink.questIp.ifEmpty { s.remoteIp }, "Quest IP (only if find doesn't work)")
+        val codeEd = edit(RemoteLink.code.ifEmpty { s.remoteCode }, "pair code from the Quest").apply { inputType = InputType.TYPE_CLASS_NUMBER }
+        ph.addView(ipEd, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        ph.addView(codeEd, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        val cr = row(ph); cr.setPadding(0, dp(8), 0, 0)
+        chip(cr, "connect", true) {
+            RemoteLink.questIp = ipEd.text.toString().trim(); RemoteLink.code = codeEd.text.toString().trim()
+            s.remoteIp = RemoteLink.questIp; s.remoteCode = RemoteLink.code; RemoteLink.badCode = false
+        }
+        remoteView = text(remoteText(), 15f, TEXT).apply { setPadding(0, dp(10), 0, 0) }
+        ph.addView(remoteView)
+
+        val r = RemoteLink.last
+        if (r == null || !RemoteLink.connected()) return
+
+        val say = card(body, "💬 say something")
+        val msg = edit("", "type a chatbox message")
+        say.addView(msg)
+        val sr = row(say); sr.setPadding(0, dp(8), 0, 0)
+        chip(sr, "send", true) { rsend("say", "text" to msg.text.toString()) }
+        chip(sr, "typing…", false) { rsend("typing", "on" to true) }
+
+        val ps = r.optJSONArray("params")
+        val av = card(body, "🐱 avatar toggles")
+        if (ps == null || ps.length() == 0) av.addView(text("none yet. open VRChat with OSC on and change into ur avatar.", 14f, SUB))
+        else for (i in 0 until ps.length()) {
+            val p = ps.getJSONObject(i)
+            val n = p.getString("name"); val ty = p.optString("type", "bool")
+            val ar = row(av)
+            ar.addView(text(n + "  ", 16f, TEXT, fHead))
+            when (ty) {
+                "bool" -> { val on = p.optInt("value", 0) == 1; chip(ar, if (on) "on" else "off", on) { rsend("param", "name" to n, "type" to ty, "value" to !on) } }
+                "int" -> { val v = p.optInt("value", 0)
+                    chip(ar, "−", false) { rsend("param", "name" to n, "type" to ty, "value" to maxOf(0, v - 1)) }
+                    ar.addView(text(" $v ", 16f, TEXT, fHead))
+                    chip(ar, "+", false) { rsend("param", "name" to n, "type" to ty, "value" to minOf(255, v + 1)) } }
+                else -> for (pc in listOf(0, 25, 50, 75, 100)) chip(ar, "$pc%", false) { rsend("param", "name" to n, "type" to ty, "value" to pc / 100.0) }
+            }
+        }
+
+        val mu = card(body, "🎵 music")
+        val mr = row(mu)
+        chip(mr, "⏮", false) { rsend("music", "cmd" to "prev") }
+        chip(mr, "⏯", true) { rsend("music", "cmd" to "play_pause") }
+        chip(mr, "⏭", false) { rsend("music", "cmd" to "next") }
+
+        val tm = card(body, "⏳ timer + 🔢 counter")
+        val t1 = row(tm)
+        for (m in listOf(1, 5, 10, 30)) chip(t1, "+${m}m", false) { rsend("timer", "min" to m) }
+        chip(t1, "stopwatch", false) { rsend("stopwatch") }
+        chip(t1, "clear", false) { rsend("clear") }
+        val t2 = row(tm); t2.setPadding(0, dp(6), 0, 0)
+        chip(t2, "− count", false) { rsend("counter", "delta" to -1) }
+        chip(t2, "+ count", true) { rsend("counter", "delta" to 1) }
+        chip(t2, "reset", false) { rsend("counter_reset") }
+
+        val ln = card(body, "🧩 what the chatbox shows")
+        val lines = r.optJSONObject("lines")
+        var lr = row(ln); var k = 0
+        for ((key, label) in Settings.LINES + Settings.MODS.map { it.first to it.second }) {
+            if (k > 0 && k % 3 == 0) lr = row(ln); k++
+            val on = lines?.optBoolean(key) == true
+            chip(lr, label, on) { rsend("line", "key" to key, "on" to !on) }
+        }
     }
 
     private fun buildPerf() {
