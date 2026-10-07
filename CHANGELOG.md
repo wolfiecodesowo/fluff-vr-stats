@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.3.2 + Quest Edition v0.6.1: global chat fix
+- 🌐 global chat stays connected: when the chat relay drops the connection (it does that now and then), the app, Quest and Fluff Bot reconnect instantly and pick up right where they left off, so no messages get missed or doubled
+
 ## v0.3.1 + Quest Edition v0.6.0: the big revamp
 (v0.3.0 had global chat, the furry glow-up + AI removal; v0.3.1 adds the new menu look + new mods)
 

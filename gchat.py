@@ -152,29 +152,45 @@ class GlobalChat:
                 pass
 
     def _loop(self):
-        backoff = 2
+        """Listens to the room. ntfy closes long streams every so often, that's normal: we just
+        reconnect right away and pick up from the last message id, so nothing gets missed or doubled."""
+        backoff, last_id = 2, None
         while self.running:
             if not self.enabled():
                 self.status = "off"
                 time.sleep(1)
                 continue
-            self.status = "connecting"
-            since = "3h" if not self.msgs else str(int(self.msgs[-1]["time"]))
+            if self.status != "live":
+                self.status = "connecting"
+            since = last_id or "3h"
+            t0 = time.time()
             try:
                 req = urllib.request.Request(f"{BASE}/{TOPIC}/json?since={since}", headers=UA)
                 with urllib.request.urlopen(req, timeout=75) as r:   # ntfy sends a keepalive every ~45s
                     self._resp = r
-                    self.status, self.error, backoff = "live", "", 2
+                    self.status, self.error = "live", ""
                     for line in r:
                         if not self.running or not self.enabled():
                             break
-                        msg = self.parse(line.decode("utf-8", "ignore"))
+                        line = line.decode("utf-8", "ignore")
+                        try:
+                            ev = json.loads(line)
+                            if ev.get("event") == "message" and ev.get("id"):
+                                last_id = ev["id"]
+                        except ValueError:
+                            continue
+                        msg = self.parse(line)
                         if msg:
                             self._add(msg)
             except Exception as e:
+                if time.time() - t0 > 20:           # it was working, the stream just got cut: reconnect now
+                    backoff = 2
+                    continue
                 self.status, self.error = "offline", str(e)[:80]
                 time.sleep(backoff)
                 backoff = min(60, backoff * 2)
+            else:
+                backoff = 2
             finally:
                 self._resp = None
 

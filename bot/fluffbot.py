@@ -355,20 +355,28 @@ class FluffBot(discord.Client):
         g = self.guild()
         if g:
             await self.ensure_gchat(g)
-        since, backoff = "10m", 2
+        since, backoff, posted = "10m", 2, set()
         while not self.is_closed():
+            t0 = asyncio.get_event_loop().time()
             try:
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=90)) as s:
                     async with s.get(f"{G.BASE}/{G.TOPIC}/json?since={since}", headers=G.UA) as r:
-                        backoff = 2
                         async for raw in r.content:
                             line = raw.decode("utf-8", "ignore").strip()
                             if not line:
                                 continue
                             try:
-                                since = str(json.loads(line).get("id") or since)
+                                ev = json.loads(line)
                             except ValueError:
-                                pass
+                                continue
+                            if ev.get("event") != "message" or not ev.get("id"):
+                                continue
+                            since = ev["id"]                     # resume from here after a reconnect
+                            if ev["id"] in posted:
+                                continue
+                            posted.add(ev["id"])
+                            if len(posted) > 500:
+                                posted = set(list(posted)[-200:])
                             m = G.GlobalChat.parse(self._gc_parser(), line)
                             if not m or m["client"] == "discord":
                                 continue
@@ -383,10 +391,17 @@ class FluffBot(discord.Client):
                                     pass
             except asyncio.CancelledError:
                 raise
+            except (aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError, ConnectionResetError):
+                pass                                   # ntfy cut the long stream (normal), reconnect below
             except Exception as e:
-                log.info("global chat relay reconnecting: %s", e)
-            await asyncio.sleep(backoff)
-            backoff = min(60, backoff * 2)
+                log.info("global chat relay: %s", e)
+            # it was running fine for a while -> reconnect right away, otherwise back off a bit
+            if asyncio.get_event_loop().time() - t0 > 20:
+                backoff = 2
+                await asyncio.sleep(0.5)
+            else:
+                await asyncio.sleep(backoff)
+                backoff = min(60, backoff * 2)
 
     def _gc_parser(self):
         """tiny stand-in 'self' so the app's parser can be reused (no thread, no network)"""

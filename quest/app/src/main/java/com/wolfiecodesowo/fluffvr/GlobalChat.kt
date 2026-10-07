@@ -51,11 +51,13 @@ object GlobalChat {
         val app = ctx.applicationContext
         Thread {
             var backoff = 2000L
+            var lastId: String? = null
             while (running) {
                 val s = Settings(app)
                 if (!s.gchatOn) { status = "off"; Thread.sleep(1000); continue }
-                status = "connecting"
-                val since = msgs.lastOrNull()?.let { (it.time / 1000).toString() } ?: "3h"
+                if (status != "live") status = "connecting"
+                val since = lastId ?: "3h"
+                val t0 = System.currentTimeMillis()
                 var conn: HttpURLConnection? = null
                 try {
                     conn = (URL("$BASE/$TOPIC/json?since=$since").openConnection() as HttpURLConnection).apply {
@@ -65,12 +67,14 @@ object GlobalChat {
                         status = "live"; backoff = 2000L
                         while (running && Settings(app).gchatOn) {
                             val line = r.readLine() ?: break
+                            try { JSONObject(line).let { if (it.optString("event") == "message" && it.has("id")) lastId = it.getString("id") } } catch (_: Exception) {}
                             parse(line, s)?.let { add(it, s) }
                         }
                     }
                 } catch (_: Exception) {
-                    status = "offline"
-                    Thread.sleep(backoff); backoff = minOf(60_000L, backoff * 2)
+                    // ntfy cuts long streams now and then: if it was working, just reconnect right away
+                    if (System.currentTimeMillis() - t0 > 20_000) { backoff = 2000L }
+                    else { status = "offline"; Thread.sleep(backoff); backoff = minOf(60_000L, backoff * 2) }
                 } finally { conn?.disconnect() }
             }
         }.apply { isDaemon = true; start() }
