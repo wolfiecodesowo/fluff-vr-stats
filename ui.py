@@ -873,6 +873,7 @@ MOD_INFO = {
         ("music_controls", "Music controls", "Tap ur wrist w/ ur other hand"),
         ("last_ai_reply", "AI reply on wrist", "Show Fluff's last message"),
         ("look_to_show", "Look to show", "HUD fades in when you look"),
+        ("wrist_kitty", "Lil Kitty", "Pettable cat on ur other wrist"),
     ],
     "VRChat": [
         ("world_info", "World info", "World name, instance, players"),
@@ -1775,6 +1776,11 @@ def _tab_mods(d, hit, box, state, t):
         cd = cfg.get("countdown", {})
         btns = [(f"countdown: {cd.get('name') or 'name'} ✎", "mod_edit", "countdown_name"),
                 (f"date: {cd.get('date') or 'YYYY-MM-DD'} ✎", "mod_edit", "countdown_date")]
+    elif cat == "Wrist":
+        kt = cfg.get("kitty", {})
+        btns = [(f"kitty: {kt.get('name', 'Mochi')} ✎", "mod_edit", "kitty_name"),
+                (f"fur: {kt.get('color', 'cream')}", "kitty_color", None),
+                (f"trust {min(20, kt.get('trust', 0))}/20 · fed {kt.get('fed', 0)}x", "mods_cat", "Wrist")]
     elif cat == "Comfy":
         btns = [(f"bedtime: {cfg.get('bedtime', '01:00')} ✎", "mod_edit", "bedtime"),
                 (f"eye break: {cfg.get('eye_break_min', 20)}m", "mod_cycle", "eye_break_min"),

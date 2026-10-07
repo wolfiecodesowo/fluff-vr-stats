@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.0: kitty + desktop update :3
+- 🐱 **Lil Kitty**: a fluffy cat on ur other wrist. pat her with ur free hand (she mews + purrs), pat her 20 times to make friends, then feed her. boop her nose, poke her tail, she naps when ignored
+- 🖥️ **Desktop mode**: the launcher asks "VR or Desktop?". desktop opens the menu in a normal window, kitty becomes a desktop pet, optional mini HUD. `run_desktop.bat` / `run_vr.bat` / `pick_mode.bat`
+- 👀 **AI Look**: "who's here?" button in Chat. Fluff reads ur screen and lists the avatars u can see (nameplates, looks, where). screen only, no wallhacks
+- 🐾 **Headpat counter fixed**: auto-finds ur avatar's pat contact (any name like Headpat, HeadPat_Contact, Pat...), works with on/off and proximity contacts, and tells u which one it's watching
+- 🧩 **51 mods** (was 34), now in 6 groups. new: boop counter, jump counter, yap meter, avatar height, still-muted nudge, pat party, VR streak, song pop-up, countdown, kaomoji, cute quote, theme shuffle, eye break, posture check, bedtime alert, AI Look, Lil Kitty
+- 🗨️ **11 new chatbox lines**: date, VR today, VR streak, boops, jumps, yap meter, avatar height, countdown, cute quote, kaomoji
+- 🥽 **Quest Edition v0.4 beta**: 30 Quest mods, same headpat fix, battery time left, zoomies, reminders that also pop up on ur phone remote
+
 ## v0.1.1: Discord update :3
 - 🔍 **Zoom lens**: hold a controller up to ur eye like a telescope and it zooms in (2x-6x) while u play. or pick tap on/off and use the 🔍 on ur wrist
 - 🐍 **No Python? No problem**: install.bat finds Python or installs it for you

@@ -93,7 +93,7 @@ DEFAULT_CFG = {
         "mute_reminder": True, "song_toast": False, "kaomoji": False, "countdown": False,
         "vr_streak": True, "quote_of_hour": False, "theme_shuffle": False,
         "eye_break": False, "posture_reminder": False, "bedtime_alert": False, "pat_party": True,
-        "ai_look": True,
+        "ai_look": True, "wrist_kitty": True,
     },
     "countdown": {"name": "my birthday", "date": ""},
     "eye_break_min": 20,
@@ -134,6 +134,7 @@ DEFAULT_CFG = {
     "intro": True,
     "startup_sound": True,
     "first_run": True,
+    "launch_mode": "ask",
     "floof_pats": 0,
     "made_by": "wolfiecodesowo",
     "support_link": "",
@@ -402,6 +403,17 @@ class App:
         self.ov.setOverlaySortOrder(self.hud, 10)
         self.apply_wrist()
 
+        # lil kitty on the other wrist
+        import kitty as _kitty
+        self.kitty_mod = _kitty
+        self.kitty = _kitty.Kitty(self.cfg)
+        self.kitty_ov = self.ov.createOverlay("fluffvr.stats.kitty", "Fluff VR Stats Kitty")
+        self.ov.setOverlaySortOrder(self.kitty_ov, 11)
+        self.ov.setOverlayWidthInMeters(self.kitty_ov, self.cfg.get("kitty_width_m", 0.11))
+        self.kitty_idx = None
+        self.kitty_shown = False
+        self.kitty_t = 0
+        self.kitty_touch = None          # (time, finger pos) while touching
         # dashboard tab
         self.dash, self.thumb = self.ov.createDashboardOverlay("fluffvr.stats.dash", "Fluff VR Stats :3")
         self.ov.setOverlayWidthInMeters(self.dash, self.cfg.get("dashboard_width_m", 2.0))
@@ -560,6 +572,11 @@ class App:
         if self.gl is not None:
             self.gl.close()
             self.gl = None
+        if getattr(self, "kitty_ov", None) is not None:
+            try:
+                self.ov.destroyOverlay(self.kitty_ov)
+            except Exception:
+                pass
         for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None),
                      getattr(self, "music", None), getattr(self, "vrclog", None)):
             try:
@@ -792,12 +809,19 @@ class App:
             self.hud_alpha = None
         elif action == "mod_edit":
             key = args[0]
-            cur = {"countdown_name": cfg.get("countdown", {}).get("name", ""),
+            cur = {"kitty_name": cfg.get("kitty", {}).get("name", "Mochi"),
+                   "countdown_name": cfg.get("countdown", {}).get("name", ""),
                    "countdown_date": cfg.get("countdown", {}).get("date", "")}.get(key, str(cfg.get(key, "")))
             desc = {"headpat_param": "Headpat parameter name (blank = auto)", "boop_param": "Boop parameter name (blank = auto)",
                     "countdown_name": "Countdown to what?", "countdown_date": "Date (YYYY-MM-DD)",
-                    "bedtime": "Bedtime (HH:MM, 24h)"}.get(key, key)
+                    "bedtime": "Bedtime (HH:MM, 24h)", "kitty_name": "Name ur kitty"}.get(key, key)
             self.open_keyboard(desc, cur, ("cfg", key))
+        elif action == "kitty_color":
+            cols = list(self.kitty_mod.COLORS)
+            kt = cfg.setdefault("kitty", {})
+            kt["color"] = cols[(cols.index(kt.get("color", "cream")) + 1) % len(cols)] if kt.get("color") in cols else "cream"
+            self.kitty.changed = True
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "mod_cycle":
             opts = [10, 15, 20, 30, 45, 60]
             cur = cfg.get(args[0], 20)
@@ -1067,7 +1091,11 @@ class App:
             return
         if isinstance(target, tuple) and target[0] == "cfg":
             key, text = target[1], text.strip()
-            if key in ("countdown_name", "countdown_date"):
+            if key == "kitty_name":
+                if text:
+                    self.cfg.setdefault("kitty", {})["name"] = text[:16]
+                    self.kitty.changed = True
+            elif key in ("countdown_name", "countdown_date"):
                 cd = self.cfg.setdefault("countdown", {})
                 if key == "countdown_date":
                     try:
@@ -1522,6 +1550,89 @@ class App:
             return "shhh ur muted :x"
         return self.PET_IDLE[int(now / 20) % len(self.PET_IDLE)]
 
+    # ---- lil kitty on the other wrist
+    def kitty_role(self):
+        return openvr.TrackedControllerRole_RightHand if self.cfg["wrist"]["hand"] == "left" \
+            else openvr.TrackedControllerRole_LeftHand
+
+    def step_kitty(self, now):
+        on = self.cfg["modules"].get("wrist_kitty", True)
+        idx = self.vr.getTrackedDeviceIndexForControllerRole(self.kitty_role()) if on else openvr.k_unTrackedDeviceIndexInvalid
+        idx = None if idx == openvr.k_unTrackedDeviceIndexInvalid else idx
+        if idx != self.kitty_idx:
+            self.kitty_idx = idx
+            if idx is not None:
+                rot, pos = wrist_transform(self.cfg["wrist"])
+                pos = [-pos[0], pos[1], pos[2]]
+                self.ov.setOverlayTransformTrackedDeviceRelative(self.kitty_ov, idx, to_hmd34(rot, pos))
+        want = idx is not None
+        if want != self.kitty_shown:
+            (self.ov.showOverlay if want else self.ov.hideOverlay)(self.kitty_ov)
+            self.kitty_shown = want
+            self.kitty.changed = True
+        if not want:
+            return
+        self.kitty.tick(now)
+        if self.kitty.changed and now - self.kitty_t > (1 / 15 if getattr(self.kitty, "fast", True) else 1 / 6):
+            self.kitty_t = now
+            self.push(self.kitty_ov, self.kitty.render(ui.get_theme(self.cfg), now), "kitty")
+        if self.kitty.sound:
+            self.kitty_mod.play(self.kitty.sound)
+            self.kitty.sound = None
+        self.safe("kitty touch", self.kitty_check_touch, now)
+
+    def kitty_check_touch(self, now):
+        """pat her with ur other hand (the one wearing the stats HUD)"""
+        if self.ctrl_index is None or self.kitty_idx is None:
+            return
+        poses = (openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount)()
+        self.vr.getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0, poses)
+        kp, fp = poses[self.kitty_idx], poses[self.ctrl_index]
+        if not (kp.bPoseIsValid and fp.bPoseIsValid):
+            return
+        F = fp.mDeviceToAbsoluteTracking.m
+        off = self.cfg.get("touch_offset", [0.0, -0.015, -0.05])
+        tip = [sum(F[i][k] * off[k] for k in range(3)) + F[i][3] for i in range(3)]
+        K = kp.mDeviceToAbsoluteTracking.m
+        krot = [[K[i][j] for j in range(3)] for i in range(3)]
+        rot, pos = wrist_transform(self.cfg["wrist"])
+        pos = [-pos[0], pos[1], pos[2]]
+        wrot = mat_mul(krot, rot)
+        wpos = [sum(krot[i][k] * pos[k] for k in range(3)) + K[i][3] for i in range(3)]
+        rel = [tip[i] - wpos[i] for i in range(3)]
+        local = [sum(wrot[k][i] * rel[k] for k in range(3)) for i in range(3)]
+        wm = self.cfg.get("kitty_width_m", 0.11)
+        inside = abs(local[0]) <= wm / 2 and abs(local[1]) <= wm / 2 and abs(local[2]) <= 0.04
+        if not inside:
+            self.kitty_touch = None
+            return
+        S = self.kitty_mod.SIZE
+        px, py = (local[0] / wm + 0.5) * S, (0.5 - local[1] / wm) * S
+        act = self.kitty.hit(px, py)
+        if act is None:
+            return
+        fire = False
+        if self.kitty_touch is None:
+            fire = True                                  # new touch
+        elif act == "pat":
+            t0, p0 = self.kitty_touch                    # stroking = more pats
+            moved = math.dist(p0, tip)
+            if now - t0 > 0.7 and moved > 0.015:
+                fire = True
+        if fire:
+            self.kitty_touch = (now, tip)
+            msg = self.kitty.act(act)
+            if msg:
+                self.show_alert(msg, secs=6)
+            self.state.dirty_cfg = True
+            for dev in (self.ctrl_index, self.kitty_idx):
+                try:
+                    self.vr.triggerHapticPulse(dev, 0, 900 if act == "pat" else 1800)
+                except Exception:
+                    pass
+        elif self.kitty_touch is None:
+            self.kitty_touch = (now, tip)
+
     # ---- tap your wrist with the other controller
     def check_touch(self):
         if not (self.cfg["modules"].get("music_controls") or self.cfg["modules"].get("zoom_lens")) \
@@ -1605,6 +1716,7 @@ class App:
             self.safe("wrist touch", self.check_touch)
             self.safe("desktop screen", self.update_screen)
             self.safe("zoom", self.update_zoom)
+            self.safe("kitty", self.step_kitty, now)
             if st.dirty_cfg and now - self.t["save"] > 1:
                 st.dirty_cfg = False
                 self.t["save"] = now
@@ -1613,7 +1725,7 @@ class App:
                 raise ConnectionError("lost connection to SteamVR")
             # 20 Hz loop is plenty for the HUD; speed up only while the desktop mirror needs it
             sc = self.cfg["screen"]
-            fast = (sc.get("enabled") and sc.get("fps", 15) > 15) or self.cfg["zoom"].get("enabled")
+            fast = (sc.get("enabled") and sc.get("fps", 15) > 15) or self.cfg["zoom"].get("enabled") or self.kitty_touch is not None
             time.sleep(0.02 if fast else 0.05)
 
     def step_controllers(self, now):
@@ -1752,8 +1864,38 @@ def ensure_music_packages(cfg):
         log.warning("couldn't install music packages: %s", e)
 
 
+def choose_mode(cfg):
+    """VR or Desktop? --vr / --desktop win, then a remembered choice, else ask with a lil window."""
+    args = [a.lower() for a in sys.argv[1:]]
+    if "--desktop" in args:
+        return "desktop"
+    if "--vr" in args:
+        return "vr"
+    if "--pick" not in args and cfg.get("launch_mode") in ("vr", "desktop"):
+        return cfg["launch_mode"]
+    try:
+        import desktop
+        mode = desktop.pick_mode(cfg)
+        save_cfg(cfg)
+        return mode
+    except Exception as e:
+        log.warning("mode picker failed, going VR: %s", e)
+        return "vr"
+
+
 def main():
     lower_priority()
+    mode = choose_mode(load_cfg())
+    if mode is None:          # closed the picker
+        return
+    if mode == "desktop":
+        try:
+            ensure_music_packages(load_cfg())
+        except Exception as e:
+            log.warning("music package check failed: %s", e)
+        import desktop
+        desktop.run()
+        return
     try:
         ensure_gl_packages()
     except Exception as e:

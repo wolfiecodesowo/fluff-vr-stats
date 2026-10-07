@@ -18,7 +18,7 @@
 ---
 
 > ### 🥽 Quest Edition: early beta 🧪
-> Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles, 14 Quest mods, phone remote).
+> Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles, 30 Quest mods, phone remote).
 > It's an **early beta**: small, maybe buggy, more mods coming.
 >
 > **🖐️ No wrist menu on standalone Quest (yet).** Quest doesn't let any app draw menus on top of VRChat, so the hand/wrist menu from the PC version may not work on Quest.
@@ -32,6 +32,8 @@
 
 
 Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRChat's files**: no mods, no injection, so it's safe with EAC. Everything shows up inside SteamVR: a fluffy HUD on your wrist and a full menu in your SteamVR dashboard.
+
+**No headset today?** When you launch it, it asks **"VR or Desktop?"**. Desktop mode opens the same menu in a normal window (mouse + keyboard), and all the VRChat stuff (chatbox, avatar toggles, music, AI, counters) still works. More in [Desktop mode](#️-desktop-mode).
 
 ## ✨ Features
 
@@ -47,6 +49,17 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
   - panics at low FPS
 - join/leave alerts, timer, zoomies meter, clock
 
+**🐱 Lil Kitty on your other wrist**
+- a fluffy cat you **pat with your free hand**. she mews, purrs and floats hearts at u
+- she's shy at first: **pat her 20 times to make friends**, then you can **feed her** 🐟
+- boop her nose (*sneeze*), poke her tail (she gets grumpy), and she naps if you ignore her
+- gets hungry over a few hours. rename her + pick her fur color in Mods → Wrist
+
+**👀 AI Look** (the fair kind of "ESP")
+- tap **who's here?** in the Chat tab and Fluff looks at your VRChat window and tells you who's on screen: nameplates, what their avatars look like, and where they're standing
+- it only reads the picture **you can already see**, like a screenshot. no game memory, no seeing through walls, safe with EAC
+- uses your AI key (Claude, or a vision model like Groq's Llama 4 Scout)
+
 **In your SteamVR dashboard: 12 tabs**
 
 | | |
@@ -59,7 +72,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 | 🐱 **Avatar** | your avatar's toggles as buttons, read straight from VRChat's OSC files |
 | 🌍 **World** | world, instance, who's here, timer, today's recap |
 | 🖥️ **Screen** | your desktop floating in VR + a 🔍 **zoom lens** |
-| 🧩 **Mods** | 34 toggles |
+| 🧩 **Mods** | 51 toggles in 6 groups: Performance, Wrist, VRChat, Counters, Fun, Comfy |
 | 🎨 **Style** | 25 themes · 12 accents · 9 backgrounds · 7 ear styles |
 | ⌚ **Wrist** | move / tilt / resize the wrist HUD |
 | 💖 **<3** | a thank-you page with a floof you can pat |
@@ -97,11 +110,20 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
 
 ## 🥽 Quest (standalone)
-There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info, avatar toggles and 14 Quest mods over OSC.
+There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info, avatar toggles and 30 Quest mods over OSC.
 - 🖐️ **Heads up:** the wrist/hand menu may not work on standalone Quest. Quest blocks apps from drawing over VRChat.
 - 📱 **Phone remote replaces it:** put the same APK on an Android phone and use the **Remote** tab as your menu while you play. **Android only, not available on iPhone.**
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
+
+## 🖥️ Desktop mode
+Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_desktop.bat`).
+- the full menu opens in a normal window: click with your mouse, scroll, type with your keyboard
+- chatbox stats, avatar toggles, music, AI chat, AI Look, headpat/boop/jump counters, Discord status all work
+- **Lil Kitty lives on your desktop** as a tiny always-on-top pet. Click to pat, drag across her head to stroke her, drag the empty space to move her
+- **View → Mini HUD** puts a small always-on-top stats card on your screen
+- **Mode → Switch to VR mode** restarts in VR. Tick **remember my choice** on the launch window to skip the question, or run `pick_mode.bat` to get it back
+- things that need a headset (wrist HUD, laser menu, zoom lens, VR FPS/battery stats) only show in VR
 
 ## 🔒 Privacy
 - Everything runs on your PC.

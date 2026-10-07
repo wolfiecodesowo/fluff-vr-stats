@@ -13,7 +13,7 @@ if not os.path.exists(pyw):
 manifest = {"source": "builtin", "applications": [{
     "app_key": KEY, "launch_type": "binary",
     "binary_path_windows": pyw,
-    "arguments": f'"{os.path.join(HERE, "main.py")}"',
+    "arguments": f'"{os.path.join(HERE, "main.py")}" --vr',
     "working_directory": HERE,
     "is_dashboard_overlay": True,
     "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute wrist HUD + AI buddy"}},
