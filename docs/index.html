@@ -50,6 +50,12 @@
   .btn.alt { background: var(--yellow); }
   .btn.ghost { background: var(--panel2); color: var(--text); }
   .note { font-size: 15px; color: var(--sub); margin-top: 14px; }
+  .comm-card { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between;
+               background: var(--panel); border: 4px solid var(--ink); border-radius: var(--r); padding: 26px 28px;
+               box-shadow: 8px 8px 0 var(--ink); }
+  .comm-card > div { flex: 1 1 320px; }
+  .comm-big { font-family: "Lilita One", sans-serif; font-size: 28px; margin: 0 0 6px; }
+  .comm-live { color: var(--mint); font-weight: 800; }
   .hud { width: 100%; max-width: 380px; transform: rotate(4deg); filter: drop-shadow(10px 10px 0 var(--ink)); justify-self: center; }
 
   /* trailer */
@@ -112,6 +118,7 @@
       <div class="btns">
         <a class="btn" href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest">⬇ Download free</a>
         <a class="btn ghost" href="quest/">🥽 Quest (beta)</a>
+        <a class="btn alt js-discord" href="#community">💜 Join the Discord</a>
         <a class="btn ghost" href="https://github.com/wolfiecodesowo/fluff-vr-stats">★ GitHub</a>
       </div>
       <p class="note">Windows · SteamVR · open source (MIT) · no mods or injection, safe with EAC</p>
@@ -167,6 +174,18 @@
     <p class="note">In VRChat, turn on OSC (Action Menu → Options → OSC → Enabled) for the chatbox, avatar toggles and headpats.</p>
   </section>
 
+  <section id="community" class="community">
+    <h2 class="sec-title ink">come hang <span class="hl">with us</span></h2>
+    <div class="comm-card">
+      <div>
+        <p class="comm-big">💜 the Fluff VR Stats Discord</p>
+        <p>get help installing, show off ur wrist setup, suggest mods, grab beta builds first, and meet other fluffs :3</p>
+        <p class="comm-live" id="discordLive">🟢 loading who's online…</p>
+      </div>
+      <a class="btn js-discord" href="#community">💜 Join the Discord</a>
+    </div>
+  </section>
+
   <section class="faq">
     <h2 class="sec-title ink">questions</h2>
     <details><summary>Is it safe with VRChat / EAC?</summary><p>Yes. It's a separate SteamVR overlay app. It never touches VRChat's files or memory and talks to VRChat only through official OSC.</p></details>
@@ -182,5 +201,20 @@
     <p>by <a href="https://github.com/wolfiecodesowo">wolfiecodesowo</a> · code MIT · sticker art © the original artists</p>
   </footer>
 </div>
+<script>
+  // join button: uses the server's invite from Discord's public widget (Server Settings → Widget)
+  const GUILD = "1557135963510280202";
+  const FALLBACK_INVITE = "";          // paste a permanent invite here if the widget is off
+  fetch(`https://discord.com/api/guilds/${GUILD}/widget.json`).then(r => r.ok ? r.json() : null).then(w => {
+    const link = (w && w.instant_invite) || FALLBACK_INVITE;
+    if (link) document.querySelectorAll(".js-discord").forEach(a => { a.href = link; a.target = "_blank"; a.rel = "noopener"; });
+    const live = document.getElementById("discordLive");
+    if (w && live) live.textContent = `🟢 ${w.presence_count} fluffs online right now`;
+    else if (live) live.textContent = "";
+  }).catch(() => {
+    if (FALLBACK_INVITE) document.querySelectorAll(".js-discord").forEach(a => { a.href = FALLBACK_INVITE; });
+    const live = document.getElementById("discordLive"); if (live) live.textContent = "";
+  });
+</script>
 </body>
 </html>
