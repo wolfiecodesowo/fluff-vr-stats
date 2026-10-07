@@ -1,7 +1,7 @@
 """
 Fluff VR Stats :3 - a cute furry SteamVR overlay for VRChat.
   * Wrist HUD: FPS, frametimes, clock, batteries, PC load, music, ping, alerts, AI reply...
-  * Dashboard tab (SteamVR menu): stats, AI chat, desktop screen, mods, style, wrist placement
+  * Dashboard tab (SteamVR menu): stats, global chat, desktop screen, mods, style, wrist placement
 
 Runs as a separate overlay app (no injection into VRChat), redraws only a
 couple of times per second, and lowers its own process priority so it never
@@ -54,7 +54,6 @@ except ImportError as _e:
     _pause()
     sys.exit(1)
 
-import ai
 import chatbox
 import intro
 import osc
@@ -84,21 +83,21 @@ DEFAULT_CFG = {
         "fps": True, "frametime_graph": True, "gpu_cpu_ms": True, "reprojection": True,
         "pc_usage": True, "gpu_temp": False, "ping": False, "low_fps_alert": True,
         "clock": True, "batteries": True, "session_timer": True, "now_playing": True,
-        "weather": False, "break_reminder": False, "last_ai_reply": True, "look_to_show": True,
+        "weather": False, "break_reminder": False, "look_to_show": True,
         "music_controls": True,
         "world_info": True, "join_alerts": True, "avatar_toggles": True, "afk_detect": True,
         "distance": True, "wrist_pet": True, "timer": True,
-        "ai_to_chatbox": False, "chatbox_status": False, "chatbox_song": False,
-        "typing_indicator": True, "mute_indicator": False, "headpat_counter": True,
+        "chatbox_status": False, "chatbox_song": False,
+        "mute_indicator": False, "headpat_counter": True,
         "discord_presence": True,
         "battery_alert": True, "hydration_reminder": False, "vr_milestones": True, "zoom_lens": True,
         "boop_counter": False, "yap_meter": False, "jump_counter": False, "avatar_height": False,
         "mute_reminder": True, "song_toast": False, "kaomoji": False, "countdown": False,
         "vr_streak": True, "quote_of_hour": False, "theme_shuffle": False,
         "eye_break": False, "posture_reminder": False, "bedtime_alert": False, "pat_party": True,
-        "ai_look": True, "wrist_kitty": True, "global_chat": True, "wrist_buttons": True,
+        "wrist_kitty": True, "global_chat": True, "wrist_buttons": True,
     },
-    "wrist_actions": ["zoom", "chatbox", "timer", "look", "kitty", "gchat"],
+    "wrist_actions": ["zoom", "chatbox", "timer", "kitty", "gchat", "pat"],
     "gchat": {"name": "", "muted": [], "hud": True},
     "countdown": {"name": "my birthday", "date": ""},
     "eye_break_min": 20,
@@ -107,14 +106,6 @@ DEFAULT_CFG = {
     "vr_days": {},
     "zoom": {"enabled": False, "mode": "gesture", "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
     "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
-    "ai": {
-        "provider": "anthropic", "api_key": "", "model": "claude-haiku-4-5", "base_url": "",
-        "max_tokens": 300,
-        "system_prompt": ("You are Fluff, a cute, playful, supportive furry companion living inside a VR "
-                          "wrist overlay. The user is hanging out in VRChat. Keep replies short (1-3 "
-                          "sentences) since they are read in VR. Be warm, a little silly, use occasional "
-                          "cat/paw puns, never cringe-overload."),
-    },
     "wrist": {"hand": "left", "width_m": 0.13, "opacity": 0.95,
               "offset": [0.0, 0.02, 0.13], "rotation_deg": [-60.0, 0.0, 0.0]},
     "screen": {"enabled": False, "monitor": 1, "fps": 15, "max_width": 1280, "width_m": 1.4,
@@ -220,6 +211,14 @@ def load_cfg():
         cfg["chatbox"]["lines"]["song"] = True
         cfg["modules"]["chatbox_status"] = True
         cfg["modules"]["chatbox_song"] = False
+    # the AI buddy was removed in v0.3.0: drop its wrist button + settings (incl. any saved API key)
+    if isinstance(cfg.get("wrist_actions"), list) and "look" in cfg["wrist_actions"]:
+        cfg["wrist_actions"] = [a for a in cfg["wrist_actions"] if a != "look"]
+        if "pat" not in cfg["wrist_actions"]:
+            cfg["wrist_actions"].append("pat")
+    cfg.pop("ai", None)
+    for k in ("last_ai_reply", "ai_to_chatbox", "typing_indicator", "ai_look"):
+        cfg["modules"].pop(k, None)
     if not isinstance(cfg["chatbox"].get("statuses"), list):
         cfg["chatbox"]["statuses"] = list(chatbox.DEFAULT["statuses"])
     if cfg["style"].get("ears") not in ui.EAR_STYLES:
@@ -333,9 +332,6 @@ class State:
     def __init__(self, cfg):
         self.cfg = cfg
         self.stats = {}
-        self.chat = []           # (role, text)
-        self.thinking = False
-        self.ai_error = None
         self.tab = "Home"
         self.chat_scroll = 0
         self.chat_content_top = 0
@@ -376,12 +372,6 @@ class State:
         self.gchat_scroll = 0
         self.desktop = False
         self.version = _version()
-
-    def last_reply(self):
-        for role, text in reversed(self.chat):
-            if role == "assistant":
-                return text
-        return ""
 
 
 def _version():
@@ -544,7 +534,6 @@ class App:
         self.last_chatbox = 0
         self.last_chatbox_text = None
         self.last_chatbox_sent = 0
-        self.last_ai_chatbox = 0
 
     # ---- error proofing
     def report(self, where, exc=None, msg=None, show=True):
@@ -847,8 +836,6 @@ class App:
                 self.timer_action("toggle")
                 self.show_alert("5 min timer started ⏱", secs=3)
             cfg["modules"]["timer"] = True
-        elif cmd == "look":
-            self.ai_look()
         elif cmd == "kitty":
             cfg["modules"]["wrist_kitty"] = not cfg["modules"].get("wrist_kitty", True)
             self.show_alert("kitty says hiii :3" if cfg["modules"]["wrist_kitty"] else "kitty is napping", secs=3)
@@ -1006,9 +993,6 @@ class App:
             cfg["wrist"].update(json.loads(json.dumps(DEFAULT_WRIST)))
             self.apply_wrist()
             st.dirty_cfg = True
-        elif action == "type":
-            if self.open_keyboard("Talk to Fluff", "", "chat") and cfg["modules"].get("typing_indicator"):
-                osc.typing(True, cfg.get("osc_port", 9000))
         elif action == "music":
             self.music.command(args[0])
         elif action in ("tw_apply", "tw_undo", "tw_all", "tw_undo_all"):
@@ -1065,12 +1049,6 @@ class App:
                 sts.pop(i)
                 cb["status_index"] = max(0, i - 1)
             st.dirty_cfg = True
-        elif action == "ai_look":
-            self.ai_look()
-        elif action == "clear_chat":
-            st.chat.clear()
-            st.ai_error = None
-            st.hud_dirty = True
         elif action == "screen_toggle":
             cfg["screen"]["enabled"] = not cfg["screen"]["enabled"]
             self.scr_placed = False
@@ -1266,7 +1244,6 @@ class App:
         st = self.state
         target, st.kb_target = st.kb_target, "chat"
         if target == "chat":
-            self.send_chat(text)
             return
         if target == "gchat":
             why = self.gchat.send(text)
@@ -1331,50 +1308,6 @@ class App:
         st.chat_scroll = max(0, min(st.chat_scroll + amount, top_room))
         st.dash_dirty = True
 
-    def ai_look(self):
-        """AI Look: Fluff reads ur VRChat window and says who's on screen (only what u can already see)."""
-        st = self.state
-        if st.thinking:
-            return
-        import look
-        st.chat.append(("user", "👀 who's on my screen?"))
-        st.thinking, st.ai_error, st.chat_scroll = True, None, 0
-        st.dash_dirty = True
-        players = [p for p in (st.world or {}).get("players", []) if p]
-
-        def done(reply, err):
-            st.thinking = False
-            if err:
-                st.ai_error = err
-                self.report("AI look", msg=err, show=False)
-            else:
-                st.chat.append(("assistant", reply))
-                self.show_alert(reply.split("\n")[0], secs=6)
-            st.dash_dirty = st.hud_dirty = True
-
-        look.look_async(self.cfg, players, done)
-
-    def send_chat(self, text):
-        st = self.state
-        if not text or st.thinking:
-            return
-        st.chat.append(("user", text))
-        st.thinking, st.ai_error, st.chat_scroll = True, None, 0
-        st.dash_dirty = True
-
-        def done(reply, err):
-            st.thinking = False
-            if err:
-                st.ai_error = err
-                self.report("AI", msg=err, show=False)
-            else:
-                st.chat.append(("assistant", reply))
-                if self.cfg["modules"]["ai_to_chatbox"]:
-                    osc.chatbox(reply, self.cfg.get("osc_port", 9000))
-                    self.last_ai_chatbox = time.time()
-            st.dash_dirty = st.hud_dirty = True
-        ai.ask_async(self.cfg, list(st.chat), done)
-
     # ---- events
     def poll_events(self):
         ev = openvr.VREvent_t()
@@ -1397,7 +1330,7 @@ class App:
                 self.safe("click", self.on_click, ev.data.mouse.x, ev.data.mouse.y)
             elif t == openvr.VREvent_MouseMove:
                 self.safe("hover", self.on_hover, ev.data.mouse.x, ev.data.mouse.y)
-            elif t == openvr.VREvent_ScrollSmooth and self.state.tab == "Chat":
+            elif t == openvr.VREvent_ScrollSmooth and self.state.tab == "Global":
                 self.scroll(ev.data.scroll.ydelta * 60)
             elif t == openvr.VREvent_KeyboardDone:
                 self.safe("typing", self.stop_typing)
@@ -1673,7 +1606,7 @@ class App:
                          afk_for=(now - st.afk_since) if st.afk and st.afk_since else 0)
 
         # VRChat chatbox stats (MagicChatbox-style)
-        if m.get("chatbox_status") and now - self.last_ai_chatbox > 20:
+        if m.get("chatbox_status"):
             cb = self.cfg["chatbox"]
             if now - self.last_chatbox >= max(2, float(cb.get("interval_s", 3))):
                 self.last_chatbox = now
@@ -1986,7 +1919,7 @@ class App:
         st = self.state
         if not self.ov.isOverlayVisible(self.dash):
             return
-        if st.dash_dirty or (st.thinking and now - self.t["dash"] > 0.5):
+        if st.dash_dirty:
             st.dash_dirty = False
             self.t["dash"] = now
             st.logo_frame = None                     # logo is pasted on separately

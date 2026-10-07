@@ -16,7 +16,7 @@ manifest = {"source": "builtin", "applications": [{
     "arguments": f'"{os.path.join(HERE, "main.py")}" --vr',
     "working_directory": HERE,
     "is_dashboard_overlay": True,
-    "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute wrist HUD + AI buddy"}},
+    "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute furry wrist HUD for VRChat"}},
 }]}
 openvr.init(openvr.VRApplication_Utility)
 apps = openvr.VRApplications()

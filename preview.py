@@ -25,7 +25,7 @@ for _i in range(12):
                 fill=(255 - _i * 12, 90 + _i * 10, 160 + _i * 6, 255))
 st.music = {"title": "Midnight City", "artist": "M83", "album": "Hurry Up, We're Dreaming", "app": "Spotify",
             "playing": True, "pos": 83, "dur": 243, "art": _art, "backend": "windows"}
-st.chat = [("user", "hiii fluff how's my fps looking"),
+_unused_chat = [("user", "hiii fluff how's my fps looking"),
            ("assistant", "Purrfect! You're sitting at 86 out of 90, barely any reprojection. Your rig is doing great, go have fun~")]
 st.alert = {"text": "Kitsu +2 joined", "kind": "info", "until": time.time() + 60}
 st.world = {"world": "The Black Cat", "type": "friends+", "players": ["me", "Kitsu", "Bunbun", "Sable", "Mochi"],

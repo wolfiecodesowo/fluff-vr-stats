@@ -21,7 +21,6 @@
     "now_playing": true,
     "weather": false,
     "break_reminder": false,
-    "last_ai_reply": true,
     "look_to_show": true,
     "music_controls": true,
     "world_info": true,
@@ -31,21 +30,11 @@
     "distance": true,
     "wrist_pet": true,
     "timer": true,
-    "ai_to_chatbox": false,
     "chatbox_status": false,
     "chatbox_song": false,
-    "typing_indicator": true,
     "mute_indicator": false,
     "headpat_counter": false,
     "discord_presence": true
-  },
-  "ai": {
-    "provider": "anthropic",
-    "api_key": "",
-    "model": "claude-haiku-4-5",
-    "base_url": "",
-    "max_tokens": 300,
-    "system_prompt": "You are Fluff, a cute, playful, supportive furry companion living inside a VR wrist overlay. The user is hanging out in VRChat. Keep replies short (1-3 sentences) since they are read in VR. Be warm, a little silly, use occasional cat/paw puns, never cringe-overload."
   },
   "wrist": {
     "hand": "left",

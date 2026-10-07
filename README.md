@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>a cute, furry, open source overlay for SteamVR + VRChat</b><br>
-  stats on ur wrist · an AI buddy · music controls · chatbox stats · avatar toggles · FPS boost
+  stats on ur wrist · global chat · music controls · chatbox stats · avatar toggles · FPS boost
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 
 Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRChat's files**: no mods, no injection, so it's safe with EAC. Everything shows up inside SteamVR: a fluffy HUD on your wrist and a full menu in your SteamVR dashboard.
 
-**No headset today?** When you launch it, it asks **"VR or Desktop?"**. Desktop mode opens the same menu in a normal window (mouse + keyboard), and all the VRChat stuff (chatbox, avatar toggles, music, AI, counters) still works. More in [Desktop mode](#️-desktop-mode).
+**No headset today?** When you launch it, it asks **"VR or Desktop?"**. Desktop mode opens the same menu in a normal window (mouse + keyboard), and all the VRChat stuff (chatbox, avatar toggles, music, global chat, counters) still works. More in [Desktop mode](#️-desktop-mode).
 
 ## ✨ Features
 
@@ -55,26 +55,30 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 - boop her nose (*sneeze*), poke her tail (she gets grumpy), and she naps if you ignore her
 - gets hungry over a few hours. rename her + pick her fur color in Mods → Wrist
 
-**👀 AI Look** (the fair kind of "ESP")
-- tap **who's here?** in the Chat tab and Fluff looks at your VRChat window and tells you who's on screen: nameplates, what their avatars look like, and where they're standing
-- it only reads the picture **you can already see**, like a screenshot. no game memory, no seeing through walls, safe with EAC
-- uses your AI key (Claude, or a vision model like Groq's Llama 4 Scout)
+**🌐 Global chat** (a mod, on by default)
+- one chat room for everyone on Fluff VR Stats: PC, desktop, Quest + our Discord's #global-chat
+- new messages pop up on your wrist. no links, slow mode, a bad-word filter, and you can mute anyone just for you
 
-**In your SteamVR dashboard: 12 tabs**
+**👆 Wrist buttons**
+- tap them with your other hand: zoom, chatbox on/off, 5 min timer, kitty, global chat, pat Fluff... pick your 6 in the Wrist tab
+
+**In your SteamVR dashboard**
 
 | | |
 |---|---|
+| 🏠 **Home** | your stats, quick actions, now playing + global chat at a glance |
 | 📊 **Stats** | everything about your performance |
 | ⚡ **Boost** | safe, one-tap FPS tweaks: power plan, Game Mode, no background recording, VR priority, best GPU. All undoable. |
-| 💬 **Chat** | talk to **Fluff**, your AI buddy (free with Groq) |
+| 🌐 **Global** | chat with everyone on Fluff VR Stats (PC, desktop, Quest + Discord) |
 | 🎵 **Music** | album art + controls for Spotify, YouTube, anything |
 | 🗨️ **Chatbox** | MagicChatbox-style stats in the VRChat chatbox, with a live preview |
 | 🐱 **Avatar** | your avatar's toggles as buttons, read straight from VRChat's OSC files |
 | 🌍 **World** | world, instance, who's here, timer, today's recap |
 | 🖥️ **Screen** | your desktop floating in VR + a 🔍 **zoom lens** |
-| 🧩 **Mods** | 51 toggles in 6 groups: Performance, Wrist, VRChat, Counters, Fun, Comfy |
+| 🧩 **Mods** | 49 toggles in 6 groups: Performance, Wrist, VRChat, Counters, Fun, Comfy |
 | 🎨 **Style** | 25 themes · 12 accents · 9 backgrounds · 7 ear styles |
-| ⌚ **Wrist** | move / tilt / resize the wrist HUD |
+| ⌚ **Wrist** | move / tilt / resize the wrist HUD + pick your wrist buttons |
+| ⚙️ **Settings** | start mode, auto-updates, sounds, units and more |
 | 💖 **<3** | a thank-you page with a floof you can pat |
 
 <p align="center">
@@ -90,12 +94,14 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 
 <img src="docs/images/error_cat.png" width="120" alt="error cat">
 
+## 💭 Where did the AI buddy go?
+We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's been a lot of hate and drama around AI, and a lot of people just aren't vibing with it, so for now Fluff VR Stats is **100% AI-free**. This isn't us hating on AI at all, we just want everyone to feel comfy using the app. We're pretty sure this'll blow over soon, and if it does, it might come back as an optional mod :3
+
 ## 💾 Install (Windows)
 1. Download the latest **[release](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest)** (**Source code (zip)**) and unzip it anywhere.
 2. Double-click **`install.bat`**. No Python? It offers to install it for you automatically (or install **Python 3.10+** from [python.org](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**).
-3. *(optional)* Double-click **`setup_ai.bat`** to give Fluff a brain. Groq is free.
-4. Double-click **`run.bat`**. It waits for SteamVR if SteamVR isn't open yet.
-5. *(optional)* Run `python autostart_with_steamvr.py` once to start it with SteamVR every time.
+3. Double-click **`run.bat`**. It waits for SteamVR if SteamVR isn't open yet.
+4. *(optional)* Run `python autostart_with_steamvr.py` once to start it with SteamVR every time.
 
 **VRChat features** (chatbox, avatar toggles, mute, headpats) need OSC: in VRChat, go to Action Menu → Options → OSC → **Enabled**.
 - Close MagicChatbox while using the chatbox tab, or they'll fight over the chatbox.
@@ -118,26 +124,27 @@ There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs rig
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
 
 ## 🔄 Updates install themselves
-Every time you start Fluff VR Stats it checks for a new version. If there is one, it downloads it, swaps in the new files and restarts, all by itself (about 10 seconds). Your settings, AI key and bot token are never touched, and the old files are backed up in `.update_backup/`. Don't want that? Set `"auto_update": false` in `config.json`.
+Every time you start Fluff VR Stats it checks for a new version. If there is one, it downloads it, swaps in the new files and restarts, all by itself (about 10 seconds). Your settings and bot token are never touched, and the old files are backed up in `.update_backup/`. Don't want that? Set `"auto_update": false` in `config.json`.
 
 ## 🖥️ Desktop mode
 Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_desktop.bat`).
 - the full menu opens in a normal window: click with your mouse, scroll, type with your keyboard
-- chatbox stats, avatar toggles, music, AI chat, AI Look, headpat/boop/jump counters, Discord status all work
+- chatbox stats, avatar toggles, music, global chat, headpat/boop/jump counters, Discord status all work
 - **Lil Kitty lives on your desktop** as a tiny always-on-top pet. Click to pat, drag across her head to stroke her, drag the empty space to move her
 - **Floating wrist menu:** your wrist HUD floats on top of VRChat as its own little screen. Drag it anywhere, scroll on it to resize, right-click for see-through, tap the music buttons, and press **F9** (even mid-game) to hide/show it
 - **Mode → Switch to VR mode** restarts in VR. Tick **remember my choice** on the launch window to skip the question, or run `pick_mode.bat` to get it back
-- things that need a headset (wrist HUD, laser menu, zoom lens, VR FPS/battery stats) only show in VR
+- **F10** opens a round zoom magnifier (drag it, scroll to resize, right-click to close)
+- things that need a headset (wrist HUD, laser menu, VR FPS/battery stats) only show in VR
 
 ## 🔒 Privacy
 - Everything runs on your PC.
 - The only things that go online:
-  - AI chat, sent to the provider you picked
+  - global chat messages (if the mod is on), through the free ntfy.sh relay. it's a public room, so never post personal info
   - Discord status, sent to your local Discord app (turn off in Mods)
   - weather, if you turn it on
   - ping, if you turn it on
 - World and player info comes from VRChat's own log file on your PC.
-- Your settings and API key stay in `config.json`, which is git-ignored and never shared.
+- Your settings stay in `config.json`, which is git-ignored and never shared.
 
 ## 🛠️ For developers
 ```

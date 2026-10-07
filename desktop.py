@@ -2,8 +2,8 @@
 Desktop mode: Fluff VR Stats without a headset.
 
 The whole menu opens in a normal window (click with ur mouse, scroll the chat, type with ur keyboard),
-and everything that talks to VRChat still works: chatbox stats, avatar toggles, music, AI chat,
-AI Look, headpat/boop counters, Discord status... Lil Kitty lives on ur desktop as a tiny
+and everything that talks to VRChat still works: chatbox stats, avatar toggles, music, global chat,
+headpat/boop counters, Discord status... Lil Kitty lives on ur desktop as a tiny
 always-on-top pet u can click to pat (drag across her head to stroke her).
 
 Started by main.py when u pick "Desktop" (or run run_desktop.bat).
@@ -179,7 +179,7 @@ class DesktopApp(core.App):
                 self.state.cursor = None
                 self.state.hover_box = None
                 self.t["logo"] = 0
-            elif kind == "scroll" and self.state.tab in ("Chat", "Global"):
+            elif kind == "scroll" and self.state.tab == "Global":
                 self.scroll(ev[1] * 60)
             elif kind == "kb":
                 self.safe("typing", self.stop_typing)

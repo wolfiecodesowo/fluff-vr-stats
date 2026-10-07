@@ -65,7 +65,6 @@ LAYOUT = [
         ("text", "themes", "🎨・themes-and-style"),
         ("text", "boost", "⚡・fps-boost"),
         ("text", "chatbox", "🗨️・chatbox-setup"),
-        ("text", "ai", "🤖・ai-buddy-setup"),
         ("text", "music", "🎵・music-controls"),
         ("text", "avatar", "🐱・avatar-toggles"),
         ("text", "world", "🌍・world-tracker"),
@@ -144,7 +143,7 @@ POSTS = {
         _e("welcome to Fluff VR Stats :3",
            "the cute, furry, **open source** overlay for **SteamVR + VRChat**!\n\n"
            "🐾 stats on ur wrist (fps, frametimes, batteries)\n"
-           "🤖 **Fluff**, an AI buddy you can talk to in VR\n"
+           "🌐 **global chat** with every fluff on PC, desktop + Quest\n"
            "🎵 music controls you tap with your other hand\n"
            "🗨️ MagicChatbox-style stats in the VRChat chatbox\n"
            "🐱 avatar toggles, world info, join alerts\n"
@@ -216,11 +215,9 @@ POSTS = {
            "too! takes a couple minutes.\n\n"
            "**3. (just in case)** if it can't install Python, the python.org page opens. download it and "
            "⚠️ **tick \"Add python.exe to PATH\"**, then run install.bat again.\n\n"
-           "**4. (optional) double-click `setup_ai.bat`**\n"
-           "gives Fluff a brain, free with Groq. see 🤖・ai-buddy-setup\n\n"
-           "**5. double-click `run.bat`**\n"
+           "**4. double-click `run.bat`**\n"
            "start SteamVR first, or it waits for it. you'll hear the startup sound + see the intro!\n\n"
-           "**6. look at ur left wrist** 🐾 the HUD fades in. open the SteamVR menu "
+           "**5. look at ur left wrist** 🐾 the HUD fades in. open the SteamVR menu "
            "(menu button) and click the Fluff VR Stats icon at the bottom for the full menu.\n\n"
            "**auto-start:** run `python autostart_with_steamvr.py` once and it starts with SteamVR every time.",
            MINT),
@@ -234,10 +231,11 @@ POSTS = {
            "• **Lil Fluff pet**: sleeps when you're AFK, vibes to music, panics at low fps\n"
            "• join/leave alerts, timer, zoomies meter, clock, weather\n"
            "• it **fades in when you look at it**, so it's never in the way", PINK),
-        _e("✨ features: the SteamVR menu (12 tabs)",
+        _e("✨ features: the SteamVR menu",
+           "🏠 **Home**: ur stats, quick actions, kitty + global chat at a glance\n"
            "📊 **Stats**: everything about your performance\n"
            "⚡ **Boost**: safe one-tap FPS tweaks, all undoable\n"
-           "💬 **Chat**: talk to Fluff, your AI buddy\n"
+           "🌐 **Global**: chat with every fluff on PC, desktop, Quest + Discord\n"
            "🎵 **Music**: album art + controls for Spotify, YouTube, anything\n"
            "🗨️ **Chatbox**: MagicChatbox-style stats over your head in VRChat\n"
            "🐱 **Avatar**: your avatar's toggles as buttons\n"
@@ -245,7 +243,8 @@ POSTS = {
            "🖥️ **Screen**: your desktop floating in VR\n"
            "🧩 **Mods**: 30 toggles\n"
            "🎨 **Style**: themes, accents, backgrounds, ears\n"
-           "⌚ **Wrist**: move / tilt / resize the HUD\n"
+           "⌚ **Wrist**: move / tilt / resize the HUD + pick ur wrist buttons\n"
+           "⚙️ **Settings**: start mode, updates, sounds, units...\n"
            "💖 **<3**: a thank-you page with a floof you can pat", PURPLE),
         _e("✨ features: the fluffy stuff",
            "• hand-drawn fur panels with ears + a tail\n"
@@ -261,9 +260,9 @@ POSTS = {
                ("⚡ Performance", "FPS counter · Frametime graph · GPU/CPU ms · Reprojection % · "
                                  "PC usage · GPU temp + VRAM · Ping · Low FPS alert · Low battery alert", False),
                ("⌚ Wrist", "Clock · Batteries · Session timer · Now playing · Music controls · "
-                           "AI reply on wrist · Look to show", False),
+                           "Look to show · Lil Kitty · Wrist buttons", False),
                ("🌍 VRChat", "World info · Join/leave alerts · Avatar toggles · Chatbox stats · "
-                            "AI to chatbox · Typing bubble · Mute indicator · Headpat counter · AFK detection", False),
+                            "Mute indicator · Still-muted nudge · AFK detection · Avatar height", False),
                ("🎉 Fun", "Lil Fluff pet · Timer/stopwatch · Zoomies meter · Weather · "
                          "Break reminder · Discord status · Hydration buddy · VR milestones · Zoom lens", False),
            ]),
@@ -301,17 +300,6 @@ POSTS = {
            "add your own status messages and they rotate automatically. there's a live preview!\n\n"
            "⚠️ close MagicChatbox while using this, or they fight over the chatbox.", MINT),
     ],
-    "ai": [
-        _e("🤖 give Fluff a brain (free)",
-           "**1.** make a free account at **console.groq.com**\n"
-           "**2.** go to **API Keys** → **Create API Key** → copy it\n"
-           "**3.** double-click **`setup_ai.bat`** in the app folder\n"
-           "**4.** pick **Groq**, paste your key, done!\n\n"
-           "now open the **💬 Chat** tab and say hi. turn on **AI to chatbox** in Mods "
-           "and other players can see Fluff's replies :3\n\n"
-           "🔒 your key stays on your PC in `config.json`. **never share it**, not even with staff.",
-           PURPLE),
-    ],
     "discordlink": [
         _e("💜 Discord status",
            "while Fluff VR Stats is running, your Discord profile shows:\n\n"
@@ -336,7 +324,8 @@ POSTS = {
             ("where's the menu?",
              "open the SteamVR dashboard (menu button) → the Fluff VR Stats icon at the bottom.", False),
             ("how do I click stuff?", "point your laser and pull the trigger, like any SteamVR menu.", False),
-            ("Fluff says I need an API key", "see 🤖・ai-buddy-setup, it's free with Groq.", False),
+            ("where did the AI buddy go?", "we took it out in v0.3.0. lots of people aren't vibing with AI stuff right now, "
+             "so the app is 100% AI-free. everything else still works :3", False),
             ("Mac / Linux?", "Windows only for now.", False),
             ("can I make my own theme or mod?",
              "yes!! it's open source. check the GitHub README, PRs welcome.", False),
@@ -435,7 +424,7 @@ POSTS.update({
     "commands": [
         _e("⌨️ Fluff Bot commands", "type `/` in 💬・main-chat to use them!", PURPLE, fields=[
             ("📦 client", "`/download` `/install` `/features` `/mods` `/themes` `/boost` `/chatbox` "
-                         "`/ai` `/troubleshoot` `/faq` `/version` `/changelog` `/roadmap` `/links`", False),
+                         "`/troubleshoot` `/faq` `/version` `/changelog` `/roadmap` `/links`", False),
             ("🆘 help + feedback", "`/ticket` private help with staff\n`/suggest` share an idea\n"
                                    "`/bug` report a bug", False),
             ("🥽 VR", "`/invr` who's using Fluff VR Stats right now\n`/stats` server stats\n"
@@ -452,7 +441,7 @@ POSTS.update({
                    "Index, Vive, Pico, Bigscreen Beyond, WMR...", False),
             ("Python", "3.10 or newer (free from python.org), tick **Add python.exe to PATH**", False),
             ("optional", "NVIDIA GPU for GPU temp + VRAM · Discord app for Discord status · "
-                         "a free Groq account for the AI buddy", False),
+                         "a Quest or Android phone for the Quest Edition", False),
             ("not supported", "standalone Quest (no PC), Mac, Linux (for now)", False),
         ]),
     ],
@@ -491,8 +480,8 @@ POSTS.update({
            "dashboard, click the **Fluff VR Stats** icon (the floof!).\n\n"
            "point your laser at anything and pull the trigger to click. the laser turns into a "
            "**paw** :3 (change it in 🎨 Style).\n\n"
-           "**the 12 tabs:** 📊 Stats · ⚡ Boost · 💬 Chat · 🎵 Music · 🗨️ Chatbox · 🐱 Avatar · "
-           "🌍 World · 🖥️ Screen · 🧩 Mods · 🎨 Style · ⌚ Wrist · 💖 <3\n\n"
+           "**the tabs:** 🏠 Home · 📊 Stats · ⚡ Boost · 🌐 Global · 🎵 Music · 🗨️ Chatbox · 🐱 Avatar · "
+           "🌍 World · 🖥️ Screen · 🧩 Mods · 🎨 Style · ⌚ Wrist · ⚙️ Settings · 💖 <3\n\n"
            "you can also open it on your desktop through SteamVR's desktop view.", PURPLE),
     ],
     "music": [
@@ -590,7 +579,6 @@ POSTS.update({
 POSTS["features"].append(_e(None, None, PINK, image=RAW + "menu_stats.png"))
 POSTS["boost"].append(_e(None, None, GOLD, image=RAW + "menu_boost.png"))
 POSTS["chatbox"].append(_e(None, None, MINT, image=RAW + "menu_chatbox.png"))
-POSTS["ai"].append(_e(None, None, PURPLE, image=RAW + "menu_chat.png"))
 POSTS["mods"].append(_e(None, None, PURPLE, image=RAW + "menu_mods.png"))
 POSTS["themes"].append(_e(None, None, PINK, image=RAW + "menu_style.png"))
 POSTS["music"].append(_e(None, None, PINK, image=RAW + "menu_music.png"))
@@ -632,10 +620,9 @@ FUN_8BALL = ["yes!! :3", "absolutely", "the floof says yes", "hmm ask again afte
 VIDEO = "https://wolfiecodesowo.github.io/fluff-vr-stats/videos/"
 VIDEOS = [
     ("wrist_hud", "⌚ ur stats on ur wrist", "wrist"),
-    ("menu_tour", "🧭 the 12-tab SteamVR menu", "menu"),
+    ("menu_tour", "🧭 the SteamVR menu", "menu"),
     ("themes", "🎨 24 themes + 7 ear styles", "themes"),
     ("chatbox", "🗨️ chatbox stats over ur head", "chatbox"),
-    ("ai_buddy", "🤖 Fluff, ur AI buddy", "ai"),
     ("fps_boost", "⚡ one-tap FPS boost", "boost"),
     ("discord_status", "💜 Discord status", "discordlink"),
 ]

@@ -11,6 +11,7 @@
 - 🔍 **Zoom on desktop**: F10 or the wrist button opens a round magnifier window. drag it, scroll to resize, right-click to close
 - 🐱 **Quest**: pet Lil Kitty right in the app (she meows + purrs), global chat tab, ear style picker, cleaner Settings
 - 🤖 Fluff Bot links #global-chat with the app both ways
+- 💭 **The AI buddy is gone** (AI chat, AI Look, AI reply on wrist, AI to chatbox, setup_ai.bat). Lately there's been a lot of hate and drama around AI and a lot of people aren't vibing with it, so the app is 100% AI-free for now. Not because we hate AI, we just want everyone to feel comfy. It'll probably blow over, and it might come back as an optional mod. Your old AI key gets cleared out of config.json automatically
 
 ## v0.2.3 + Quest Edition v0.4.4: headpat counter shows up
 - 🐾 PC: the headpat counter is on by default now, so ur count shows on ur wrist (it was only in the chatbox before)

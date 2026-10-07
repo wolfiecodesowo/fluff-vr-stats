@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fluff VR Stats :3</title>
-<meta name="description" content="A cute, furry, open source overlay for SteamVR + VRChat: wrist stats, an AI buddy, music controls, chatbox stats, avatar toggles and FPS boost.">
+<meta name="description" content="A cute, furry, open source overlay for SteamVR + VRChat: wrist stats, global chat, music controls, chatbox stats, avatar toggles and FPS boost.">
 <meta property="og:title" content="Fluff VR Stats :3">
 <meta property="og:description" content="a cute furry overlay for SteamVR + VRChat">
 <meta property="og:image" content="images/banner.png">
@@ -130,7 +130,7 @@
     <video src="trailer.mp4" controls playsinline loop preload="metadata" poster="images/banner.png"></video>
     <div>
       <h2 class="sec-title ink">it's <span class="hl">SO</span> furry</h2>
-      <p>Your stats live on your wrist inside cute hand-drawn panels with ears and a fluffy tail. A whole menu waits in your SteamVR dashboard. Fluff, your AI buddy, is always there to chat.</p>
+      <p>Your stats live on your wrist inside cute hand-drawn panels with ears and a fluffy tail. A whole menu waits in your SteamVR dashboard. Global chat connects you with every fluff on PC, desktop and Quest.</p>
       <p class="hand" style="font-size:24px;color:var(--yellow)">even the error screen is cute. (it never crashes btw)</p>
     </div>
   </section>
@@ -140,7 +140,7 @@
     <div class="grid">
       <div class="card"><span class="ico">📊</span><h3>Wrist stats</h3><p>FPS, frame times, reprojection, batteries and PC load. Fades in when you look.</p></div>
       <div class="card"><span class="ico">⚡</span><h3>FPS Boost</h3><p>One-tap safe PC tweaks for VR. Everything's undoable, no admin needed.</p></div>
-      <div class="card"><span class="ico">💬</span><h3>AI buddy</h3><p>Chat with Fluff in VR. Works free with Groq.</p></div>
+      <div class="card"><span class="ico">🌐</span><h3>Global chat</h3><p>Talk to everyone on Fluff VR Stats, right from your wrist.</p></div>
       <div class="card"><span class="ico">🎵</span><h3>Music controls</h3><p>Album art + controls, plus buttons on your wrist that you tap with your other hand.</p></div>
       <div class="card"><span class="ico">🗨️</span><h3>Chatbox stats</h3><p>MagicChatbox-style status, song, time, world & more in the VRChat chatbox.</p></div>
       <div class="card"><span class="ico">🐱</span><h3>Avatar toggles</h3><p>Your avatar's toggles as buttons, read automatically from VRChat.</p></div>
@@ -168,7 +168,6 @@
       <li>Install <b>Python 3.10+</b> from <a href="https://www.python.org/downloads/">python.org</a> and tick <b>"Add python.exe to PATH"</b>.</li>
       <li>Download the <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest">latest release</a> and unzip it anywhere.</li>
       <li>Double-click <code>install.bat</code>.</li>
-      <li><i>(optional)</i> Double-click <code>setup_ai.bat</code> to connect Fluff's AI. Groq is free.</li>
       <li>Double-click <code>run.bat</code>, put your headset on, and look at your wrist :3</li>
     </ol>
     <p class="note">In VRChat, turn on OSC (Action Menu → Options → OSC → Enabled) for the chatbox, avatar toggles and headpats.</p>
@@ -190,8 +189,8 @@
     <h2 class="sec-title ink">questions</h2>
     <details><summary>Is it safe with VRChat / EAC?</summary><p>Yes. It's a separate SteamVR overlay app. It never touches VRChat's files or memory and talks to VRChat only through official OSC.</p></details>
     <details><summary>Does it lower my FPS?</summary><p>Barely. The wrist HUD redraws twice a second, the menu only redraws while it's open, and it runs at low CPU priority. The Boost tab can raise your FPS.</p></details>
-    <details><summary>Is the AI free?</summary><p>With Groq, yes: free with no card needed. You can also use Claude, OpenAI, or a local model.</p></details>
-    <details><summary>What does it send online?</summary><p>Only your AI chats, sent to the provider you choose, plus weather/ping if you turn them on. World and player info is read from VRChat's own log file on your PC.</p></details>
+    <details><summary>Where did the AI buddy go?</summary><p>We took it out in v0.3.0. Lately there's been a lot of hate and drama around AI and a lot of people aren't vibing with it, so the app is 100% AI-free for now. Not because we hate AI, we just want everyone to feel comfy. It might come back as an optional mod once things calm down :3</p></details>
+    <details><summary>What does it send online?</summary><p>Only global chat messages (if you leave that mod on), plus weather/ping if you turn them on. World and player info is read from VRChat's own log file on your PC.</p></details>
     <details><summary>Can I make my own themes / mods?</summary><p>Yes! It's open source. Add a theme with one line in <code>themes.py</code>, and pull requests are welcome.</p></details>
   </section>
 

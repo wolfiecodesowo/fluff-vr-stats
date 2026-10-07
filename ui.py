@@ -295,7 +295,6 @@ def fluff_shape(w, h, radius, fill, ink, inner, ears_kind, ear_size, tufts, seed
     m = Image.new("L", (W, H), 0)
     md = ImageDraw.Draw(m)
     md.rounded_rectangle([X0, Y0, X1, Y1], radius=radius * SS, fill=255)
-    tk = {"theme": None}
     if ears_kind != "none":
         ears(md, X0, X1, Y0, ear_size * SS, {"ears": ears_kind, "bg": (255, 255, 255, 255), "inner_ear": 255},
              outer=255, inner=None)
@@ -670,7 +669,7 @@ def layout_chips(chips, width, f_lab, f_val, gap=8):
 # buttons u can put on ur wrist (tap them with ur other hand in VR, click them on desktop)
 WRIST_ACTIONS = {
     "zoom": ("zoom", "Zoom lens"), "chatbox": ("chatbox", "Chatbox on/off"), "timer": ("timer", "5 min timer"),
-    "look": ("look", "AI Look"), "kitty": ("kitty", "Lil Kitty"), "gchat": ("global", "Global chat"),
+    "kitty": ("kitty", "Lil Kitty"), "gchat": ("global", "Global chat"),
     "menu": ("menu", "Open menu"), "screen": ("screen", "Desktop in VR"), "pat": ("pat", "Pat Fluff"),
 }
 
@@ -679,7 +678,7 @@ def action_on(state, cmd):
     cfg, mods = state.cfg, state.cfg["modules"]
     return {"zoom": bool(cfg.get("zoom", {}).get("enabled")), "chatbox": bool(mods.get("chatbox_status")),
             "timer": bool(state.timer.get("running")), "kitty": bool(mods.get("wrist_kitty", True)),
-            "screen": bool(cfg.get("screen", {}).get("enabled")), "look": bool(getattr(state, "looking", False))}.get(cmd, False)
+            "screen": bool(cfg.get("screen", {}).get("enabled"))}.get(cmd, False)
 
 
 def action_icon(d, kind, cx, cy, r, col, bg=None):
@@ -702,11 +701,6 @@ def action_icon(d, kind, cx, cy, r, col, bg=None):
         d.rounded_rectangle([cx - r * 0.22, cy - r * 1.0, cx + r * 0.22, cy - r * 0.72], radius=2, fill=col)
         d.line([(cx, cy + r * 0.2), (cx, cy - r * 0.3)], fill=col, width=lw)
         d.line([(cx, cy + r * 0.2), (cx + r * 0.35, cy + r * 0.2)], fill=col, width=lw)
-    elif kind == "look":
-        d.chord([cx - r, cy - r * 0.75, cx + r, cy + r * 0.75], 200, 340, outline=col, width=lw)
-        d.chord([cx - r, cy - r * 0.75, cx + r, cy + r * 0.75], 20, 160, outline=col, width=lw)
-        d.ellipse([cx - r * 0.33, cy - r * 0.33, cx + r * 0.33, cy + r * 0.33], fill=col)
-        sparkle(d, cx + r * 0.75, cy - r * 0.7, r * 0.25, col)
     elif kind in ("kitty", "pat"):
         d.polygon([(cx - r * 0.85, cy - r * 0.1), (cx - r * 0.75, cy - r * 0.95), (cx - r * 0.2, cy - r * 0.55)], fill=col)
         d.polygon([(cx + r * 0.85, cy - r * 0.1), (cx + r * 0.75, cy - r * 0.95), (cx + r * 0.2, cy - r * 0.55)], fill=col)
@@ -732,10 +726,6 @@ def action_icon(d, kind, cx, cy, r, col, bg=None):
     elif kind == "boost":
         d.polygon([(cx + r * 0.2, cy - r), (cx - r * 0.6, cy + r * 0.15), (cx - r * 0.05, cy + r * 0.15), (cx - r * 0.3, cy + r),
                    (cx + r * 0.6, cy - r * 0.2), (cx + r * 0.05, cy - r * 0.2)], fill=col)
-    elif kind == "talk":
-        d.rounded_rectangle([cx - r, cy - r * 0.75, cx + r, cy + r * 0.45], radius=r * 0.4, outline=col, width=lw)
-        d.polygon([(cx + r * 0.05, cy + r * 0.4), (cx + r * 0.45, cy + r * 0.4), (cx + r * 0.6, cy + r * 0.9)], fill=col)
-        paw(d, cx, cy - r * 0.15, r * 0.3, col)
     else:
         heart(d, cx, cy, r * 0.7, col)
 
@@ -764,7 +754,7 @@ def wrist_button(d, box, kind, label, t, on=False, pressed=False, tint=None, bad
         d.text((bx, by), str(min(badge, 9)) + ("+" if badge > 9 else ""), font=font("body", 12), fill=(255, 255, 255), anchor="mm")
 
 
-SHORT_LABEL = {"zoom": "zoom", "chatbox": "chatbox", "timer": "timer", "look": "AI look", "kitty": "kitty",
+SHORT_LABEL = {"zoom": "zoom", "chatbox": "chatbox", "timer": "timer", "kitty": "kitty",
                "gchat": "global", "menu": "menu", "screen": "screen", "pat": "pat"}
 
 
@@ -814,8 +804,6 @@ def render_hud(state):
     acts = [a for a in cfg.get("wrist_actions", []) if a in WRIST_ACTIONS][:6]
     if mods.get("wrist_buttons", True) and acts:
         rows.append(("buttons", 86, acts))
-    if mods["last_ai_reply"] and state.last_reply():
-        rows.append(("ai", 74))
     if not rows:
         rows.append(("empty", 60))
     h = HUD_EAR + 26 + sum(r[1] for r in rows) + 30
@@ -1008,16 +996,6 @@ def render_hud(state):
                 wrist_button(d, bb, WRIST_ACTIONS[cmd][0], SHORT_LABEL.get(cmd, cmd), t, on=action_on(state, cmd),
                              pressed=pressed == cmd, tint=tint, badge=unread if cmd == "gchat" else 0, small=n > 5)
                 state.hud_hits.append(([bb[0] - 3, bb[1] - 3, bb[2] + 3, bb[3] + 5], cmd))
-        elif kind == "ai":
-            panel(d, [x, y, R, y + 64], 16, t)
-            paw(d, x + 22, y + 34, 9, t["primary"])
-            f = font("body", 16)
-            lines = wrap(state.last_reply(), f, R - x - 56)
-            if len(lines) > 2:
-                lines = lines[:2]
-                lines[1] = ellipsize(lines[1] + " …", f, R - x - 56)
-            for i, ln in enumerate(lines):
-                d.text((x + 42, y + 12 + i * 22), ln, font=f, fill=t["text"])
         elif kind == "empty":
             d.text((HUD_W / 2, y + 26), "all mods off ~ open the dashboard!",
                    font=font("body", 18), fill=t["sub"], anchor="mm")
@@ -1057,7 +1035,7 @@ def add_logo(base, frame_idx, slots=()):
         except Exception:
             pass
     return img
-TABS = ["Home", "Stats", "Boost", "Chat", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
+TABS = ["Home", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
         "Wrist", "Settings", "<3"]
 
 
@@ -1083,7 +1061,6 @@ MOD_INFO = {
         ("session_timer", "Session timer", "How long you've been in VR"),
         ("now_playing", "Now playing", "Song from Spotify / media"),
         ("music_controls", "Music controls", "Tap ur wrist w/ ur other hand"),
-        ("last_ai_reply", "AI reply on wrist", "Show Fluff's last message"),
         ("look_to_show", "Look to show", "HUD fades in when you look"),
         ("wrist_kitty", "Lil Kitty", "Pettable cat on ur other wrist"),
         ("wrist_buttons", "Wrist buttons", "Zoom, chatbox, timer... tap to use"),
@@ -1093,13 +1070,10 @@ MOD_INFO = {
         ("join_alerts", "Join / leave alerts", "\"Kitsu joined\" on ur wrist"),
         ("avatar_toggles", "Avatar toggles", "Toggle ur avatar (Avatar tab)"),
         ("chatbox_status", "Chatbox stats", "Status, song, time... (Chatbox tab)"),
-        ("ai_to_chatbox", "AI to chatbox", "Others see Fluff's replies"),
-        ("typing_indicator", "Typing bubble", "Shows ... while you type to Fluff"),
         ("mute_indicator", "Mute indicator", "Mic muted/live on your wrist"),
         ("mute_reminder", "Still-muted nudge", "Reminds u after 10 min muted"),
         ("afk_detect", "AFK detection", "Knows when u walk away"),
         ("avatar_height", "Avatar height", "How tall ur avi is (m + ft)"),
-        ("ai_look", "AI Look", "AI reads ur screen: who's around u"),
     ],
     "Counters": [
         ("headpat_counter", "Headpat counter", "Auto-finds ur avatar's pat contact"),
@@ -1235,7 +1209,7 @@ def render_dashboard(state):
     cx3 = tx0 + ft.getlength("Fluff VR Stats") + 8
     d.text((cx3, top + 46), ":3", font=ft, fill=t["primary"], anchor="ls")
     doodle_heart(d, cx3 + ft.getlength(":3") + 14, top + 18, 6, t["primary"], t["line"])
-    d.text((tx0 + 2, top + 72), "stats + mods + ur fluffy ai buddy", font=font("body2", 15),
+    d.text((tx0 + 2, top + 72), "stats + mods + cozy vibes for VRChat", font=font("body2", 15),
            fill=t["sub"], anchor="ls")
 
     _header_status(d, hit, state, t, top)
@@ -1244,7 +1218,7 @@ def render_dashboard(state):
     body = [40, top + 96, DASH_W - 40, DASH_H - 98]
     state.anim_slots = []
     {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings,
-     "Stats": _tab_stats, "Chat": _tab_chat,
+     "Stats": _tab_stats,
      "Screen": _tab_screen, "Mods": _tab_mods, "Style": _tab_style,
      "Music": _tab_music, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
      "Boost": _tab_boost,
@@ -1331,8 +1305,8 @@ def _header_status(d, hit, state, t, top):
 
 def _quick_actions(state):
     acts = [("zoom", "zoom", "hud_cmd", "zoom"), ("chatbox", "chatbox", "hud_cmd", "chatbox"),
-            ("timer", "5m timer", "hud_cmd", "timer"), ("look", "AI look", "ai_look", None),
-            ("kitty", "kitty", "hud_cmd", "kitty"), ("talk", "talk", "type", None)]
+            ("timer", "5m timer", "hud_cmd", "timer"), ("kitty", "kitty", "hud_cmd", "kitty"),
+            ("global", "global chat", "tab", "Global")]
     if not state.desktop:
         acts.insert(5, ("screen", "desktop", "hud_cmd", "screen"))
     else:
@@ -1601,8 +1575,6 @@ def _tab_settings(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     cfg = state.cfg
     g = cfg.get("gchat", {})
-    ai = cfg.get("ai", {})
-    ai_ok = bool(ai.get("api_key")) or ai.get("provider") == "ollama"
     rows_l = [
         ("Start in", {"ask": "ask me", "vr": "VR", "desktop": "desktop"}.get(cfg.get("launch_mode", "ask"), "ask me"),
          ("set", "launch_mode", "__cycle__", ["ask", "vr", "desktop"]), None, "VR or desktop when u open the app"),
@@ -1623,8 +1595,7 @@ def _tab_settings(d, hit, box, state, t):
          ("gchat_unmute_all",) if g.get("muted") else (None,), None, None),
         ("Weather units", "°" + cfg.get("weather_units", "F"), ("set", "weather_units", "__cycle__", ["F", "C"]), None, None),
         ("Clock", "24h" if cfg["chatbox"].get("time_24h") else "12h", ("cb_set", "time_24h", not cfg["chatbox"].get("time_24h")), None, None),
-        ("AI buddy", "key set ✓" if ai_ok else "no key yet", (None,), None,
-         "run setup_ai.bat to add/change ur key" if not ai_ok else f"{ai.get('provider', '')} · {ai.get('model', '')}"[:40]),
+        ("Wrist buttons", f"{len(cfg.get('wrist_actions', []))} picked", ("tab", "Wrist"), None, "choose them in the Wrist tab"),
         ("VRChat OSC", f"send {cfg.get('osc_port', 9000)} · listen {cfg.get('osc_listen_port', 9001)}", (None,), None, None),
         ("Version", getattr(state, "version", "") or "dev", ("open_link", "https://github.com/wolfiecodesowo/fluff-vr-stats/releases"),
          None, "click to see what's new"),
@@ -1649,10 +1620,6 @@ def tab_icon(d, name, cx, cy, col, t):
         for i, hgt in enumerate((8, 14, 20)):
             x = cx - 9 + i * 7
             d.rounded_rectangle([x, cy + 9 - hgt, x + 4, cy + 9], radius=2, fill=col)
-    elif name == "Chat":
-        d.rounded_rectangle([cx - 11, cy - 9, cx + 11, cy + 6], radius=6, outline=col, width=lw)
-        d.polygon([(cx - 6, cy + 5), (cx - 1, cy + 5), (cx - 8, cy + 11)], fill=col)
-        paw(d, cx, cy - 1, 2.6, col)
     elif name == "Music":
         note_icon(d, cx - 2, cy + 1, 6, col)
     elif name == "Chatbox":
@@ -2259,81 +2226,6 @@ def _tab_stats(d, hit, box, state, t):
         d.rectangle([cx + 4, ry + 6, cx + 4 + 22 * pct / 100, ry + 14], fill=colr)
         d.text((cx + 40, ry + 10), f"{lab} {pct:.0f}%" + (" +" if chg else ""),
                font=font("body", 17), fill=t["text"], anchor="lm")
-
-
-def _tab_chat(d, hit, box, state, t):
-    x0, y0, x1, y1 = box
-    area = [x0, y0, x1, y1 - 70]
-    panel(d, area, 22, t)
-    f = font("body", 20)
-    maxw = (x1 - x0) * 0.68
-    # build bubbles bottom-up
-    bubbles = []
-    for role, text in state.chat:
-        lines = wrap(text, f, maxw - 36)
-        bubbles.append((role, lines, 26 * len(lines) + 24))
-    if state.thinking:
-        bubbles.append(("assistant", ["typing…"], 50))
-    if not bubbles:
-        paw(d, (x0 + x1) / 2, (y0 + y1 - 70) / 2 - 10, 26, t["primary"])
-        d.text(((x0 + x1) / 2, (y0 + y1 - 70) / 2 + 40), "say hi to Fluff!",
-               font=font("head", 24), fill=t["sub"], anchor="mm")
-    else:
-        yb = area[3] - 16 + state.chat_scroll
-        clip = Image.new("RGBA", d._image.size, (0, 0, 0, 0))
-        cd = ImageDraw.Draw(clip)
-        for role, lines, bh in reversed(bubbles):
-            bw = max(f.getlength(l) for l in lines) + 36
-            if role == "user":
-                bx1 = area[2] - 18
-                bx0 = bx1 - bw
-                fill, col = t["primary"], t["on_primary"]
-            else:
-                bx0 = area[0] + 52
-                bx1 = bx0 + bw
-                fill, col = t["panel2"], t["text"]
-            by0 = yb - bh
-            if by0 < area[3] and yb > area[1]:
-                cd.rounded_rectangle([bx0, by0, bx1, yb], radius=18, fill=fill)
-                if role != "user":
-                    paw(cd, area[0] + 30, yb - 18, 9, t["primary"])
-                for i, ln in enumerate(lines):
-                    cd.text((bx0 + 18, by0 + 12 + i * 26), ln, font=f, fill=col)
-            yb = by0 - 12
-        # clip to chat area
-        m = Image.new("L", clip.size, 0)
-        ImageDraw.Draw(m).rounded_rectangle(area, radius=22, fill=255)
-        a = Image.composite(clip.getchannel("A"), Image.new("L", clip.size, 0), m)
-        clip.putalpha(a)
-        d._image.alpha_composite(clip)
-        state.chat_content_top = yb  # for scroll clamping
-
-    # scroll arrows
-    ax = x1 - 34
-    for dirn, ay in ((1, y0 + 14), (-1, y1 - 120)):
-        bxx = [ax - 16, ay, ax + 16, ay + 32]
-        d.ellipse(bxx, fill=t["panel2"])
-        cx, cy = ax, ay + 16
-        if dirn == 1:
-            d.polygon([(cx - 7, cy + 4), (cx + 7, cy + 4), (cx, cy - 5)], fill=t["text"])
-        else:
-            d.polygon([(cx - 7, cy - 4), (cx + 7, cy - 4), (cx, cy + 5)], fill=t["text"])
-        hit.add(bxx, "scroll", dirn)
-
-    by = y1 - 54
-    if state.cfg["modules"].get("ai_look", True):
-        button(d, hit, [x0, by, x0 + 400, by + 54], "Type a message…", t, "type", primary=True, fsize=22)
-        button(d, hit, [x0 + 410, by, x0 + 560, by + 54], "who's here?", t, "ai_look", fsize=18)
-    else:
-        button(d, hit, [x0, by, x0 + 560, by + 54], "Type a message…", t, "type", primary=True, fsize=22)
-    button(d, hit, [x0 + 576, by, x0 + 700, by + 54], "Clear", t, "clear_chat")
-    on = state.cfg["modules"]["ai_to_chatbox"]
-    d.text((x0 + 726, by + 27), "to chatbox", font=font("body2", 18), fill=t["sub"], anchor="lm")
-    switch(d, x1 - 70, by + 12, on, t)
-    hit.add([x0 + 716, by, x1, by + 54], "toggle", "ai_to_chatbox")
-    if state.ai_error:
-        d.text((x0 + 10, by - 16), ellipsize(state.ai_error, font("body2", 16), x1 - x0 - 20),
-               font=font("body2", 16), fill=t["bad"], anchor="ls")
 
 
 def _tab_mods(d, hit, box, state, t):
