@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluff VR Stats :3 Quest Edition (early beta)</title>
+<meta name="description" content="Fluff VR Stats for standalone Quest: chatbox stats, headset battery, song info and avatar toggles. Early beta.">
+<link rel="icon" href="../images/logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#22162e; --panel:#382650; --panel2:#483262; --ink:#180e22; --text:#fff5fc; --sub:#d8c0e8;
+          --pink:#ff96ca; --yellow:#ffe246; --mint:#96ecb0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:600 19px/1.6 "Nunito", system-ui, sans-serif; }
+  .stripe { height:8px; background:linear-gradient(90deg,#ff7aa8,#ffb36b,#ffe36e,#8ee08a,#6ec8ff,#b58cff); }
+  main { max-width:820px; margin:0 auto; padding:34px 20px 70px; }
+  h1, h2 { font-family:"Lilita One", sans-serif; font-weight:400; margin:0; letter-spacing:.5px; }
+  h1 { font-size:clamp(40px,7vw,64px); line-height:1; }
+  h1 span { color:var(--pink); }
+  h2 { font-size:30px; margin:6px 0 10px; }
+  .hand { font-family:"Gochi Hand", cursive; color:var(--sub); font-size:24px; }
+  .top { display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+  .top img { width:130px; height:auto; }
+  .beta { display:inline-block; background:var(--yellow); color:var(--ink); font-family:"Lilita One"; font-size:20px;
+          padding:4px 16px; border-radius:999px; border:3px solid var(--ink); transform:rotate(-3deg); margin-top:8px; }
+  .card { background:var(--panel); border:3px solid var(--ink); border-radius:26px; padding:20px 24px; margin-top:22px;
+          box-shadow:6px 6px 0 var(--ink); }
+  .btn { display:block; text-align:center; background:var(--pink); color:var(--ink); text-decoration:none;
+         font-family:"Lilita One"; font-size:30px; padding:20px; border-radius:22px; border:4px solid var(--ink);
+         box-shadow:6px 6px 0 var(--ink); margin:26px 0 8px; }
+  .btn:active { transform:translate(4px,4px); box-shadow:2px 2px 0 var(--ink); }
+  .small { color:var(--sub); font-size:16px; text-align:center; }
+  ol { padding-left:26px; margin:6px 0; } li { margin:8px 0; }
+  b { color:var(--text); } .sub { color:var(--sub); }
+  .warn { border-left:6px solid var(--yellow); padding:6px 0 6px 14px; color:var(--sub); }
+  ul.feat { list-style:none; padding:0; margin:6px 0; } ul.feat li::before { content:"🐾 "; }
+  a { color:var(--pink); }
+</style>
+</head>
+<body>
+<div class="stripe"></div>
+<main>
+  <div class="top">
+    <img src="../images/logo.png" alt="Fluff VR Stats logo">
+    <div>
+      <h1>Fluff VR Stats <span>:3</span><br>Quest Edition</h1>
+      <div class="beta">🧪 EARLY BETA</div>
+    </div>
+  </div>
+
+  <a class="btn" href="FluffVRStats-Quest.apk" download>⬇ Download for Quest (.apk)</a>
+  <div class="small">v0.1.0 beta · 2 MB · free + open source</div>
+
+  <div class="card">
+    <h2>🧪 heads up: it's an early beta!</h2>
+    <p class="sub">this is the very first Quest version. it's small, it might be buggy, and more mods are coming.
+      standalone Quest can't draw stuff on top of VRChat, so there's no wrist HUD here. it runs next to VRChat and
+      talks to it over OSC. found a bug? tell us in the Discord 💜</p>
+    <ul class="feat">
+      <li><b>chatbox stats</b>: status messages, time, headset battery, time in VR, song + progress bar</li>
+      <li><b>avatar toggles</b>: on/off, numbers and sliders for ur avatar</li>
+      <li><b>music</b>: song info + play / pause / skip</li>
+      <li><b>say something</b>: type into the chatbox with the typing bubble</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>💻 how to install (easiest, with a PC)</h2>
+    <ol>
+      <li>turn on <b>Developer Mode</b> for ur Quest in the <b>Meta Horizon</b> app on ur phone (Devices → ur Quest → Headset settings → Developer mode)</li>
+      <li>install <b>SideQuest</b> on ur PC from <b>sidequestvr.com</b> and plug in ur Quest with a USB cable</li>
+      <li>put on the headset and tap <b>Allow</b> on the USB debugging pop-up</li>
+      <li>download the APK above on ur PC, then drag it onto the SideQuest window</li>
+      <li>on the Quest: <b>Library → filter → Unknown Sources → Fluff VR Stats :3</b></li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>🥽 downloading on the Quest itself?</h2>
+    <p class="sub">tapping download in the Quest browser saves the APK to ur Downloads, but the Quest can't install
+      APKs by itself. u still need SideQuest on a PC (steps above), or an ADB app on an Android phone
+      (like Bugjaeger) to install it.</p>
+  </div>
+
+  <div class="card">
+    <h2>▶ first time setup</h2>
+    <ol>
+      <li>open <b>Fluff VR Stats :3</b> and tap <b>start chatbox</b></li>
+      <li>open VRChat and turn on OSC: <b>Action Menu → Options → OSC → Enabled</b></li>
+      <li>(optional) Music tab → <b>allow song info</b> to show ur song</li>
+    </ol>
+    <p class="warn">if the chatbox stops when VRChat opens, let us know in the Discord. that's the #1 thing we're testing in this beta!</p>
+  </div>
+
+  <p class="small" style="margin-top:30px">
+    <a href="../">← back to Fluff VR Stats</a> ·
+    <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/tree/main/quest">source code</a> ·
+    <a href="../terms.html">terms</a> · <a href="../privacy.html">privacy</a>
+  </p>
+</main>
+</body>
+</html>

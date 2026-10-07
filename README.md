@@ -8,13 +8,23 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest"><b>⬇ Download</b></a> ·
+  <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest"><b>⬇ Download (PC)</b></a> ·
+  <a href="https://wolfiecodesowo.github.io/fluff-vr-stats/quest/"><b>🥽 Quest (beta)</b></a> ·
   <a href="https://wolfiecodesowo.github.io/fluff-vr-stats/">Website</a> ·
   <a href="docs/trailer.mp4">Trailer</a> ·
   <a href="https://github.com/wolfiecodesowo/fluff-vr-stats/issues">Report a bug</a>
 </p>
 
 ---
+
+> ### 🥽 Quest Edition: early beta 🧪
+> Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles).
+> It's an **early beta**: small, maybe buggy, more mods coming.
+>
+> **⬇ [Download FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)** · install steps: **[wolfiecodesowo.github.io/fluff-vr-stats/quest](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/)**
+>
+> **How to install:** turn on Developer Mode (Meta Horizon phone app) → install [SideQuest](https://sidequestvr.com) on your PC → plug in your Quest → drag the APK onto SideQuest → open it from **Library → Unknown Sources**.
+
 
 Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRChat's files**: no mods, no injection, so it's safe with EAC. Everything shows up inside SteamVR: a fluffy HUD on your wrist and a full menu in your SteamVR dashboard.
 
@@ -82,7 +92,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
 
 ## 🥽 Quest (standalone)
-There's an early **Quest Edition** in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info and avatar toggles over OSC.
+There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info and avatar toggles over OSC.
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
 
