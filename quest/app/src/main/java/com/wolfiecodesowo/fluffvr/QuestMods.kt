@@ -45,7 +45,7 @@ object QuestMods {
                 while (listening) {
                     val pk = DatagramPacket(buf, buf.size)
                     try { sock.receive(pk) } catch (_: java.net.SocketTimeoutException) { continue }
-                    try { handle(ctx, parse(pk.data, pk.length)) } catch (_: Exception) {}
+                    try { for (msg in parseAll(pk.data, 0, pk.length)) handle(ctx, msg) } catch (_: Exception) {}
                 }
             } catch (_: Exception) {
             } finally {
@@ -66,7 +66,24 @@ object QuestMods {
         return s to next
     }
 
-    /** Returns (address, args) for one OSC message (bundles are skipped, VRChat sends plain messages). */
+    /** All messages in a packet (handles OSC bundles too). */
+    fun parseAll(b: ByteArray, off: Int, len: Int): List<Pair<String, List<Any>>> {
+        val end = off + len
+        if (len >= 16 && String(b, off, 7, Charsets.US_ASCII) == "#bundle") {
+            val out = mutableListOf<Pair<String, List<Any>>>()
+            var i = off + 16
+            while (i + 4 <= end) {
+                val n = ByteBuffer.wrap(b, i, 4).int
+                if (n <= 0 || i + 4 + n > end) break
+                out += parseAll(b, i + 4, n)
+                i += 4 + n
+            }
+            return out
+        }
+        val copy = b.copyOfRange(off, end)
+        return listOf(parse(copy, copy.size))
+    }
+
     fun parse(b: ByteArray, len: Int): Pair<String, List<Any>> {
         val (addr, p1) = readString(b, 0, len)
         if (p1 >= len) return addr to emptyList()
@@ -85,23 +102,115 @@ object QuestMods {
         return addr to args
     }
 
+    // ---- contact detection (headpats + boops): finds the param by name, works with bool/int/float contacts
+    private val PAT_RE = Regex("(head.?pat|headpat|pat(ted|ting|s)?$|^pat|head.?(touch|contact|rub)|pett?ing|^pets?$)", RegexOption.IGNORE_CASE)
+    private val BOOP_RE = Regex("(boop|nose.?(touch|contact|boop))", RegexOption.IGNORE_CASE)
+    private val contact = HashMap<String, Pair<Boolean, Long>>()
+    @Volatile var patParam: String? = null
+    @Volatile var boopParam: String? = null
+    @Volatile var heightM: Double? = null
+    @Volatile var seated = false
+    private var grounded: Boolean? = null
+    private var talkSince = 0L
+    @Volatile var talkMs = 0L
+    private var lastVel = 0f
+    private var lastVelAt = 0L
+    @Volatile var mutedSince = 0L
+
+    private fun names(v: String) = v.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() && it != "auto" }.toSet()
+    private fun isContact(name: String, cfg: String, rx: Regex) = name.lowercase() in names(cfg) || rx.containsMatchIn(name)
+    private fun contactOn(v: Any, was: Boolean) = when (v) {
+        is Boolean -> v; is Int -> v > 0; is Float -> if (was) v > 0.2f else v > 0.5f; else -> false
+    }
+
+    fun talkSeconds(now: Long = System.currentTimeMillis()) = (talkMs + if (talkSince > 0) now - talkSince else 0L) / 1000
+
     private fun handle(ctx: Context, msg: Pair<String, List<Any>>) {
         val (addr, args) = msg
         oscSeen = System.currentTimeMillis()
+        val now = oscSeen
         val v = args.firstOrNull() ?: return
         if (addr == "/avatar/change") {
-            avatarId = v.toString(); params.clear(); return
+            avatarId = v.toString(); params.clear(); contact.clear(); grounded = null
+            patParam = null; boopParam = null; heightM = null; return
         }
         if (!addr.startsWith("/avatar/parameters/")) return
         val name = addr.removePrefix("/avatar/parameters/")
         params[name] = v
-        if (name == "MuteSelf") muted = v == true
         val s = Settings(ctx)
-        if (name.equals(s.headpatParam, ignoreCase = true)) {
-            val on = when (v) { is Boolean -> v; is Float -> v > 0.5f; is Int -> v > 0; else -> false }
-            if (on && !patWasOn) s.headpats = s.headpats + 1
-            patWasOn = on
+        when (name) {
+            "MuteSelf" -> { muted = v == true; mutedSince = if (v == true) (if (mutedSince == 0L) now else mutedSince) else 0L; return }
+            "Voice" -> {
+                val talking = (v as? Float ?: 0f) > 0.05f
+                if (talking && talkSince == 0L) talkSince = now
+                else if (!talking && talkSince > 0) { talkMs += now - talkSince; talkSince = 0L }
+                return
+            }
+            "Grounded" -> {
+                val g = v == true
+                if (grounded == true && !g && !seated) s.jumps = s.jumps + 1
+                grounded = g; return
+            }
+            "Seated", "InStation" -> { seated = v == true; return }
+            "EyeHeightAsMeters" -> { (v as? Float)?.let { heightM = Math.round(it * 100) / 100.0 }; return }
+            "VelocityMagnitude" -> {
+                val f = v as? Float ?: return
+                if (lastVelAt > 0) {
+                    val dt = (now - lastVelAt) / 1000f
+                    if (dt in 0f..2f && lastVel in 0.3f..12f && !seated) s.walkedM = s.walkedM + lastVel * dt
+                }
+                lastVel = f; lastVelAt = now; return
+            }
         }
+        for ((kind, rx) in listOf("pat" to PAT_RE, "boop" to BOOP_RE)) {
+            val cfg = if (kind == "pat") s.headpatParam else s.boopParam
+            if (isContact(name, cfg, rx)) {
+                val (was, last) = contact[name] ?: (false to 0L)
+                val on = contactOn(v, was)
+                var l = last
+                if (on && !was && now - last > 800) {
+                    if (kind == "pat") { s.headpats = s.headpats + 1; onPat(ctx, s, now) } else s.boops = s.boops + 1
+                    l = now
+                }
+                contact[name] = on to l
+                if (kind == "pat") patParam = name else boopParam = name
+                return
+            }
+        }
+    }
+
+    private val patTimes = ArrayDeque<Long>()
+    private fun onPat(ctx: Context, s: Settings, now: Long) {
+        while (patTimes.isNotEmpty() && now - patTimes.first() > 30_000) patTimes.removeFirst()
+        patTimes.addLast(now)
+        if (s.line("pat_party") && patTimes.size >= 5) { patTimes.clear(); alert(ctx, "PAT PARTY!! 5 pats in 30s 🎉") }
+    }
+
+    // ---- alerts: shown in the app, as a Quest notification, and on ur phone remote
+    @Volatile var alertText = ""
+    @Volatile var alertAt = 0L
+    fun alert(ctx: Context, text: String) {
+        alertText = text; alertAt = System.currentTimeMillis()
+        try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(android.app.NotificationChannel("alerts", "Fluff alerts", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+            nm.notify(2, android.app.Notification.Builder(ctx, "alerts").setContentTitle("Fluff VR Stats :3")
+                .setContentText(text).setSmallIcon(R.mipmap.ic_launcher).setAutoCancel(true).build())
+        } catch (_: Exception) {}
+    }
+
+    // ---- battery time left (from how fast it's been draining this session)
+    private var battStart: Pair<Long, Int>? = null
+    fun batteryEta(ctx: Context): String? {
+        val (pct, chg) = Chatbox.battery(ctx) ?: return null
+        val now = System.currentTimeMillis()
+        val st = battStart
+        if (chg || st == null || pct > st.second) { battStart = now to pct; return null }
+        val used = st.second - pct
+        val mins = (now - st.first) / 60000.0
+        if (used < 2 || mins < 5) return null
+        val left = (pct / (used / mins)).toLong()
+        return if (left >= 60) "~${left / 60}h ${left % 60}m left" else "~${left}m left"
     }
 
     /** Avatar parameters worth showing as toggles (skips VRChat's built-in ones). */

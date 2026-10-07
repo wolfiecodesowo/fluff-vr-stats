@@ -112,12 +112,46 @@ def parse_osc(data):
     yield addr, args
 
 
+# ------------------------------------------------------- contact detection ---
+import re as _re
+PAT_RE = _re.compile(r"(head.?pat|headpat|pat(ted|ting|s)?$|^pat|head.?(touch|contact|rub)|pett?ing|^pets?$)", _re.I)
+BOOP_RE = _re.compile(r"(boop|nose.?(touch|contact|boop))", _re.I)
+
+
+def contact_on(v, was_on):
+    """bool / int / float contact value -> on? (floats use hysteresis so proximity contacts don't spam)"""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, int):
+        return v > 0
+    if isinstance(v, float):
+        return v > 0.5 if not was_on else v > 0.2
+    return False
+
+
+def wanted_names(cfg_value):
+    """'HeadPat, Pat_Contact' -> {'headpat', 'pat_contact'}; '' or 'auto' -> auto-detect only"""
+    names = {n.strip().lower() for n in str(cfg_value or "").split(",") if n.strip()}
+    names.discard("auto")
+    return names
+
+
+def is_contact(name, cfg_value, regex):
+    n = name.lower()
+    return n in wanted_names(cfg_value) or bool(regex.search(name))
+
+
 # ----------------------------------------------------------------- main ---
 class Extras:
     def __init__(self, cfg):
         self.cfg = cfg
         self.data = {"session_start": time.time(), "headpats": cfg.get("headpats_total", 0),
+                     "boops": cfg.get("boops_total", 0), "jumps": cfg.get("jumps_total", 0),
+                     "talk_s": 0.0, "height_m": None, "pat_param": None, "boop_param": None,
                      "song": None, "ping": None, "weather": None, "muted": None}
+        self._contact = {}          # param name -> (on?, last count time)
+        self._talk_since = None
+        self._grounded = None
         self.notes = {}
         self.changed = True
         self.running = True
@@ -149,8 +183,68 @@ class Extras:
 
     def snapshot(self):
         d = dict(self.data)
+        d["talk_s"] = self.talk_seconds()
         d.update(self.notes)
         return d
+
+    # ---- VRChat parameters -> headpats, boops, yap meter, jumps, height
+    def on_param(self, addr, v, now=None):
+        now = time.time() if now is None else now
+        if addr == "/avatar/change":
+            self._contact.clear(); self._grounded = None
+            self._set("pat_param", None); self._set("boop_param", None); self._set("height_m", None)
+            return
+        if not addr.startswith("/avatar/parameters/"):
+            return
+        name = addr[len("/avatar/parameters/"):]
+        if name == "MuteSelf":
+            self._set("muted", bool(v))
+            if v:
+                self.data.setdefault("muted_since", now)
+            else:
+                self.data.pop("muted_since", None)
+            return
+        if name == "Voice" and isinstance(v, (int, float)):
+            talking = float(v) > 0.05
+            if talking and self._talk_since is None:
+                self._talk_since = now
+            elif not talking and self._talk_since is not None:
+                self.data["talk_s"] = self.data.get("talk_s", 0) + (now - self._talk_since)
+                self._talk_since = None
+                self.changed = True
+            return
+        if name == "Grounded":
+            g = bool(v)
+            if self._grounded is True and g is False and not self.data.get("seated"):
+                self._set("jumps", self.data["jumps"] + 1)
+                self.cfg["jumps_total"] = self.data["jumps"]
+            self._grounded = g
+            return
+        if name in ("Seated", "InStation"):
+            self.data["seated"] = bool(v)
+            return
+        if name == "EyeHeightAsMeters" and isinstance(v, (int, float)):
+            self._set("height_m", round(float(v), 2))
+            return
+        for kind, cfg_key, rx, total in (("headpats", "headpat_param", PAT_RE, "headpats_total"),
+                                         ("boops", "boop_param", BOOP_RE, "boops_total")):
+            if is_contact(name, self.cfg.get(cfg_key, ""), rx):
+                was, last = self._contact.get(name, (False, 0))
+                on = contact_on(v, was)
+                if on and not was and now - last > 0.8:
+                    self._set(kind, self.data[kind] + 1)
+                    self.cfg[total] = self.data[kind]
+                    last = now
+                self._contact[name] = (on, last)
+                self._set(kind[:-1].replace("headpat", "pat") + "_param", name)
+                return
+
+    def talk_seconds(self, now=None):
+        now = time.time() if now is None else now
+        t = self.data.get("talk_s", 0)
+        if self._talk_since is not None:
+            t += now - self._talk_since
+        return t
 
     # ---- threads
     def _music_loop(self):
@@ -216,7 +310,8 @@ class Extras:
         port = self.cfg.get("osc_listen_port", 9001)
         sock = None
         while self.running:
-            want = self.on("mute_indicator") or self.on("headpat_counter") or self.on("avatar_toggles")
+            want = any(self.on(k) for k in ("mute_indicator", "headpat_counter", "avatar_toggles", "boop_counter",
+                                            "yap_meter", "jump_counter", "avatar_height", "mute_reminder"))
             if not want:
                 if sock:
                     sock.close()
@@ -250,7 +345,6 @@ class Extras:
                 continue
             if not self.running:
                 break
-            pat_addr = "/avatar/parameters/" + self.cfg.get("headpat_param", "HeadPat")
             for addr, args in parse_osc(data):
                 if not args:
                     continue
@@ -260,16 +354,6 @@ class Extras:
                         av.on_osc(addr, args)
                     except Exception:
                         pass
-                v = args[0]
-                if addr == "/avatar/parameters/MuteSelf":
-                    self._set("muted", bool(v))
-                elif addr == pat_addr:
-                    on = (v is True) or (isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0.5)
-                    now = time.time()
-                    if on and not self._pat_on and now - self._last_pat > 0.8:
-                        self._last_pat = now
-                        self._set("headpats", self.data["headpats"] + 1)
-                        self.cfg["headpats_total"] = self.data["headpats"]
-                    self._pat_on = on
+                self.on_param(addr, args[0])
         if sock:
             sock.close()

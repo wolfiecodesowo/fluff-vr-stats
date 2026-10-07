@@ -75,11 +75,50 @@ class ChatboxService : Service() {
         }
     }
 
+    private var lastVrTick = System.currentTimeMillis()
+    private var lastEye = System.currentTimeMillis()
+    private var lastPosture = System.currentTimeMillis()
+    private var milestone = 0
+    private var muteWarned = false
+    private var bedNight = ""
+
+    /** VR today + streak, milestones and gentle reminders (runs every 15s) */
+    private fun reminders(s: Settings) {
+        val now = System.currentTimeMillis()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now))
+        if (s.vrDate != today) {
+            val yday = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now - 86_400_000))
+            s.vrStreak = if (s.vrDate == yday) s.vrStreak + 1 else 1
+            s.vrDate = today; s.vrTodayS = 0
+        }
+        s.vrTodayS = s.vrTodayS + (now - lastVrTick) / 1000
+        lastVrTick = now
+        val hrs = ((now - Chatbox.sessionStart) / 3_600_000).toInt()
+        if (s.line("milestones") && hrs > milestone) { milestone = hrs; QuestMods.alert(this, "$hrs hour${if (hrs > 1) "s" else ""} in VR!! 🎉") }
+        if (s.line("eye_break")) { if (now - lastEye > maxOf(5, s.eyeMin) * 60_000L) { lastEye = now; QuestMods.alert(this, "eye break! look at something far away for 20 secs 👀") } } else lastEye = now
+        if (s.line("posture")) { if (now - lastPosture > maxOf(5, s.postureMin) * 60_000L) { lastPosture = now; QuestMods.alert(this, "posture check!! sit up tall + roll ur shoulders :3") } } else lastPosture = now
+        if (s.line("mute_nudge")) {
+            val ms = QuestMods.mutedSince
+            if (QuestMods.muted == true && ms > 0 && now - ms > 10 * 60_000) { if (!muteWarned) { muteWarned = true; QuestMods.alert(this, "ur still muted! (10+ min) just a heads up") } }
+            else muteWarned = false
+        }
+        if (s.line("bedtime")) {
+            val parts = s.bedtime.split(":").mapNotNull { it.toIntOrNull() }
+            if (parts.size >= 2) {
+                val c = java.util.Calendar.getInstance()
+                val since = ((c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE) - (parts[0] * 60 + parts[1])) % 1440 + 1440) % 1440
+                val night = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now - 12 * 3_600_000))
+                if (since < 240 && bedNight != night) { bedNight = night; QuestMods.alert(this, "it's late... bedtime soon? sleepy fluffs need rest 💤") }
+            }
+        }
+    }
+
     /** slower stuff: ping every 15s, weather every 15 min */
     private var lastWeather = 0L
     private val slow = object : Runnable {
         override fun run() {
             val s = Settings(this@ChatboxService)
+            try { reminders(s) } catch (_: Exception) {}
             if (s.line("ping")) QuestMods.measurePing()
             if (s.line("weather") && System.currentTimeMillis() - lastWeather > 15 * 60_000) {
                 lastWeather = System.currentTimeMillis()

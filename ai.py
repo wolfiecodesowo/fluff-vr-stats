@@ -90,6 +90,46 @@ def ask(cfg, history):
         return data["choices"][0]["message"]["content"].strip()
 
 
+VISION_PREFERRED = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct",
+                    "gpt-4o-mini", "gpt-4.1-mini", "gpt-4o", "llava", "llama3.2-vision", "qwen2.5vl"]
+
+
+def ask_image(cfg, prompt, jpeg_b64):
+    """One question about one picture (used by AI Look). Returns the reply text."""
+    ai = cfg["ai"]
+    if ai["provider"] == "anthropic":
+        if not ai.get("api_key"):
+            raise RuntimeError("No API key yet - run setup_ai.bat in the app folder :3")
+        data = _post(
+            (ai.get("base_url") or "https://api.anthropic.com") + "/v1/messages",
+            {"content-type": "application/json", "x-api-key": ai["api_key"], "anthropic-version": "2023-06-01"},
+            {"model": ai.get("vision_model") or ai["model"], "max_tokens": 500,
+             "messages": [{"role": "user", "content": [
+                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": jpeg_b64}},
+                 {"type": "text", "text": prompt}]}]}, timeout=90)
+        return "".join(b.get("text", "") for b in data.get("content", [])).strip()
+    base = (ai.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+    headers = {"content-type": "application/json"}
+    if ai.get("api_key"):
+        headers["authorization"] = "Bearer " + ai["api_key"]
+    model = ai.get("vision_model") or ""
+    if not model:
+        try:
+            ids = list_models(base, headers)
+        except Exception:
+            ids = []
+        model = next((m for p in VISION_PREFERRED for m in ids if p in m), None)
+        if not model:
+            raise RuntimeError("ur AI provider has no picture-reading model. set ai.vision_model in config.json "
+                               "(Groq: meta-llama/llama-4-scout-17b-16e-instruct)")
+    data = _post(base + "/chat/completions", headers, {
+        "model": model, "max_tokens": 500,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + jpeg_b64}}]}]}, timeout=90)
+    return data["choices"][0]["message"]["content"].strip()
+
+
 def ask_async(cfg, history, on_done):
     def run():
         try:

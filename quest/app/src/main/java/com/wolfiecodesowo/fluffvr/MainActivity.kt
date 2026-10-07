@@ -328,6 +328,9 @@ class MainActivity : Activity() {
         QuestMods.wifiBars(this)?.let { sb.append("📶 Wi-Fi ${"▮".repeat(it + 1)}${"▯".repeat(4 - it)}\n") }
         QuestMods.pingMs?.let { sb.append("🏓 ping ${it}ms\n") }
         QuestMods.muted?.let { sb.append(if (it) "🔇 mic muted\n" else "🎙️ mic on\n") }
+        QuestMods.batteryEta(this)?.let { sb.append("⌛ battery $it\n") }
+        if (s.vrTodayS >= 60) sb.append("🥽 ${s.vrTodayS / 3600}h ${s.vrTodayS % 3600 / 60}m in VR today · 🔥 ${s.vrStreak} day streak\n")
+        if (QuestMods.alertText.isNotEmpty() && System.currentTimeMillis() - QuestMods.alertAt < 60_000) sb.append("🔔 ${QuestMods.alertText}\n")
         return sb.toString().trimEnd()
     }
 
@@ -385,25 +388,68 @@ class MainActivity : Activity() {
         chip(wr, "°C", !s.fahrenheit) { s.fahrenheit = false }
         QuestMods.weather?.let { wx.addView(text("now: $it", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) }) }
 
-        val hp = card(body, "🐾 headpats")
-        hp.addView(text("ur avatar needs a contact receiver for headpats. type its parameter name:", 14f, SUB))
+        val hp = card(body, "🐾 headpats + 👃 boops")
+        hp.addView(text(QuestMods.patParam?.let { "✓ watching \"$it\" for headpats" }
+            ?: "auto-finding ur headpat contact… (it needs to be in ur avatar's Expression Parameters. if it never shows up, VRChat → OSC → Reset Config)",
+            14f, if (QuestMods.patParam != null) PINK else SUB))
+        hp.addView(text("only type a name if auto-find picks the wrong one:", 13f, SUB).apply { setPadding(0, dp(6), 0, 0) })
         val pp = edit(s.headpatParam, "HeadPat")
         hp.addView(pp, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         val hr = row(hp)
         hr.setPadding(0, dp(8), 0, 0)
         chip(hr, "save", true) { s.headpatParam = pp.text.toString().trim().ifEmpty { "HeadPat" } }
-        hr.addView(text("  ${s.headpats} pats  ", 16f, TEXT, fHead))
-        chip(hr, "reset", false) { s.headpats = 0 }
+        hr.addView(text("  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  ", 16f, TEXT, fHead))
+        chip(hr, "reset all", false) { s.headpats = 0; s.boops = 0; s.jumps = 0; s.walkedM = 0f }
+        val bp = edit(s.boopParam, "boop parameter (blank = auto)")
+        hp.addView(bp, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        val br2 = row(hp); br2.setPadding(0, dp(6), 0, 0)
+        chip(br2, "save boop param", false) { s.boopParam = bp.text.toString().trim() }
+
+        val cd = card(body, "🎉 countdown")
+        val cdn = edit(s.countdownName, "what's coming? e.g. my birthday")
+        val cdd = edit(s.countdownDate, "date like 2026-12-25")
+        cd.addView(cdn); cd.addView(cdd, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        val cdr = row(cd); cdr.setPadding(0, dp(8), 0, 0)
+        chip(cdr, "save", true) { s.countdownName = cdn.text.toString().trim(); s.countdownDate = cdd.text.toString().trim() }
+        Chatbox.countdownText(s)?.let { cd.addView(text("now: $it", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) }) }
+
+        val cz = card(body, "😌 comfy reminders")
+        cz.addView(text("pops up as a notification (and on ur phone remote)", 13f, SUB))
+        val e1 = row(cz); e1.setPadding(0, dp(6), 0, 0)
+        e1.addView(text("eye break  ", 15f, TEXT, fHead))
+        for (m in listOf(15, 20, 30, 45)) chip(e1, "${m}m", s.eyeMin == m) { s.eyeMin = m }
+        val e2 = row(cz)
+        e2.addView(text("posture  ", 15f, TEXT, fHead))
+        for (m in listOf(20, 30, 45, 60)) chip(e2, "${m}m", s.postureMin == m) { s.postureMin = m }
+        val e3 = row(cz)
+        e3.addView(text("bedtime  ", 15f, TEXT, fHead))
+        for (b in listOf("22:00", "23:00", "00:00", "01:00", "02:00")) chip(e3, b, s.bedtime == b) { s.bedtime = b }
 
         val hy = card(body, "💧 hydration reminder")
         val hyr = row(hy)
         for (m in listOf(15, 30, 45, 60)) chip(hyr, "every ${m}m", s.hydrateMin == m) { s.hydrateMin = m }
     }
 
+    private var lastRemoteAlert = 0L
+    private fun phoneAlert(r: org.json.JSONObject) {
+        val at = r.optLong("alertAt"); val txt = r.optString("alert")
+        if (at <= lastRemoteAlert || txt.isEmpty()) return
+        val first = lastRemoteAlert == 0L
+        lastRemoteAlert = at
+        if (first && System.currentTimeMillis() - at > 60_000) return
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(android.app.NotificationChannel("remote", "Quest alerts", android.app.NotificationManager.IMPORTANCE_HIGH))
+            nm.notify(3, android.app.Notification.Builder(this, "remote").setContentTitle("ur Quest says")
+                .setContentText(txt).setSmallIcon(R.mipmap.ic_launcher).setAutoCancel(true).build())
+        } catch (_: Exception) {}
+    }
+
     private fun remoteText(): String {
         val r = RemoteLink.last
         if (RemoteLink.badCode) return "❌ wrong pair code. check the code on ur Quest's Remote tab"
         if (r == null || !RemoteLink.connected()) return if (RemoteLink.questIp.isEmpty()) "not paired yet" else "⏳ looking for ur Quest at ${RemoteLink.questIp}…"
+        phoneAlert(r)
         val sb = StringBuilder("🟢 connected to ur Quest\n")
         sb.append(if (r.optBoolean("running")) "💜 chatbox is on" else "⏸ chatbox is off (start it on the Quest)").append("\n")
         sb.append(if (r.optBoolean("osc")) "🟢 VRChat OSC talking" else "⚪ VRChat not heard yet").append("\n")
@@ -412,7 +458,8 @@ class MainActivity : Activity() {
         sb.append("\n")
         r.optString("song").takeIf { it.isNotEmpty() }?.let { sb.append("🎵 $it\n") }
         r.optString("timer").takeIf { it.isNotEmpty() }?.let { sb.append("⏳ $it\n") }
-        sb.append("🔢 ${r.optInt("counter")} ${r.optString("counterLabel")}   🐾 ${r.optInt("headpats")} pats")
+        sb.append("🔢 ${r.optInt("counter")} ${r.optString("counterLabel")}   🐾 ${r.optInt("headpats")} pats  👃 ${r.optInt("boops")}  🐇 ${r.optInt("jumps")}")
+        r.optString("alert").takeIf { it.isNotEmpty() && System.currentTimeMillis() - r.optLong("alertAt") < 60_000 }?.let { sb.append("\n🔔 $it") }
         r.optString("preview").takeIf { it.isNotEmpty() }?.let { sb.append("\n\nchatbox:\n$it") }
         return sb.toString()
     }

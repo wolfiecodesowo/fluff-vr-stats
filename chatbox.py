@@ -8,20 +8,30 @@ doesn't fade out). Lines are dropped from the bottom if it gets too long.
 """
 import time
 
-LINE_KEYS = ["status", "afk", "time", "song", "song_bar", "world", "fps", "pc", "gpu_temp", "session",
-             "distance", "headpats"]
+LINE_KEYS = ["status", "afk", "time", "date", "song", "song_bar", "world", "fps", "pc", "gpu_temp", "session",
+             "today", "streak", "distance", "headpats", "boops", "jumps", "yap", "height", "countdown", "quote",
+             "kaomoji"]
 LINE_LABELS = {
     "status": "Status text", "time": "Time", "song": "Song", "song_bar": "Song progress",
     "fps": "FPS", "pc": "CPU / GPU %", "gpu_temp": "GPU temp", "session": "Time in VR",
     "headpats": "Headpats", "afk": "AFK timer", "world": "World", "distance": "Distance",
+    "date": "Date", "today": "VR today", "streak": "VR streak", "boops": "Boops", "jumps": "Jumps",
+    "yap": "Yap meter", "height": "Avi height", "countdown": "Countdown", "quote": "Cute quote",
+    "kaomoji": "Kaomoji",
 }
+QUOTES = ["u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
+          "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
+          "everyone deserves a hug", "being silly is a lifestyle", "kindness is free, spread it", "ur doing amazing"]
+KAOMOJI = ["(=^･ω･^=)", "(◕ᴗ◕✿)", "(｡•ᴗ•｡)", "ʕ•ᴥ•ʔ", "(≧◡≦)", "(•ω•)", "ฅ^•ﻌ•^ฅ", "(｡♥‿♥｡)"]
 DEFAULT = {
     "interval_s": 3,
     "style": "cute",
     "time_24h": False,
     "lines": {"status": True, "time": True, "song": True, "song_bar": True, "fps": False,
               "pc": False, "gpu_temp": False, "session": False, "headpats": False,
-              "afk": True, "world": False, "distance": False},
+              "afk": True, "world": False, "distance": False, "date": False, "today": False,
+              "streak": False, "boops": False, "jumps": False, "yap": False, "height": False,
+              "countdown": False, "quote": False, "kaomoji": False},
     "statuses": ["fluffy vibes only :3", "pls give headpats", "running on Fluff VR Stats <3"],
     "status_index": 0,
     "rotate": True,
@@ -30,7 +40,9 @@ DEFAULT = {
 
 ICONS = {
     "cute":   {"status": "✨", "time": "⏰", "song": "🎵", "fps": "🎮", "pc": "🖥️", "gpu_temp": "🌡️",
-               "session": "⏱️", "headpats": "🐾", "afk": "💤", "world": "🌍", "distance": "👣"},
+               "session": "⏱️", "headpats": "🐾", "afk": "💤", "world": "🌍", "distance": "👣",
+               "date": "📅", "today": "🥽", "streak": "🔥", "boops": "👃", "jumps": "🐇", "yap": "🗣️",
+               "height": "📏", "countdown": "🎉", "quote": "💭"},
     "simple": {"status": "♡", "time": "", "song": "♪", "fps": "", "pc": "", "gpu_temp": "",
                "session": "", "headpats": "", "afk": "zzz", "world": "@", "distance": ""},
 }
@@ -65,6 +77,29 @@ def _short(text, n):
     return text if len(text) <= n else text[:n - 1].rstrip() + "…"
 
 
+def _dur(s):
+    s = int(s or 0)
+    return f"{s // 3600}h {s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m"
+
+
+def countdown_text(cd, now=None):
+    """{'name': 'my birthday', 'date': '2026-12-25'} -> 'my birthday in 12d'"""
+    try:
+        target = time.mktime(time.strptime(cd.get("date", ""), "%Y-%m-%d"))
+    except (ValueError, TypeError):
+        return None
+    now = time.time() if now is None else now
+    days = int((target - now) // 86400) + 1
+    name = cd.get("name") or "the big day"
+    if days > 1:
+        return f"{name} in {days}d"
+    if days == 1:
+        return f"{name} is tomorrow!!"
+    if days == 0:
+        return f"{name} is TODAY!!"
+    return None
+
+
 def compose(cfg, stats, extras, music, now=None):
     """Returns the chatbox text (<=144 chars, <=9 lines)."""
     cb = cfg.get("chatbox", DEFAULT)
@@ -87,9 +122,15 @@ def compose(cfg, stats, extras, music, now=None):
     if on.get("time"):
         fmt = "%H:%M" if cb.get("time_24h") else "%I:%M %p"
         row.append(tag("time", time.strftime(fmt, time.localtime(now)).lstrip("0")))
+    if on.get("date"):
+        row.append(tag("date", time.strftime("%b %d", time.localtime(now)).replace(" 0", " ")))
     if on.get("session") and extras.get("session_start"):
         s = int(now - extras["session_start"])
         row.append(tag("session", f"{s // 3600}h {s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m in VR"))
+    if on.get("today") and extras.get("vr_today_s"):
+        row.append(tag("today", _dur(extras["vr_today_s"]) + " today"))
+    if on.get("streak") and extras.get("vr_streak", 0) > 1:
+        row.append(tag("streak", f"{extras['vr_streak']} day streak"))
     if row:
         lines.append("  ".join(row))
     m = music or {}
@@ -123,8 +164,33 @@ def compose(cfg, stats, extras, music, now=None):
     if on.get("distance") and extras.get("walked"):
         wk = extras["walked"]
         lines.append(tag("distance", f"walked {wk / 1000:.2f}km" if wk >= 1000 else f"walked {wk:.0f}m"))
+    row = []
     if on.get("headpats"):
-        lines.append(tag("headpats", f"headpats: {extras.get('headpats', 0)}"))
+        row.append(tag("headpats", f"{extras.get('headpats', 0)} pats"))
+    if on.get("boops"):
+        row.append(tag("boops", f"{extras.get('boops', 0)} boops"))
+    if on.get("jumps"):
+        row.append(tag("jumps", f"{extras.get('jumps', 0)} jumps"))
+    if row:
+        lines.append("  ".join(row))
+    row = []
+    if on.get("yap") and extras.get("talk_s"):
+        sess = max(1, now - extras.get("session_start", now))
+        row.append(tag("yap", f"yapped {_dur(extras['talk_s'])} ({min(100, extras['talk_s'] * 100 / sess):.0f}%)"))
+    if on.get("height") and extras.get("height_m"):
+        hm = extras["height_m"]
+        ft = hm * 3.28084
+        row.append(tag("height", f"{hm:.2f}m ({int(ft)}'{round((ft % 1) * 12)}\")"))
+    if row:
+        lines.append("  ".join(row))
+    if on.get("countdown"):
+        c = countdown_text(cfg.get("countdown", {}), now)
+        if c:
+            lines.append(tag("countdown", _short(c, 40)))
+    if on.get("quote"):
+        lines.append(tag("quote", QUOTES[int(now // 3600) % len(QUOTES)]))
+    if on.get("kaomoji") and lines:
+        lines[-1] = lines[-1] + " " + KAOMOJI[int(now // 20) % len(KAOMOJI)]
 
     # fit VRChat's limits: drop lines from the bottom until it fits
     lines = lines[:MAX_LINES]

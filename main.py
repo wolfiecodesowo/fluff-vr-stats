@@ -89,7 +89,17 @@ DEFAULT_CFG = {
         "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
         "discord_presence": True,
         "battery_alert": True, "hydration_reminder": False, "vr_milestones": True, "zoom_lens": True,
+        "boop_counter": False, "yap_meter": False, "jump_counter": False, "avatar_height": False,
+        "mute_reminder": True, "song_toast": False, "kaomoji": False, "countdown": False,
+        "vr_streak": True, "quote_of_hour": False, "theme_shuffle": False,
+        "eye_break": False, "posture_reminder": False, "bedtime_alert": False, "pat_party": True,
+        "ai_look": True,
     },
+    "countdown": {"name": "my birthday", "date": ""},
+    "eye_break_min": 20,
+    "posture_min": 30,
+    "bedtime": "01:00",
+    "vr_days": {},
     "zoom": {"enabled": False, "mode": "gesture", "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
     "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
     "ai": {
@@ -112,6 +122,9 @@ DEFAULT_CFG = {
     "low_fps_ratio": 0.6,
     "headpat_param": "HeadPat",
     "headpats_total": 0,
+    "boop_param": "",
+    "boops_total": 0,
+    "jumps_total": 0,
     "weather_location": "",
     "weather_units": "F",
     "ping_host": "1.1.1.1",
@@ -457,6 +470,17 @@ class App:
         self.last_water = time.time()
         self.low_batt_warned = set()
         self.milestone_hours = 0
+        self.last_eye = self.last_posture = time.time()
+        self.bedtime_day = None
+        self.mute_warned = False
+        self.last_song_key = None
+        self.last_vr_tick = time.time()
+        self.contact_note_for = None
+        self.pat_times = []
+        self.update_vr_days(0)
+        if self.cfg["modules"].get("theme_shuffle"):
+            import random as _r
+            self.cfg["theme"] = _r.choice([p[0] for p in ui.PRESETS])
         self.low_fps_since = None
         self.last_low_alert = 0
         self.last_chatbox = 0
@@ -760,9 +784,31 @@ class App:
             if st.tab == "Boost":
                 self.safe("boost status", self.refresh_boost)
         elif action == "toggle":
-            cfg["modules"][args[0]] = not cfg["modules"][args[0]]
+            cfg["modules"][args[0]] = not cfg["modules"].get(args[0], False)
+            line = ui.MOD_TO_LINE.get(args[0])
+            if line:
+                cfg["chatbox"].setdefault("lines", {})[line] = cfg["modules"][args[0]]
             st.dirty_cfg = st.hud_dirty = True
             self.hud_alpha = None
+        elif action == "mod_edit":
+            key = args[0]
+            cur = {"countdown_name": cfg.get("countdown", {}).get("name", ""),
+                   "countdown_date": cfg.get("countdown", {}).get("date", "")}.get(key, str(cfg.get(key, "")))
+            desc = {"headpat_param": "Headpat parameter name (blank = auto)", "boop_param": "Boop parameter name (blank = auto)",
+                    "countdown_name": "Countdown to what?", "countdown_date": "Date (YYYY-MM-DD)",
+                    "bedtime": "Bedtime (HH:MM, 24h)"}.get(key, key)
+            self.open_keyboard(desc, cur, ("cfg", key))
+        elif action == "mod_cycle":
+            opts = [10, 15, 20, 30, 45, 60]
+            cur = cfg.get(args[0], 20)
+            cfg[args[0]] = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else 20
+            st.dirty_cfg = st.dash_dirty = True
+        elif action == "mod_reset_counts":
+            for k, tot in (("headpats", "headpats_total"), ("boops", "boops_total"), ("jumps", "jumps_total")):
+                cfg[tot] = 0
+                self.extras._set(k, 0)
+            self.extras.data["talk_s"] = 0
+            st.dirty_cfg = st.dash_dirty = True
         elif action in ("theme", "style_set"):
             if action == "theme":
                 cfg["theme"] = args[0]
@@ -856,6 +902,8 @@ class App:
                 sts.pop(i)
                 cb["status_index"] = max(0, i - 1)
             st.dirty_cfg = True
+        elif action == "ai_look":
+            self.ai_look()
         elif action == "clear_chat":
             st.chat.clear()
             st.ai_error = None
@@ -1017,6 +1065,29 @@ class App:
         if target == "chat":
             self.send_chat(text)
             return
+        if isinstance(target, tuple) and target[0] == "cfg":
+            key, text = target[1], text.strip()
+            if key in ("countdown_name", "countdown_date"):
+                cd = self.cfg.setdefault("countdown", {})
+                if key == "countdown_date":
+                    try:
+                        time.strptime(text, "%Y-%m-%d")
+                    except ValueError:
+                        self.show_alert("date needs to look like 2026-12-25", "warn", 6)
+                        return
+                cd[key.split("_")[1]] = text[:30]
+            elif key == "bedtime":
+                try:
+                    hh, mm = [int(v) for v in text.split(":")[:2]]
+                    assert 0 <= hh < 24 and 0 <= mm < 60
+                    self.cfg["bedtime"] = f"{hh:02d}:{mm:02d}"
+                except Exception:
+                    self.show_alert("bedtime needs to look like 23:30", "warn", 6)
+                    return
+            else:
+                self.cfg[key] = text[:60]
+            st.dirty_cfg = st.dash_dirty = True
+            return
         if isinstance(target, tuple) and target[0] == "status":
             text = text.strip()[:60]
             sts = self.cfg["chatbox"].setdefault("statuses", [])
@@ -1036,6 +1107,29 @@ class App:
         top_room = max(0, (ui.DASH_H * 0.25) - st.chat_content_top) + st.chat_scroll
         st.chat_scroll = max(0, min(st.chat_scroll + amount, top_room))
         st.dash_dirty = True
+
+    def ai_look(self):
+        """AI Look: Fluff reads ur VRChat window and says who's on screen (only what u can already see)."""
+        st = self.state
+        if st.thinking:
+            return
+        import look
+        st.chat.append(("user", "👀 who's on my screen?"))
+        st.thinking, st.ai_error, st.chat_scroll = True, None, 0
+        st.dash_dirty = True
+        players = [p for p in (st.world or {}).get("players", []) if p]
+
+        def done(reply, err):
+            st.thinking = False
+            if err:
+                st.ai_error = err
+                self.report("AI look", msg=err, show=False)
+            else:
+                st.chat.append(("assistant", reply))
+                self.show_alert(reply.split("\n")[0], secs=6)
+            st.dash_dirty = st.hud_dirty = True
+
+        look.look_async(self.cfg, players, done)
 
     def send_chat(self, text):
         st = self.state
@@ -1099,6 +1193,83 @@ class App:
             osc.typing(False, self.cfg.get("osc_port", 9000))
 
     # ---- extra mods
+    def update_vr_days(self, add_s):
+        """today's VR time + how many days in a row u've been in VR (saved in config)"""
+        vd = self.cfg.setdefault("vr_days", {})
+        today = time.strftime("%Y-%m-%d")
+        if vd.get("date") != today:
+            yday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
+            vd["streak"] = vd.get("streak", 0) + 1 if vd.get("date") == yday else 1
+            vd["date"], vd["today_s"] = today, 0
+            vd["best"] = max(vd.get("best", 0), vd["streak"])
+        vd["today_s"] = vd.get("today_s", 0) + add_s
+        self.extras._set("vr_today_s", int(vd["today_s"]))
+        self.extras._set("vr_streak", vd.get("streak", 1))
+
+    def tick_more_mods(self, now):
+        st, m = self.state, self.cfg["modules"]
+        x = st.extras
+        # VR time today + streak (every minute)
+        if now - self.last_vr_tick >= 60:
+            self.update_vr_days(now - self.last_vr_tick)
+            self.last_vr_tick = now
+            st.dirty_cfg = True
+        # 20-20-20 eye break
+        if m.get("eye_break"):
+            if now - self.last_eye > max(5, self.cfg.get("eye_break_min", 20)) * 60:
+                self.last_eye = now
+                self.show_alert("eye break! look at something far away for 20 secs 👀", secs=20)
+        else:
+            self.last_eye = now
+        # posture
+        if m.get("posture_reminder"):
+            if now - self.last_posture > max(5, self.cfg.get("posture_min", 30)) * 60:
+                self.last_posture = now
+                self.show_alert("posture check!! sit up / stand tall, roll ur shoulders :3", secs=10)
+        else:
+            self.last_posture = now
+        # bedtime
+        if m.get("bedtime_alert"):
+            try:
+                hh, mm = [int(v) for v in str(self.cfg.get("bedtime", "01:00")).split(":")[:2]]
+            except ValueError:
+                hh, mm = 1, 0
+            lt = time.localtime(now)
+            since_bed = (lt.tm_hour * 60 + lt.tm_min - (hh * 60 + mm)) % 1440
+            night = time.strftime("%Y-%m-%d", time.localtime(now - 12 * 3600))
+            if since_bed < 240 and self.bedtime_day != night:
+                self.bedtime_day = night
+                self.show_alert(f"it's {time.strftime('%I:%M %p', lt).lstrip('0')}... bedtime soon? sleepy fluffs need rest 💤", "warn", 15)
+        # still muted?
+        if m.get("mute_reminder"):
+            since = x.get("muted_since")
+            if x.get("muted") and since and now - since > 10 * 60:
+                if not self.mute_warned:
+                    self.mute_warned = True
+                    self.show_alert("ur still muted! (10+ min) just a heads up :3", "warn", 8)
+            else:
+                self.mute_warned = False
+        # new song toast
+        mu = st.music or {}
+        key = (mu.get("title"), mu.get("artist")) if mu.get("title") else None
+        if key != self.last_song_key:
+            if m.get("song_toast") and key and self.last_song_key is not None and mu.get("playing") is not False:
+                self.show_alert(f"now playing: {mu['title']}" + (f" - {mu['artist']}" if mu.get("artist") else ""), secs=5)
+            self.last_song_key = key
+        # headpat/boop help: avatar loaded but no contact param found
+        av = st.avatar or {}
+        if (m.get("headpat_counter") or m.get("boop_counter")) and av.get("id") and av.get("params") and self.contact_note_for != av["id"]:
+            self.contact_note_for = av["id"]
+            from extras import PAT_RE, is_contact
+            names = [p["name"] for p in av["params"]]
+            found = next((n for n in names if is_contact(n, self.cfg.get("headpat_param", ""), PAT_RE)), None)
+            if found:
+                self.extras.notes["note_vrchat"] = f"headpats: watching '{found}' on this avatar ✓"
+            else:
+                self.extras.notes["note_vrchat"] = ("no headpat parameter on this avatar. add ur contact receiver's parameter "
+                                                    "to Expression Parameters, then VRChat OSC → Reset Config")
+            self.extras.changed = True
+
     def show_alert(self, text, kind="info", secs=8):
         self.state.alert = {"text": text, "kind": kind, "until": time.time() + secs}
         self.state.hud_dirty = True
@@ -1110,10 +1281,22 @@ class App:
         if self.extras.changed:
             self.extras.changed = False
             old_pats = st.extras.get("headpats")
+            old_boops, old_jumps = st.extras.get("boops"), st.extras.get("jumps")
             st.extras = self.extras.snapshot()
             if old_pats is not None and st.extras.get("headpats") != old_pats:
                 st.dirty_cfg = True
-                self.show_alert(f"headpat #{st.extras['headpats']}! good fluff~", secs=3)
+                self.pat_times = [x for x in self.pat_times if now - x < 30] + [now]
+                if m.get("pat_party") and len(self.pat_times) >= 5:
+                    self.pat_times = []
+                    self.show_alert(f"PAT PARTY!! 5 pats in 30s 🎉 ({st.extras['headpats']} total)", secs=5)
+                else:
+                    self.show_alert(f"headpat #{st.extras['headpats']}! good fluff~", secs=3)
+            if old_boops is not None and st.extras.get("boops") != old_boops:
+                st.dirty_cfg = True
+                if m.get("boop_counter"):
+                    self.show_alert(f"boop #{st.extras['boops']}! *sneeze*", secs=3)
+            if old_jumps is not None and st.extras.get("jumps") != old_jumps:
+                st.dirty_cfg = True
             st.hud_dirty = st.dash_dirty = True
         # feed Discord rich presence (it only sends every 15s itself)
         if now - self.last_discord_feed > 5:
@@ -1165,6 +1348,7 @@ class App:
             if hrs > self.milestone_hours:
                 self.milestone_hours = hrs
                 self.show_alert(f"{hrs} hour{'s' if hrs > 1 else ''} in VR!! 🎉 proud of u (stretch a lil?)", secs=10)
+        self.tick_more_mods(now)
         # low fps alert (sustained for 5s, then cool down 2 min)
         fps, ref = st.stats.get("fps"), st.stats.get("refresh")
         if m.get("low_fps_alert") and fps is not None and ref:

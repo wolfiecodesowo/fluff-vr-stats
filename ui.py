@@ -548,6 +548,23 @@ def hud_chips(state):
         out.append(("", x["weather"], None))
     if m.get("headpat_counter"):
         out.append(("headpats", str(x.get("headpats", 0)), None))
+    if m.get("boop_counter"):
+        out.append(("boops", str(x.get("boops", 0)), None))
+    if m.get("jump_counter"):
+        out.append(("jumps", str(x.get("jumps", 0)), None))
+    if m.get("yap_meter") and x.get("talk_s"):
+        out.append(("yapped", fmt_dur(x["talk_s"]), None))
+    if m.get("avatar_height") and x.get("height_m"):
+        out.append(("height", f"{x['height_m']:.2f}m", None))
+    if m.get("vr_streak") and x.get("vr_today_s"):
+        out.append(("today", fmt_dur(x["vr_today_s"]), None))
+        if x.get("vr_streak", 0) > 1:
+            out.append(("streak", f"{x['vr_streak']} days", "good"))
+    if m.get("countdown"):
+        import chatbox as _cb
+        c = _cb.countdown_text(state.cfg.get("countdown", {}))
+        if c:
+            out.append(("", ellipsize(c, font("body", 16), 210), None))
     if m.get("mute_indicator") and x.get("muted") is not None:
         out.append(("mic", "muted" if x["muted"] else "live", "bad" if x["muted"] else "good"))
     if m.get("world_info") and x.get("world_name"):
@@ -835,7 +852,7 @@ def add_logo(base, frame_idx, slots=()):
     return img
 TABS = ["Stats", "Boost", "Chat", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style", "Wrist", "<3"]
 
-MOD_CATS = ["Performance", "Wrist", "VRChat", "Fun"]
+MOD_CATS = ["Performance", "Wrist", "VRChat", "Counters", "Fun", "Comfy"]
 MOD_INFO = {
     "Performance": [
         ("fps", "FPS counter", "Big VRChat FPS number"),
@@ -865,21 +882,45 @@ MOD_INFO = {
         ("ai_to_chatbox", "AI to chatbox", "Others see Fluff's replies"),
         ("typing_indicator", "Typing bubble", "Shows ... while you type to Fluff"),
         ("mute_indicator", "Mute indicator", "Mic muted/live on your wrist"),
-        ("headpat_counter", "Headpat counter", "Counts pats (needs avatar contact)"),
+        ("mute_reminder", "Still-muted nudge", "Reminds u after 10 min muted"),
         ("afk_detect", "AFK detection", "Knows when u walk away"),
+        ("avatar_height", "Avatar height", "How tall ur avi is (m + ft)"),
+        ("ai_look", "AI Look", "AI reads ur screen: who's around u"),
+    ],
+    "Counters": [
+        ("headpat_counter", "Headpat counter", "Auto-finds ur avatar's pat contact"),
+        ("pat_party", "Pat party", "Big alert for 5 pats in 30s"),
+        ("boop_counter", "Boop counter", "Counts nose boops (contact)"),
+        ("jump_counter", "Jump counter", "Counts every hop"),
+        ("yap_meter", "Yap meter", "How long u've been talking"),
+        ("distance", "Zoomies meter", "Distance walked + running"),
+        ("vr_streak", "VR streak", "Time in VR today + days in a row"),
     ],
     "Fun": [
         ("wrist_pet", "Lil Fluff pet", "Tiny buddy w/ moods on ur wrist"),
         ("timer", "Timer / stopwatch", "Countdown + ding (World tab)"),
-        ("distance", "Zoomies meter", "Distance walked + running"),
         ("weather", "Weather", "Temp + sky where you are"),
-        ("break_reminder", "Break reminder", "Water + stretch nudges"),
         ("discord_presence", "Discord status", "Shows the app on ur Discord profile"),
-        ("hydration_reminder", "Hydration buddy", "A water nudge every 30 min"),
-        ("vr_milestones", "VR milestones", "Celebrates every hour in VR"),
         ("zoom_lens", "Zoom lens", "Magnify what u see (Screen tab)"),
+        ("song_toast", "Song pop-up", "Wrist pops up on a new song"),
+        ("countdown", "Countdown", "Days until ur big day"),
+        ("kaomoji", "Kaomoji", "Cute face at the end of ur chatbox"),
+        ("quote_of_hour", "Cute quote", "A new sweet quote every hour"),
+        ("theme_shuffle", "Theme shuffle", "Random theme every launch"),
+    ],
+    "Comfy": [
+        ("break_reminder", "Break reminder", "Water + stretch nudges"),
+        ("hydration_reminder", "Hydration buddy", "A water nudge every 30 min"),
+        ("eye_break", "Eye break", "20-20-20 rule for tired eyes"),
+        ("posture_reminder", "Posture check", "Sit up straight nudges"),
+        ("bedtime_alert", "Bedtime alert", "Gentle nudge at ur bedtime"),
+        ("vr_milestones", "VR milestones", "Celebrates every hour in VR"),
     ],
 }
+# turning these mods on also adds their line to the chatbox
+MOD_TO_LINE = {"headpat_counter": "headpats", "boop_counter": "boops", "jump_counter": "jumps", "yap_meter": "yap",
+               "avatar_height": "height", "countdown": "countdown", "quote_of_hour": "quote", "kaomoji": "kaomoji"}
+# little settings row under some categories: (label fn, action, args)
 ALL_MODS = [m for cat in MOD_CATS for m in MOD_INFO[cat]]
 
 
@@ -1197,17 +1238,18 @@ def _tab_chatbox(d, hit, box, state, t):
     hit.add([x0, y0, x0 + lw, y0 + 72], "toggle", "chatbox_status")
     # what to show
     d.text((x0 + 4, y0 + 92), "show in chatbox", font=font("head", 20), fill=t["text"])
-    cw, ch = (lw - 16) / 3, 38
+    cols = 3 if len(cbx.LINE_KEYS) <= 12 else 4
+    cw, ch, gy = (lw - 8 * (cols - 1)) / cols, (38 if cols == 3 else 30), (10 if cols == 3 else 6)
     for i, k in enumerate(cbx.LINE_KEYS):
-        cx = x0 + (i % 3) * (cw + 8)
-        cy = y0 + 120 + (i // 3) * (ch + 10)
+        cx = x0 + (i % cols) * (cw + 8)
+        cy = y0 + 120 + (i // cols) * (ch + gy)
         act = cb["lines"].get(k, False)
         pill(d, [cx, cy, cx + cw, cy + ch], t["primary"] if act else t["panel"])
-        d.text((cx + cw / 2, cy + ch / 2), cbx.LINE_LABELS[k], font=font("body", 15),
+        d.text((cx + cw / 2, cy + ch / 2), cbx.LINE_LABELS[k], font=font("body", 15 if cols == 3 else 13),
                fill=t["on_primary"] if act else t["sub"], anchor="mm")
         hit.add([cx, cy, cx + cw, cy + ch], "cb_line", k)
     # rate + style
-    ry = y0 + 318
+    ry = y0 + 120 + (-(-len(cbx.LINE_KEYS) // cols)) * (ch + gy) + 8
     d.text((x0 + 4, ry + 20), "send every", font=font("body2", 16), fill=t["sub"], anchor="lm")
     for i, v in enumerate((2, 3, 5)):
         bx = x0 + 100 + i * 62
@@ -1676,7 +1718,11 @@ def _tab_chat(d, hit, box, state, t):
         hit.add(bxx, "scroll", dirn)
 
     by = y1 - 54
-    button(d, hit, [x0, by, x0 + 560, by + 54], "Type a message…", t, "type", primary=True, fsize=22)
+    if state.cfg["modules"].get("ai_look", True):
+        button(d, hit, [x0, by, x0 + 400, by + 54], "Type a message…", t, "type", primary=True, fsize=22)
+        button(d, hit, [x0 + 410, by, x0 + 560, by + 54], "who's here?", t, "ai_look", fsize=18)
+    else:
+        button(d, hit, [x0, by, x0 + 560, by + 54], "Type a message…", t, "type", primary=True, fsize=22)
     button(d, hit, [x0 + 576, by, x0 + 700, by + 54], "Clear", t, "clear_chat")
     on = state.cfg["modules"]["ai_to_chatbox"]
     d.text((x0 + 726, by + 27), "to chatbox", font=font("body2", 18), fill=t["sub"], anchor="lm")
@@ -1691,24 +1737,54 @@ def _tab_mods(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     cat = state.mods_cat
     cx = x0
+    labs = []
     for c in MOD_CATS:
         on_count = sum(1 for k, _, _ in MOD_INFO[c] if state.cfg["modules"].get(k))
-        lab = f"{c}  {on_count}/{len(MOD_INFO[c])}"
-        w = font("head", 19).getlength(lab) + 40
-        button(d, hit, [cx, y0, cx + w, y0 + 44], lab, t, "mods_cat", c, active=cat == c, fsize=19)
-        cx += w + 10
-    gap, ch = 12, 56
+        labs.append((c, f"{c} {on_count}/{len(MOD_INFO[c])}"))
+    fs = 19
+    while fs > 13 and sum(font("head", fs).getlength(l) + 28 + 8 for _, l in labs) > x1 - x0:
+        fs -= 1
+    for c, lab in labs:
+        w = font("head", fs).getlength(lab) + 28
+        button(d, hit, [cx, y0, cx + w, y0 + 44], lab, t, "mods_cat", c, active=cat == c, fsize=fs)
+        cx += w + 8
+    gap, ch = 12, (56 if len(MOD_INFO[cat]) <= 8 else 50)
     cw = (x1 - x0 - gap) / 2
     for i, (key, name, desc) in enumerate(MOD_INFO[cat]):
         cx = x0 + (i % 2) * (cw + gap)
-        cy = y0 + 56 + (i // 2) * (ch + 8)
+        cy = y0 + 56 + (i // 2) * (ch + 6)
         on = state.cfg["modules"].get(key, False)
         panel(d, [cx, cy, cx + cw, cy + ch], 18, t)
-        d.text((cx + 20, cy + 10), name, font=font("head", 20), fill=t["text"])
-        d.text((cx + 20, cy + 34), ellipsize(desc, font("body2", 15), cw - 110),
+        d.text((cx + 20, cy + (10 if ch > 52 else 7)), name, font=font("head", 20), fill=t["text"])
+        d.text((cx + 20, cy + (34 if ch > 52 else 29)), ellipsize(desc, font("body2", 15), cw - 110),
                font=font("body2", 15), fill=t["sub"])
-        switch(d, cx + cw - 74, cy + 14, on, t)
+        switch(d, cx + cw - 74, cy + (14 if ch > 52 else 11), on, t)
         hit.add([cx, cy, cx + cw, cy + ch], "toggle", key)
+    # small settings row for some categories
+    rows_used = -(-len(MOD_INFO[cat]) // 2)
+    sy = y0 + 56 + rows_used * (ch + 6) + 4
+    cfg = state.cfg
+    btns = []
+    if cat == "Counters":
+        x = state.extras
+        pat = x.get("pat_param") or "auto"
+        btns = [(f"pat param: {pat} ✎", "mod_edit", "headpat_param"),
+                (f"boop param: {x.get('boop_param') or 'auto'} ✎", "mod_edit", "boop_param"),
+                ("reset counts", "mod_reset_counts", None)]
+    elif cat == "Fun":
+        cd = cfg.get("countdown", {})
+        btns = [(f"countdown: {cd.get('name') or 'name'} ✎", "mod_edit", "countdown_name"),
+                (f"date: {cd.get('date') or 'YYYY-MM-DD'} ✎", "mod_edit", "countdown_date")]
+    elif cat == "Comfy":
+        btns = [(f"bedtime: {cfg.get('bedtime', '01:00')} ✎", "mod_edit", "bedtime"),
+                (f"eye break: {cfg.get('eye_break_min', 20)}m", "mod_cycle", "eye_break_min"),
+                (f"posture: {cfg.get('posture_min', 30)}m", "mod_cycle", "posture_min")]
+    bx = x0
+    for lab, act, arg in btns:
+        w = min(font("body", 16).getlength(lab) + 30, 330)
+        if sy + 40 <= y1 - 24:
+            button(d, hit, [bx, sy, bx + w, sy + 38], ellipsize(lab, font("body", 16), w - 20), t, act, arg, fsize=16)
+        bx += w + 8
     note = state.extras.get("note_" + cat.lower())
     if note:
         d.text((x0 + 6, y1 - 8), ellipsize(note, font("body2", 16), x1 - x0 - 12),

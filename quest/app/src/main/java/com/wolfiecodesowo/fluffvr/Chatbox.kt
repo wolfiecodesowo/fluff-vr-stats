@@ -33,6 +33,18 @@ class Settings(ctx: Context) {
     var stopwatchStart: Long get() = p.getLong("sw_start", 0L); set(v) = p.edit().putLong("sw_start", v).apply()
     var counterLabel: String get() = p.getString("cnt_label", "water sips")!!; set(v) = p.edit().putString("cnt_label", v).apply()
     var counter: Int get() = p.getInt("cnt", 0); set(v) = p.edit().putInt("cnt", v).apply()
+    var boopParam: String get() = p.getString("boopparam", "")!!; set(v) = p.edit().putString("boopparam", v).apply()
+    var boops: Int get() = p.getInt("boops", 0); set(v) = p.edit().putInt("boops", v).apply()
+    var jumps: Int get() = p.getInt("jumps", 0); set(v) = p.edit().putInt("jumps", v).apply()
+    var walkedM: Float get() = p.getFloat("walked", 0f); set(v) = p.edit().putFloat("walked", v).apply()
+    var countdownName: String get() = p.getString("cd_name", "my birthday")!!; set(v) = p.edit().putString("cd_name", v).apply()
+    var countdownDate: String get() = p.getString("cd_date", "")!!; set(v) = p.edit().putString("cd_date", v).apply()
+    var bedtime: String get() = p.getString("bedtime", "01:00")!!; set(v) = p.edit().putString("bedtime", v).apply()
+    var eyeMin: Int get() = p.getInt("eye_min", 20); set(v) = p.edit().putInt("eye_min", v).apply()
+    var postureMin: Int get() = p.getInt("posture_min", 30); set(v) = p.edit().putInt("posture_min", v).apply()
+    var vrDate: String get() = p.getString("vr_date", "")!!; set(v) = p.edit().putString("vr_date", v).apply()
+    var vrTodayS: Long get() = p.getLong("vr_today", 0L); set(v) = p.edit().putLong("vr_today", v).apply()
+    var vrStreak: Int get() = p.getInt("vr_streak", 0); set(v) = p.edit().putInt("vr_streak", v).apply()
     var hydrateMin: Int get() = p.getInt("hydrate_min", 30); set(v) = p.edit().putInt("hydrate_min", v).apply()
 
     /** 4-digit code the phone remote needs (made once, random) */
@@ -88,8 +100,27 @@ class Settings(ctx: Context) {
             Triple("counter", "🔢 Custom counter", "count anything: water, deaths, boops..."),
             Triple("date", "📅 Date", "today's date next to the time"),
             Triple("kaomoji", "(=^･ω･^=) Kaomoji", "a cute rotating face at the end"),
+            Triple("pat_party", "🎉 Pat party", "alert when u get 5 headpats in 30s"),
+            Triple("boops", "👃 Boop counter", "counts nose boops (auto-finds the contact)"),
+            Triple("jumps", "🐇 Jump counter", "counts every hop"),
+            Triple("yap", "🗣️ Yap meter", "how long u've been talking"),
+            Triple("zoomies", "👣 Zoomies meter", "distance u walked in VRChat"),
+            Triple("height", "📏 Avatar height", "how tall ur avi is"),
+            Triple("batt_eta", "⌛ Battery time left", "guesses how long ur Quest will last"),
+            Triple("countdown", "🎉 Countdown", "days until ur big day"),
+            Triple("today", "🥽 VR today", "how long u've been in VR today"),
+            Triple("streak", "🔥 VR streak", "days in a row u've played"),
+            Triple("quote", "💭 Cute quote", "a new sweet quote every hour"),
+            Triple("milestones", "🏆 VR milestones", "celebrates every hour in VR"),
+            Triple("mute_nudge", "🔇 Still-muted nudge", "reminds u after 10 min muted"),
+            Triple("eye_break", "👀 Eye break", "20-20-20 rule for tired eyes"),
+            Triple("posture", "🧍 Posture check", "sit up straight nudges"),
+            Triple("bedtime", "🌙 Bedtime alert", "gentle nudge at ur bedtime"),
         )
-        val DEFAULT_ON = setOf("status", "time", "battery", "song", "afk", "timer")
+        val QUOTES = listOf("u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
+            "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
+            "everyone deserves a hug", "being silly is a lifestyle", "kindness is free, spread it", "ur doing amazing")
+        val DEFAULT_ON = setOf("status", "time", "battery", "song", "afk", "timer", "pat_party", "milestones", "mute_nudge", "streak")
     }
 }
 
@@ -101,7 +132,9 @@ object Chatbox {
 
     private val CUTE = mapOf("status" to "✨", "time" to "⏰", "battery" to "🔋", "session" to "⏱️", "song" to "🎵",
         "afk" to "💤", "wifi" to "📶", "ping" to "🏓", "timer" to "⏳", "weather" to "🌤️", "headpats" to "🐾", "muted" to "🔇",
-        "temp" to "🌡️", "ram" to "🧠", "lowbatt" to "🪫", "hydrate" to "💧", "counter" to "🔢", "date" to "📅")
+        "temp" to "🌡️", "ram" to "🧠", "lowbatt" to "🪫", "hydrate" to "💧", "counter" to "🔢", "date" to "📅",
+        "boops" to "👃", "jumps" to "🐇", "yap" to "🗣️", "zoomies" to "👣", "height" to "📏", "batt_eta" to "⌛",
+        "countdown" to "🎉", "today" to "🥽", "streak" to "🔥", "quote" to "💭")
     private val KAO = listOf("(=^･ω･^=)", "(◕ᴗ◕✿)", "(｡•ᴗ•｡)", "ʕ•ᴥ•ʔ", "(≧◡≦)", "(•ω•)", "ฅ^•ﻌ•^ฅ", "(｡♥‿♥｡)")
     private val SIMPLE = mapOf("status" to "♡", "song" to "♪", "afk" to "zzz")
 
@@ -132,6 +165,15 @@ object Chatbox {
     }
 
     private fun short(t: String, n: Int) = if (t.length <= n) t else t.substring(0, n - 1).trimEnd() + "…"
+
+    private fun dur(sec: Long) = if (sec >= 3600) "${sec / 3600}h ${"%02d".format(sec % 3600 / 60)}m" else "${sec / 60}m"
+
+    fun countdownText(s: Settings, now: Long = System.currentTimeMillis()): String? {
+        val target = try { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(s.countdownDate)?.time } catch (_: Exception) { null } ?: return null
+        val days = Math.floorDiv(target - now, 86_400_000L) + 1
+        val name = s.countdownName.ifBlank { "the big day" }
+        return when { days > 1 -> "$name in ${days}d"; days == 1L -> "$name is tomorrow!!"; days == 0L -> "$name is TODAY!!"; else -> null }
+    }
 
     fun compose(ctx: Context, s: Settings, now: Long = System.currentTimeMillis()): String {
         val icons = if (s.cute) CUTE else SIMPLE
@@ -164,7 +206,12 @@ object Chatbox {
         }
         if (s.line("wifi")) QuestMods.wifiBars(ctx)?.let { b -> row += tag("wifi", "▮".repeat(b.coerceIn(0, 4) + 1)) }
         if (s.line("ping")) QuestMods.pingMs?.let { row += tag("ping", "${it}ms") }
+        if (s.line("batt_eta")) QuestMods.batteryEta(ctx)?.let { row += tag("batt_eta", it) }
         if (row.isNotEmpty()) lines += row.joinToString("  ")
+        val vr = mutableListOf<String>()
+        if (s.line("today") && s.vrTodayS >= 60) vr += tag("today", dur(s.vrTodayS) + " today")
+        if (s.line("streak") && s.vrStreak > 1) vr += tag("streak", "${s.vrStreak} day streak")
+        if (vr.isNotEmpty()) lines += vr.joinToString("  ")
         if (s.line("timer")) QuestMods.timerText(s, now)?.let { lines += tag("timer", it) }
         if (s.line("song") && m.title.isNotEmpty() && m.playing) {
             lines += tag("song", short(if (m.artist.isNotEmpty()) "${m.title} - ${m.artist}" else m.title, 48))
@@ -175,9 +222,20 @@ object Chatbox {
         if (s.line("headpats") && s.headpats > 0) extra += tag("headpats", "${s.headpats} headpats")
         if (s.line("muted") && QuestMods.muted == true) extra += tag("muted", "muted")
         if (s.line("counter")) extra += tag("counter", "${s.counter} ${s.counterLabel}")
+        if (s.line("boops")) extra += tag("boops", "${s.boops} boops")
+        if (s.line("jumps")) extra += tag("jumps", "${s.jumps} jumps")
         if (s.line("temp")) QuestMods.tempC(ctx)?.let { c -> extra += tag("temp", if (s.fahrenheit) "${Math.round(c * 9 / 5 + 32)}°F" else "${Math.round(c)}°C") }
         if (s.line("ram")) QuestMods.freeRamGb(ctx)?.let { extra += tag("ram", "%.1fGB free".format(it)) }
         if (extra.isNotEmpty()) lines += extra.joinToString("  ")
+        val more = mutableListOf<String>()
+        if (s.line("yap")) QuestMods.talkSeconds(now).takeIf { it >= 30 }?.let { more += tag("yap", "yapped ${dur(it)}") }
+        if (s.line("zoomies") && s.walkedM >= 1) more += tag("zoomies", if (s.walkedM >= 1000) "walked ${"%.2f".format(s.walkedM / 1000)}km" else "walked ${s.walkedM.toInt()}m")
+        if (s.line("height")) QuestMods.heightM?.let { h -> val ft = h * 3.28084; more += tag("height", "%.2fm (%d'%d\")".format(h, ft.toInt(), Math.round((ft % 1) * 12).toInt())) }
+        if (more.isNotEmpty()) lines += more.joinToString("  ")
+        if (s.line("countdown")) countdownText(s, now)?.let { lines += tag("countdown", short(it, 40)) }
+        if (s.line("quote")) lines += tag("quote", Settings.QUOTES[((now / 3_600_000) % Settings.QUOTES.size).toInt()])
+        val al = QuestMods.alertText
+        if (al.isNotEmpty() && now - QuestMods.alertAt < 15_000 && (al.startsWith("PAT PARTY") || al.contains("hour"))) lines.add(0, al)
         if (s.line("kaomoji") && lines.isNotEmpty()) {
             lines[lines.size - 1] = lines.last() + " " + KAO[((now / 20000) % KAO.size).toInt()]
         }
