@@ -23,9 +23,12 @@ class FluffDrawable(
 
     private val pFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill; style = Paint.Style.FILL }
     private val pInk = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ink; style = Paint.Style.STROKE; strokeWidth = 3.2f * d; strokeJoin = Paint.Join.ROUND
+        color = blend(ink, 0xFF706680.toInt(), 0.42f); style = Paint.Style.STROKE; strokeWidth = 2.4f * d; strokeJoin = Paint.Join.ROUND
     }
     private val pInner = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = inner; style = Paint.Style.FILL }
+    // ears are fluffy cream fur (like the art), the card itself keeps the theme color
+    private val pEar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(0xFFFCF8FC.toInt(), inner, 0.07f); style = Paint.Style.FILL }
+    private val pFluff = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(inner, 0xFFFFFFFF.toInt(), 0.62f); style = Paint.Style.FILL }
 
     override fun draw(c: Canvas) {
         val b = bounds
@@ -55,31 +58,52 @@ class FluffDrawable(
             }
         }
         val innerEars = ArrayList<Path>()
+        val earShapes = ArrayList<Path>()
+        val fluff = ArrayList<Path>()
         if (ears != "none") {
             val s = earH
             for ((side, cx) in listOf(-1 to r.left + s * 1.6f, 1 to r.right - s * 1.6f)) {
                 when (ears) {
                     "bunny" -> {
                         val w = s * 0.5f
-                        shapes += Path().apply { addOval(RectF(cx - w, r.top - s * 1.1f, cx + w, r.top + s * 0.6f), Path.Direction.CW) }
+                        earShapes += Path().apply { addOval(RectF(cx - w, r.top - s * 1.1f, cx + w, r.top + s * 0.6f), Path.Direction.CW) }
                         innerEars += Path().apply { addOval(RectF(cx - w * 0.45f, r.top - s * 0.85f, cx + w * 0.45f, r.top + s * 0.1f), Path.Direction.CW) }
                     }
                     "bear" -> {
-                        shapes += Path().apply { addCircle(cx, r.top, s * 0.75f, Path.Direction.CW) }
+                        earShapes += Path().apply { addCircle(cx, r.top, s * 0.75f, Path.Direction.CW) }
                         innerEars += Path().apply { addCircle(cx, r.top + s * 0.05f, s * 0.38f, Path.Direction.CW) }
                     }
                     else -> {   // cat / fox / wolf: pointy
-                        val tip = side * s * (if (ears == "wolf") 0.3f else 0.12f)
+                        // soft curvy ear tilted outward, like the art
+                        val tip = side * s * (if (ears == "wolf") 0.5f else if (ears == "fox") 0.25f else 0.45f)
                         val h = s * (if (ears == "fox") 1.25f else 1.0f)
-                        shapes += Path().apply { moveTo(cx - s * 0.85f, r.top + s * 0.4f); lineTo(cx + s * 0.85f, r.top + s * 0.4f); lineTo(cx + tip, r.top - h); close() }
-                        innerEars += Path().apply { moveTo(cx - s * 0.45f, r.top + s * 0.15f); lineTo(cx + s * 0.45f, r.top + s * 0.15f); lineTo(cx + tip * 0.8f, r.top - h * 0.55f); close() }
+                        val w = s * 1.0f
+                        val tx = cx + tip; val ty = r.top - h
+                        earShapes += Path().apply {
+                            moveTo(cx - w, r.top + s * 0.4f)
+                            cubicTo(cx - w, r.top - h * 0.5f, tx - w * 0.3f, ty + h * 0.06f, tx, ty)
+                            cubicTo(tx + w * 0.3f, ty + h * 0.06f, cx + w, r.top - h * 0.5f, cx + w, r.top + s * 0.4f); close()
+                        }
+                        val iw = w * 0.6f; val ih = h * 0.72f; val itx = cx + tip * 0.8f; val ity = r.top - ih
+                        innerEars += Path().apply {
+                            moveTo(cx - iw, r.top + s * 0.25f)
+                            cubicTo(cx - iw, r.top - ih * 0.5f, itx - iw * 0.3f, ity + ih * 0.1f, itx, ity)
+                            cubicTo(itx + iw * 0.3f, ity + ih * 0.1f, cx + iw, r.top - ih * 0.5f, cx + iw, r.top + s * 0.25f); close()
+                        }
+                        for ((dx, ln) in listOf(-0.45f to 0.55f, 0f to 0.8f, 0.45f to 0.5f)) {
+                            val bx = cx + dx * iw; val by = r.top + s * 0.2f
+                            fluff += Path().apply { moveTo(bx - s * 0.12f, by); lineTo(bx + s * 0.12f, by); lineTo(bx + dx * s * 0.3f + side * s * 0.08f, by - s * ln); close() }
+                        }
                     }
                 }
             }
         }
+        for (p in earShapes) c.drawPath(p, pInk)
         for (p in shapes) c.drawPath(p, pInk)
-        for (p in shapes) c.drawPath(p, pFill)
+        for (p in earShapes) c.drawPath(p, pEar)
         for (p in innerEars) c.drawPath(p, pInner)
+        for (p in fluff) c.drawPath(p, pFluff)
+        for (p in shapes) c.drawPath(p, pFill)
         // doodled fur strokes in the bottom-right corner
         if (r.height() > 60 * d && r.width() > 120 * d) {
             val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(fill, ink, 0.45f); style = Paint.Style.STROKE; strokeWidth = 2 * d; strokeCap = Paint.Cap.ROUND }

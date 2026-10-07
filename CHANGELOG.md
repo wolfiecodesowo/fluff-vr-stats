@@ -1,7 +1,7 @@
 # Changelog
 
 ## v0.3.0 + Quest Edition v0.5.0: furry glow-up + global chat
-- 🐾 **Furrier look everywhere**: every card is hand-inked with lil fur tufts, big cards + buttons get ears (they match ur ear style: cat, fox, wolf, bunny, bear...)
+- 🐾 **Furrier look everywhere, matching the art**: soft pencil-style outlines that get thicker/thinner like a real pen, big fluffy cream ears with pink insides + fur poking out, a big fluffy cream tail, fur tufts on every card, ears on cards + buttons (they follow ur ear style), lil blush marks. drawn in HD
 - 🏠 **New Home tab** (PC + Quest): ur stats at a glance, quick actions, now playing, Lil Kitty and global chat in one place
 - 🧭 **New nav bar** along the bottom of the menu with every tab named, no more guessing icons
 - ⚙️ **New Settings tab**: start mode (ask/VR/desktop), auto-updates, wrist hand, cursor, sounds, clock, units and more, right in the app

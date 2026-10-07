@@ -11,7 +11,7 @@ import os
 import random
 import time
 from functools import lru_cache
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(HERE, "fonts")
@@ -184,7 +184,7 @@ def stripe(d, x, y, w, h, colors, radius=0):
 
 
 # how tall each ear style is relative to its width (so the overall height stays fixed)
-EAR_HEIGHT = {"cat": 1.1, "fox": 1.55, "wolf": 1.45, "bunny": 2.1, "bear": 0.95,
+EAR_HEIGHT = {"cat": 1.55, "fox": 1.95, "wolf": 1.85, "bunny": 2.1, "bear": 0.95,
               "dragon": 1.6, "none": 1.0}
 
 
@@ -213,21 +213,16 @@ def ears(d, x0, x1, top, margin, t, outer="theme", inner="theme"):
                 _ell(box, fill=fill)
     d = _D
     for side, cx in ((-1, x0 + size * 1.6), (1, x1 - size * 1.6)):
-        if style == "cat":
-            d.polygon([(cx - size, top + size * 0.35), (cx + size, top + size * 0.35),
-                       (cx + side * size * 0.15, top - size * 1.05)], fill=outer)
-            d.polygon([(cx - size * 0.55, top + size * 0.2), (cx + size * 0.6, top + size * 0.2),
-                       (cx + side * size * 0.12, top - size * 0.6)], fill=inner)
-        elif style in ("fox", "wolf"):
-            tip = side * size * (0.05 if style == "fox" else 0.35)
-            h = size * (1.5 if style == "fox" else 1.4)
-            d.polygon([(cx - size * 0.95, top + size * 0.35), (cx + size * 0.95, top + size * 0.35),
-                       (cx + tip, top - h)], fill=outer)
-            d.polygon([(cx - size * 0.5, top + size * 0.2), (cx + size * 0.5, top + size * 0.2),
-                       (cx + tip * 0.8, top - h * 0.62)], fill=inner)
-            if style == "fox" and inner is not None:   # fluffy white tuft
-                d.polygon([(cx - size * 0.35, top + size * 0.2), (cx + size * 0.35, top + size * 0.2),
-                           (cx, top - h * 0.18)], fill=(255, 255, 255, 230) if not isinstance(inner, int) else inner)
+        if style in ("cat", "fox", "wolf"):
+            outer_pts, inner_pts, tufts, fluff_pts = _soft_ear(cx, top, size, side, style)
+            d.polygon(outer_pts, fill=outer)
+            for tp in tufts:
+                d.polygon(tp, fill=outer)
+            d.polygon(inner_pts, fill=inner)
+            if inner is not None and not isinstance(inner, int):
+                fl = tuple(int(a + (255 - a) * 0.62) for a in inner[:3]) + (235,)
+                for fp in fluff_pts:                       # soft fur fluff poking out of the ear
+                    d.polygon(fp, fill=fl)
         elif style == "bunny":
             w, h = size * 0.62, size * 2.05
             ox = cx - side * size * 0.3
@@ -248,6 +243,53 @@ def ears(d, x0, x1, top, margin, t, outer="theme", inner="theme"):
                 pts.append((cx + side * (-size * 0.55 + size * 1.5 * f * f) + side * size * 0.1 * f,
                             top + size * 0.3 - size * 1.6 * f + size * 0.25 * f * (1 - f)))
             d.polygon(pts, fill=inner)
+
+
+def _bez(p0, p1, p2, p3, n=14):
+    out = []
+    for i in range(n + 1):
+        u = i / n
+        a, b, c, e = (1 - u) ** 3, 3 * (1 - u) ** 2 * u, 3 * (1 - u) * u * u, u ** 3
+        out.append((a * p0[0] + b * p1[0] + c * p2[0] + e * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + e * p3[1]))
+    return out
+
+
+def _soft_ear(cx, top, size, side, style):
+    """Big soft ear: curvy sides, rounded tip tilted outward, fur tufts on the outer edge,
+    pink inner + fluffy fur poking out (the cute-meme-cat look, in ur theme colors)."""
+    h = size * {"cat": 1.2, "fox": 1.55, "wolf": 1.45}[style]
+    w = size * {"cat": 1.2, "fox": 1.0, "wolf": 1.0}[style]
+    tilt = side * size * {"cat": 0.45, "fox": 0.25, "wolf": 0.5}[style]
+    base = top + size * 0.4
+    L, R = (cx - w, base), (cx + w, base)
+    tip = (cx + tilt, top - h)
+    # outer side bulges out, inner side curves in; both meet at a soft rounded tip
+    left = _bez(L, (cx - w * 1.0, base - h * 0.6), (tip[0] - w * 0.3, tip[1] + h * 0.06), tip, 18)
+    right = _bez(tip, (tip[0] + w * 0.3, tip[1] + h * 0.06), (cx + w * 1.0, base - h * 0.6), R, 18)
+    outer_pts = left + right[1:]
+    # tufts on the outer edge (side facing away from the card centre)
+    tufts = []
+    edge = left if side < 0 else list(reversed(right))
+    for k, frac in enumerate((0.3, 0.48)):
+        ex, ey = edge[int(len(edge) * frac)]
+        ln = size * (0.3 - k * 0.07)
+        tufts.append([(ex, ey - size * 0.18), (ex + side * ln * 0.6, ey - size * 0.16), (ex + side * ln, ey - size * 0.02),
+                      (ex, ey + size * 0.14)])
+    # inner ear
+    iw, ih = w * 0.62, h * 0.74
+    itip = (cx + tilt * 0.8, top - ih)
+    ibase = top + size * 0.28
+    inner_pts = (_bez((cx - iw, ibase), (cx - iw * 1.05, ibase - ih * 0.6), (itip[0] - iw * 0.3, itip[1] + ih * 0.1), itip, 10)
+                 + _bez(itip, (itip[0] + iw * 0.3, itip[1] + ih * 0.1), (cx + iw * 1.05, ibase - ih * 0.6), (cx + iw, ibase), 10))
+    # fluffy fur bursting out of the inner ear
+    fluff_pts = []
+    for k, (dx, ln, ang) in enumerate(((-0.5, 0.6, -0.4), (-0.1, 0.85, -0.05), (0.35, 0.7, 0.25), (0.6, 0.45, 0.5))):
+        bx, by = cx + dx * iw, ibase - size * 0.05
+        L2 = size * ln
+        tx, ty = bx + math.sin(ang + side * 0.12) * L2, by - math.cos(ang) * L2
+        bw = size * 0.13
+        fluff_pts.append([(bx - bw, by), (bx + bw, by), ((bx + tx) / 2 + bw * 0.5, (by + ty) / 2), (tx, ty)])
+    return outer_pts, inner_pts, tufts, fluff_pts
 
 
 def card(d, box, t, radius, ear=0, strip=True, fill=None):
@@ -315,15 +357,16 @@ def fluff_shape(w, h, radius, fill, ink, inner, ears_kind, ear_size, tufts, seed
             tuft(X0, rnd.uniform(Y0 + (Y1 - Y0) * 0.45, Y1 - radius * SS - 4 * SS), -1, 0, 2)
             tuft(X1, rnd.uniform(Y0 + radius * SS + 4 * SS, Y0 + (Y1 - Y0) * 0.55), 1, 0, 2)
     mask = m.resize((W // SS, H // SS), Image.LANCZOS)
-    inkm = mask.filter(ImageFilter.MaxFilter(5))
+    under, over = sketch_ink(mask, ink, seed=seed, thin=3, thick=5)
     img = Image.new("RGBA", mask.size, (0, 0, 0, 0))
-    img.paste(Image.new("RGBA", mask.size, ink + (255,)), (0, 0), inkm)
+    img.alpha_composite(under)
     img.paste(Image.new("RGBA", mask.size, fill[:3] + (255,)), (0, 0), mask)
     if ears_kind != "none" and inner:
         det = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         ears(ImageDraw.Draw(det), X0, X1, Y0, ear_size * SS, {"ears": ears_kind, "bg": fill, "inner_ear": inner + (255,)},
              outer=None, inner=inner + (255,))
         img.alpha_composite(det.resize(mask.size, Image.LANCZOS))
+    img.alpha_composite(over)
     # lil doodled fur strokes in a corner
     dd = ImageDraw.Draw(img)
     if h > 60 and w > 120:
@@ -342,7 +385,7 @@ def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tu
     fill = tuple((fill or t["panel"])[:3])
     kind = t.get("ears", "cat") if ears_on else "none"
     es = int(ear_size or max(12, min(20, h * 0.13)))
-    img, (ox, oy) = fluff_shape(w, h, int(min(radius, h / 2)), fill, tuple(t["line"][:3]), tuple(t["inner_ear"][:3]),
+    img, (ox, oy) = fluff_shape(w, h, int(min(radius, h / 2)), fill, tuple(pencil(t)[:3]), tuple(t["inner_ear"][:3]),
                                 kind, es, tufts, seed or (w * 31 + h * 7))
     _paste_clipped(d._image, img, x0 - ox, y0 - oy)
 
@@ -397,7 +440,7 @@ def graph(d, box, values, target, t):
 
 
 # ------------------------------------------------------- furry frame art ---
-SS = 2  # supersample factor for static art
+SS = 3  # supersample factor for static art (HD)
 
 
 def _fur_fringe(d, rnd, x0, y0, x1, y1, side, n, fill):
@@ -428,34 +471,50 @@ def _fur_fringe(d, rnd, x0, y0, x1, y1, side, n, fill):
 
 
 def _tail_shape(rnd, base, ctrl, top):
-    """Centerline blobs + fur spikes for a fluffy tail (gif-style spiky floof)."""
+    """Big fluffy S-curve tail: chunky round floof that swells in the middle, soft fur tufts on
+    both sides and a feathery tip."""
     (bx, by), (cx, cy), (tx, ty) = base, ctrl, top
+    c1 = (cx, by - (by - ty) * 0.05)
+    c2 = (cx + (cx - bx) * 0.15, ty + (by - ty) * 0.55)
     blobs, spikes = [], []
-    n = 30
+    n = 44
     for i in range(n + 1):
         u = i / n
-        x = (1 - u) ** 2 * bx + 2 * (1 - u) * u * cx + u * u * tx
-        y = (1 - u) ** 2 * by + 2 * (1 - u) * u * cy + u * u * ty
-        r = (16 + 22 * math.sin(math.pi * min(1.0, 0.2 + u * 0.8))) * SS
+        a, b2, c, e = (1 - u) ** 3, 3 * (1 - u) ** 2 * u, 3 * (1 - u) * u * u, u ** 3
+        x = a * bx + b2 * c1[0] + c * c2[0] + e * tx
+        y = a * by + b2 * c1[1] + c * c2[1] + e * ty
+        r = (13 + 27 * math.sin(math.pi * min(1.0, 0.12 + u * 0.95)) ** 0.8) * SS
         blobs.append((x, y, r, u))
-    # fur spikes on the outer side + a spiky tip
-    for i in range(6, n, 4):
+    # soft curved tufts on both sides, bigger on the outside
+    for i in range(6, n - 3, 5):
         x, y, r, u = blobs[i]
-        x2, y2 = blobs[min(n, i + 1)][:2]
+        x2, y2 = blobs[i + 1][:2]
         dx, dy = x2 - x, y2 - y
         ln = math.hypot(dx, dy) or 1
-        nx, ny = dy / ln, -dx / ln               # outward normal (right side of travel)
-        if nx < 0:
-            nx, ny = -nx, -ny
-        L = r + rnd.uniform(6, 11) * SS
-        spikes.append(([(x + ny * r * 0.5, y - nx * r * 0.5), (x - ny * r * 0.5, y + nx * r * 0.5),
-                        (x + nx * L, y + ny * L)], u))
-    x, y, r, u = blobs[-2]
-    for k in range(5):
-        ang = -math.pi / 2 + (k - 2) * 0.42 + rnd.uniform(-0.08, 0.08)
-        L = r + rnd.uniform(9, 15) * SS
-        spikes.append(([(x + math.cos(ang - 0.4) * r * 0.6, y + math.sin(ang - 0.4) * r * 0.6),
-                        (x + math.cos(ang + 0.4) * r * 0.6, y + math.sin(ang + 0.4) * r * 0.6),
+        tx_, ty_ = dx / ln, dy / ln
+        for sgn, big in ((1, 1.0), (-1, 0.6)):
+            if sgn == -1 and i % 2:
+                continue
+            nx, ny = -ty_ * sgn, tx_ * sgn
+            L = r + rnd.uniform(9, 15) * SS * big
+            back = rnd.uniform(0.45, 0.7)                # tufts sweep back toward the base
+            bw = r * 0.42
+            p0 = (x + nx * r * 0.6 - tx_ * bw, y + ny * r * 0.6 - ty_ * bw)
+            p1 = (x + nx * r * 0.6 + tx_ * bw, y + ny * r * 0.6 + ty_ * bw)
+            tip = (x + nx * L - tx_ * L * back, y + ny * L - ty_ * L * back)
+            m1 = ((p1[0] + tip[0]) / 2 + nx * bw * 0.35, (p1[1] + tip[1]) / 2 + ny * bw * 0.35)   # puffy curve
+            m0 = ((p0[0] + tip[0]) / 2 - tx_ * bw * 0.25, (p0[1] + tip[1]) / 2 - ty_ * bw * 0.25)
+            spikes.append(([p0, p1, m1, tip, m0], u))
+    # feathery tip: a fan of soft tufts
+    x, y, r, u = blobs[-3]
+    x2, y2 = blobs[-1][:2]
+    base_ang = math.atan2(y2 - y, x2 - x)
+    for k in range(4):
+        ang = base_ang + (k - 1.5) * 0.42 + rnd.uniform(-0.05, 0.05)
+        L = r + rnd.uniform(12, 18) * SS * (1.25 if k in (1, 2) else 1)
+        w = 0.36
+        spikes.append(([(x + math.cos(ang - w) * r * 0.7, y + math.sin(ang - w) * r * 0.7),
+                        (x + math.cos(ang + w) * r * 0.7, y + math.sin(ang + w) * r * 0.7),
                         (x + math.cos(ang) * L, y + math.sin(ang) * L)], 1.0))
     return blobs, spikes
 
@@ -497,24 +556,38 @@ def furry_frame(key, W, H, box, radius, ear_margin, tail=False, fluff=True):
         _fur_fringe(md, rnd, X0 + radius * SS, Y0, X1 - radius * SS, Y1, "bottom", 3, 255)
     mask = m.resize((W, H), Image.LANCZOS)
 
-    # 2) ink outline = dilated silhouette
-    ink = mask.filter(ImageFilter.MaxFilter(7))
+    # 2) hand-inked outline (pen pressure + sketch pass)
+    under, over = sketch_ink(mask, pencil(t), seed=W + H, thin=3, thick=7)
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    img.paste(Image.new("RGBA", (W, H), t["line"] + (255,)), (0, 0), ink)
+    img.alpha_composite(under)
     bgc = t["bg"][:3] + (255,)
     img.paste(Image.new("RGBA", (W, H), bgc), (0, 0), mask)
 
     # 3) details drawn big then shrunk: inner ears, ear fluff, tail tip, fur strokes
     det = Image.new("RGBA", (BW, BH), (0, 0, 0, 0))
     dd = ImageDraw.Draw(det)
-    ears(dd, X0, X1, Y0, ear_margin * SS, t, outer=None)
+    fw = fur_white(t)
+    pen = pencil(t)
+    el = Image.new("RGBA", (BW, BH), (0, 0, 0, 0))            # ears: cream fur + pink inner + fluff
+    ed = ImageDraw.Draw(el)
+    ears(ed, X0, X1, Y0, ear_margin * SS, t, outer=fw + (255,))
+    if t.get("ears", "cat") in ("cat", "fox", "wolf"):        # pencil line around the pink inner ear
+        size = ear_margin * SS / EAR_HEIGHT[t.get("ears", "cat")]
+        for side, cx in ((-1, X0 + size * 1.6), (1, X1 - size * 1.6)):
+            inner_pts = _soft_ear(cx, Y0, size, side, t.get("ears", "cat"))[1]
+            ed.line(inner_pts, fill=mix(fw, pen, 0.6) + (230,), width=2 * SS, joint="curve")
+    cardm = Image.new("L", (BW, BH), 0)
+    ImageDraw.Draw(cardm).rounded_rectangle([X0, Y0, X1, Y1], radius=radius * SS, fill=255)
+    el.putalpha(ImageChops.subtract(el.getchannel("A"), cardm))
+    det.alpha_composite(el)
     if tail_shape:
-        # dyed tail tip in the accent color + a few fur strokes along the floof
-        _draw_tail(dd, *tail_shape, None, tip=t["primary"])
+        # big cream floof w/ a soft accent-dyed tip + pencil fur strokes
+        _draw_tail(dd, *tail_shape, fw + (255,), tip=mix(fw, t["primary"], 0.55) + (255,), tip_from=0.86)
         blobs = tail_shape[0]
-        for x, y, r, u in blobs[8:20:6]:
-            dd.arc([x - r * 0.55, y - r * 0.55, x + r * 0.55, y + r * 0.55], 190, 280,
-                   fill=t["line_soft"], width=2 * SS)
+        soft = mix(fw, pen, 0.55)
+        for x, y, r, u in blobs[9:40:8]:                   # pencil fur strokes along the floof
+            dd.arc([x - r * 0.6, y - r * 0.6, x + r * 0.6, y + r * 0.6], 200, 255, fill=soft, width=2 * SS)
+            dd.arc([x - r * 0.35, y - r * 0.2, x + r * 0.45, y + r * 0.7], 300, 345, fill=soft, width=2 * SS)
     # little fur strokes near the bottom corners, like doodled chest fluff
     for fx in (X0 + radius * SS * 0.8, X1 - radius * SS * 0.8):
         for k in range(2):
@@ -525,6 +598,7 @@ def furry_frame(key, W, H, box, radius, ear_margin, tail=False, fluff=True):
     # keep details inside the silhouette
     det.putalpha(ImageChops_multiply(det.getchannel("A"), mask))
     img.alpha_composite(det)
+    img.alpha_composite(over)
 
     # 4) pride stripe hugging the card top, like a collar band (with stitch dots)
     if t.get("show_stripe", True):
@@ -539,6 +613,39 @@ def furry_frame(key, W, H, box, radius, ear_margin, tail=False, fluff=True):
         sl.putalpha(ImageChops_multiply(sl.getchannel("A"), cm))
         img.alpha_composite(sl)
     return img
+
+
+def pencil(t):
+    """soft gray-purple 'pencil' line color, like the hand-drawn art"""
+    return mix(t["line"], (112, 102, 128), 0.42 if not t.get("light") else 0.25)
+
+
+def fur_white(t):
+    """fluffy cream fur (ears + tail), barely tinted by ur accent so it matches the theme"""
+    return mix((252, 248, 252), t["primary"], 0.07)
+
+
+def sketch_ink(mask, ink, seed=1, thin=3, thick=7):
+    """Hand-inked outline for a silhouette mask: the line gets thicker / thinner like a real pen,
+    plus a light second 'sketch' pass a hair off. Returns (under_layer, over_layer) RGBA."""
+    from PIL import ImageChops
+    W, H = mask.size
+    a = mask.filter(ImageFilter.MaxFilter(thin))
+    b = mask.filter(ImageFilter.MaxFilter(thick))
+    rnd = random.Random(seed)
+    nz = Image.new("L", (max(2, W // 46), max(2, H // 46)))
+    nz.putdata([rnd.randint(0, 255) for _ in range(nz.width * nz.height)])
+    nz = nz.resize((W, H), Image.BICUBIC).point(lambda v: max(0, min(255, (v - 70) * 2)))
+    line = Image.composite(b, a, nz)                    # pen pressure
+    under = Image.new("RGBA", (W, H), ink[:3] + (0,))
+    under.putalpha(line)
+    sh = ImageChops.offset(mask, -2, 2)                 # sketch pass, a hair inside the edge
+    sh.paste(0, (W - 2, 0, W, H)); sh.paste(0, (0, 0, W, 2))
+    ring = ImageChops.subtract(sh.filter(ImageFilter.MaxFilter(3)), sh.filter(ImageFilter.MinFilter(3)))
+    ring = ImageChops.multiply(ring, mask.filter(ImageFilter.MinFilter(3)))
+    over = Image.new("RGBA", (W, H), ink[:3] + (0,))
+    over.putalpha(ring.point(lambda v: v * 0.22))
+    return under, over
 
 
 def ImageChops_multiply(a, b):
@@ -572,7 +679,7 @@ def hud_bg(key, w, h):
 @lru_cache(maxsize=8)
 def dash_bg(key, w, h):
     t = from_key(key)
-    img = furry_frame(key, w, h, (16, 36, w - 16, h - 18), 36, 36).copy()
+    img = furry_frame(key, w, h, (16, 60, w - 16, h - 18), 36, 60).copy()
     d = ImageDraw.Draw(img)
     # tiny doodles in the bottom corners
     doodle_star(d, w - 40, h - 22, 7, t["warn"], t["line"])
@@ -583,7 +690,7 @@ def dash_bg(key, w, h):
 # ==================================================================== HUD ===
 HUD_W = 512      # card width; the image is a bit wider so the tail fits
 HUD_IMG_W = 600
-HUD_EAR = 40     # space above the HUD card reserved for ears
+HUD_EAR = 64     # space above the HUD card reserved for ears
 
 
 def note_icon(d, cx, cy, r, fill):
@@ -1004,8 +1111,8 @@ def render_hud(state):
 
 
 # ============================================================= DASHBOARD ===
-DASH_W, DASH_H = 1024, 700
-LOGO_H, LOGO_POS = 92, (32, 50)
+DASH_W, DASH_H = 1024, 724
+LOGO_H, LOGO_POS = 92, (32, 74)
 
 
 def add_logo(base, frame_idx, slots=()):
@@ -1195,7 +1302,7 @@ def render_dashboard(state):
     global _CUR
     _CUR = t
     # header: animated sticker logo + hand-lettered name
-    top = 54
+    top = 78
     frames, _ = sticker_frames(LOGO_H)
     if frames:
         if state.logo_frame is not None:     # None = leave room, main.py animates it
@@ -1209,6 +1316,9 @@ def render_dashboard(state):
     cx3 = tx0 + ft.getlength("Fluff VR Stats") + 8
     d.text((cx3, top + 46), ":3", font=ft, fill=t["primary"], anchor="ls")
     doodle_heart(d, cx3 + ft.getlength(":3") + 14, top + 18, 6, t["primary"], t["line"])
+    for k in range(3):                                  # lil blush marks ///
+        bx = cx3 + ft.getlength(":3") + 6 + k * 7
+        d.line([(bx, top + 44), (bx + 5, top + 34)], fill=mix(t["primary"], (255, 120, 160), 0.4), width=2)
     d.text((tx0 + 2, top + 72), "stats + mods + cozy vibes for VRChat", font=font("body2", 15),
            fill=t["sub"], anchor="ls")
 
