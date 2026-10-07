@@ -122,7 +122,7 @@ Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_deskt
 - the full menu opens in a normal window: click with your mouse, scroll, type with your keyboard
 - chatbox stats, avatar toggles, music, AI chat, AI Look, headpat/boop/jump counters, Discord status all work
 - **Lil Kitty lives on your desktop** as a tiny always-on-top pet. Click to pat, drag across her head to stroke her, drag the empty space to move her
-- **View → Mini HUD** puts a small always-on-top stats card on your screen
+- **Floating wrist menu:** your wrist HUD floats on top of VRChat as its own little screen. Drag it anywhere, scroll on it to resize, right-click for see-through, tap the music buttons, and press **F9** (even mid-game) to hide/show it
 - **Mode → Switch to VR mode** restarts in VR. Tick **remember my choice** on the launch window to skip the question, or run `pick_mode.bat` to get it back
 - things that need a headset (wrist HUD, laser menu, zoom lens, VR FPS/battery stats) only show in VR
 

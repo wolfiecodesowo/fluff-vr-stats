@@ -127,7 +127,16 @@ class DesktopApp(core.App):
         if st.hud_dirty and (self.cfg.get("desktop", {}).get("mini_hud") or now - self.t["hud"] > 5):
             st.hud_dirty = False
             self.t["hud"] = now
-            self.frames["hud"] = ui.render_hud(st)
+            # VR-only stats (headset fps, frame timing) are always empty on desktop, so hide them
+            mods = self.cfg["modules"]
+            vr_only = ("fps", "frametime_graph", "gpu_cpu_ms", "reprojection", "batteries", "look_to_show")
+            saved = {k: mods.get(k) for k in vr_only}
+            try:
+                for k in vr_only:
+                    mods[k] = False
+                self.frames["hud"] = ui.render_hud(st)
+            finally:
+                mods.update(saved)
 
     def step_kitty(self, now):
         if not self.cfg["modules"].get("wrist_kitty", True):
@@ -173,6 +182,12 @@ class DesktopApp(core.App):
                 self.safe("typing", self.stop_typing)
                 if ev[1] is not None:
                     self.safe("keyboard", self.keyboard_done, ev[1])
+            elif kind == "hud":
+                cmd = ev[1]
+                if cmd != "zoom":                     # zoom lens is VR-only
+                    self.safe("music", self.music.command, cmd)
+                    self.state.hud_pressed, self.state.hud_pressed_t = cmd, time.time()
+                    self.state.hud_dirty = True
             elif kind == "kitty":
                 self.safe("kitty", self.kitty_click, ev[1], ev[2], ev[3])
 
@@ -184,9 +199,13 @@ def run():
     from PIL import Image, ImageTk
 
     cfg = core.load_cfg()
-    dcfg = cfg.setdefault("desktop", {"mini_hud": False, "kitty_pos": None})
+    dcfg = cfg.setdefault("desktop", {"mini_hud": True, "kitty_pos": None})
+    if not dcfg.get("hud_v2"):            # the floating wrist menu is on by default now
+        dcfg.update(mini_hud=True, hud_v2=True)
+    cfg["first_run"] = False                  # the VR welcome tip talks about SteamVR
     app = DesktopApp(cfg)
     app.state.dash_dirty = True
+    app.show_alert("ur wrist menu floats on ur screen! drag it anywhere · scroll to resize · F9 hides it", secs=12)
 
     def worker():
         try:
@@ -276,20 +295,91 @@ def run():
     kc.bind("<B1-Motion>", k_move)
     kc.bind("<ButtonRelease-1>", k_up)
 
-    # ---- mini HUD (optional, always on top)
+    # ---- floating wrist menu (the VR wrist HUD, as an always-on-top screen)
     hwin = tk.Toplevel(root)
     hwin.overrideredirect(True)
     hwin.attributes("-topmost", True)
     try:
         hwin.attributes("-transparentcolor", KEY)
+        hwin.attributes("-alpha", float(dcfg.get("hud_alpha", 0.95)))
     except tk.TclError:
         pass
-    hc = tk.Canvas(hwin, width=300, height=200, bg=KEY, highlightthickness=0)
+    hc = tk.Canvas(hwin, width=340, height=220, bg=KEY, highlightthickness=0, cursor="hand2")
     hc.pack()
-    hwin.geometry(f"+{40}+{sh - 360}")
-    hview = {"img": None, "last": None, "drag": None}
-    hc.bind("<Button-1>", lambda e: hview.__setitem__("drag", (e.x_root - hwin.winfo_x(), e.y_root - hwin.winfo_y())))
-    hc.bind("<B1-Motion>", lambda e: hview["drag"] and hwin.geometry(f"+{e.x_root - hview['drag'][0]}+{e.y_root - hview['drag'][1]}"))
+    hp = dcfg.get("hud_pos") or [40, sh - 420]
+    hwin.geometry(f"+{int(hp[0])}+{int(hp[1])}")
+    hview = {"img": None, "last": None, "press": None, "moved": False, "size": None}
+
+    def h_down(e):
+        hview["press"] = (e.x_root, e.y_root, e.x_root - hwin.winfo_x(), e.y_root - hwin.winfo_y(), e.x, e.y)
+        hview["moved"] = False
+
+    def h_move(e):
+        p = hview["press"]
+        if not p:
+            return
+        if abs(e.x_root - p[0]) + abs(e.y_root - p[1]) > 6:
+            hview["moved"] = True
+        if hview["moved"]:
+            hwin.geometry(f"+{e.x_root - p[2]}+{e.y_root - p[3]}")
+
+    def h_up(e):
+        p = hview["press"]
+        hview["press"] = None
+        if not p:
+            return
+        if hview["moved"]:
+            dcfg["hud_pos"] = [hwin.winfo_x(), hwin.winfo_y()]
+            app.state.dirty_cfg = True
+            return
+        h, size = app.frames.get("hud"), hview["size"]
+        if h is None or not size:          # a tap: press the HUD button under the mouse (music etc.)
+            return
+        x, y = p[4] * h.width / size[0], p[5] * h.height / size[1]
+        for (x0, y0, x1, y1), cmd in list(getattr(app.state, "hud_hits", []) or []):
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                app.events.put(("hud", cmd))
+                break
+
+    def h_wheel(e):
+        d = 1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else -1
+        dcfg["hud_w"] = max(220, min(760, int(dcfg.get("hud_w", 340)) + d * 30))
+        hview["last"] = None
+        app.state.dirty_cfg = True
+
+    def hud_menu(e):
+        m = tk.Menu(hwin, tearoff=0)
+        m.add_command(label="bigger", command=lambda: h_wheel(type("E", (), {"delta": 1})()))
+        m.add_command(label="smaller", command=lambda: h_wheel(type("E", (), {"delta": -1})()))
+        for a in (1.0, 0.85, 0.65):
+            m.add_command(label=f"see-through {int((1 - a) * 100)}%", command=lambda a=a: (
+                dcfg.__setitem__("hud_alpha", a), hwin.attributes("-alpha", a), app.state.__setattr__("dirty_cfg", True)))
+        m.add_separator()
+        m.add_command(label="hide (F9 brings it back)", command=lambda: toggle("hud"))
+        m.tk_popup(e.x_root, e.y_root)
+
+    hc.bind("<Button-1>", h_down)
+    hc.bind("<B1-Motion>", h_move)
+    hc.bind("<ButtonRelease-1>", h_up)
+    hc.bind("<MouseWheel>", h_wheel)
+    hc.bind("<Button-4>", h_wheel)
+    hc.bind("<Button-5>", h_wheel)
+    hc.bind("<Button-3>", hud_menu)
+
+    # F9 anywhere (even while VRChat is focused) shows / hides the floating wrist menu
+    hotkey = {"hit": False}
+    if sys.platform == "win32":
+        def hotkey_thread():
+            import ctypes
+            import ctypes.wintypes as wt
+            u = ctypes.windll.user32
+            if not u.RegisterHotKey(None, 0xF1F, 0x4000, 0x78):      # MOD_NOREPEAT, VK_F9
+                return
+            msg = wt.MSG()
+            while u.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+                if msg.message == 0x0312:                            # WM_HOTKEY
+                    hotkey["hit"] = True
+        threading.Thread(target=hotkey_thread, daemon=True, name="hotkey").start()
 
     # ---- menu
     def switch_vr():
@@ -313,7 +403,7 @@ def run():
     menu = tk.Menu(root)
     m1 = tk.Menu(menu, tearoff=0)
     m1.add_command(label="Lil Kitty on desktop (on/off)", command=lambda: toggle("kitty"))
-    m1.add_command(label="Mini HUD on top (on/off)", command=lambda: toggle("hud"))
+    m1.add_command(label="Floating wrist menu (on/off)   F9", command=lambda: toggle("hud"))
     menu.add_cascade(label="View", menu=m1)
     m2 = tk.Menu(menu, tearoff=0)
     m2.add_command(label="Switch to VR mode", command=switch_vr)
@@ -372,11 +462,16 @@ def run():
             show(kc, kview, k, (KS, KS))
         elif kwin.state() != "withdrawn":
             kwin.withdraw()
+        if hotkey["hit"]:
+            hotkey["hit"] = False
+            toggle("hud")
         h = app.frames.get("hud")
         if h is not None and dcfg.get("mini_hud"):
-            hs = (300, int(300 * h.height / h.width))
-            if hc.winfo_reqheight() != hs[1]:
-                hc.config(height=hs[1])
+            hw = int(dcfg.get("hud_w", 340))
+            hs = (hw, int(hw * h.height / h.width))
+            if hview["size"] != hs:
+                hc.config(width=hs[0], height=hs[1])
+                hview["size"], hview["img"] = hs, None
             if hwin.state() == "withdrawn":
                 hwin.deiconify()
             show(hc, hview, h, hs)

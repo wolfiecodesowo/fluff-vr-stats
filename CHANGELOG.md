@@ -8,6 +8,7 @@
 - 🟢 **Live OSC status** shows if VRChat is actually talking to the app + which params it sees, so u can tell why counts aren't going up
 - 🔎 auto-find catches more names (Touch_Head, Contact_Nose, OSC_Pat...) and no longer mistakes things like "Patreon" for a pat
 - 👣 **Zoomies fixed**: it now counts walking + running in VRChat (thumbstick too), not just walking around ur room. works in desktop mode too
+- 🖥️ **Floating wrist menu in desktop mode**: ur wrist HUD now floats on top of VRChat (on by default). drag it anywhere, scroll to resize, right-click for see-through, tap the music buttons, **F9** hides/shows it
 - 🔔 **Fluff Bot bump helper**: thanks DISBOARD bumpers, `/bumpers` leaderboard, pings 🔔 Bumpers every 2h, `/bumpstatus`, `/bumpremind`, `/invite`
 - 🥽 Quest Edition v0.4.2 with the same fixes
 
