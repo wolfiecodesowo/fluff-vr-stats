@@ -1,5 +1,10 @@
 # Changelog
 
+## Quest Edition v0.4.3
+- 🔢 the app header now shows ur real version (it always said "v0.2" before, even when u were up to date, oops)
+- ✨ the app tells u when a new Quest version is out, with a button to the download page
+- 📦 downloads are named with the version (FluffVRStats-Quest-0.4.3.apk) so an old cached copy can't sneak in
+
 ## v0.2.2: bug fixes + auto-updates
 - (v0.2.1 had the lag fixes below; v0.2.2 adds everything else)
 

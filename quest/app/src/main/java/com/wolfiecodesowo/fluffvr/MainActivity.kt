@@ -61,6 +61,29 @@ class MainActivity : Activity() {
         window.navigationBarColor = BG
         build()
         ui.post(refresher)
+        checkForUpdate()
+    }
+
+    // ---- version + "update available" (Quest can't install updates itself, so we just tell u)
+    private fun myVersion(): String = try {
+        @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionName.removeSuffix("-quest")
+    } catch (_: Exception) { "?" }
+
+    private fun myCode(): Long = try {
+        @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).longVersionCode
+    } catch (_: Exception) { 0L }
+
+    @Volatile private var newVersion: String? = null
+    private fun checkForUpdate() {
+        Thread {
+            try {
+                val j = org.json.JSONObject(java.net.URL("https://wolfiecodesowo.github.io/fluff-vr-stats/quest/version.json?t=${System.currentTimeMillis() / 60000}").readText())
+                if (j.optLong("versionCode") > myCode()) {
+                    newVersion = j.optString("versionName", "new")
+                    ui.post { build() }
+                }
+            } catch (_: Exception) {}
+        }.start()
     }
 
     override fun onDestroy() {
@@ -164,7 +187,7 @@ class MainActivity : Activity() {
         head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(64), dp(64)))
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
         titles.addView(text("Fluff VR Stats :3", 28f, TEXT, fTitle))
-        titles.addView(text("Quest Edition · v0.2 beta", 14f, SUB))
+        titles.addView(text("Quest Edition · v${myVersion()} beta", 14f, SUB))
         head.addView(titles)
         root.addView(head)
         // tabs
@@ -190,7 +213,16 @@ class MainActivity : Activity() {
         refresher.run()
     }
 
+    private fun updateBanner() {
+        val v = newVersion ?: return
+        val c = card(body, "✨ update v$v is out!")
+        c.addView(text("u have v${myVersion()}. download the new APK on ur PC (or phone) and drag it into SideQuest. ur settings stay :3", 14f, SUB))
+        c.addView(button("open the download page", true) { open("https://wolfiecodesowo.github.io/fluff-vr-stats/quest/") },
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+    }
+
     private fun buildChatbox() {
+        updateBanner()
         val top = card(body)
         val r = row(top, wrap = false)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -648,7 +680,7 @@ class MainActivity : Activity() {
         val c = card(body)
         c.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(160), dp(160)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         c.addView(text("thank u for downloading!!", 24f, TEXT, fTitle).apply { gravity = Gravity.CENTER })
-        c.addView(text("this is an early beta of the Quest version. more mods are coming. come say hi in the Discord <3",
+        c.addView(text("Quest Edition v${myVersion()} (early beta). more mods are coming. come say hi in the Discord <3",
             15f, SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(12)) })
         val r = row(c)
         chip(r, "GitHub", true) { open("https://github.com/wolfiecodesowo/fluff-vr-stats") }
