@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.2: bug fixes + auto-updates
+- (v0.2.1 had the lag fixes below; v0.2.2 adds everything else)
+
 ## v0.2.1: smooth fix
 - 🚀 **Less lag**: Lil Kitty draws ~3.5x faster (her text is cached) and only animates fast while u play with her
 - 🖱️ **Desktop mode feels way smoother**: uses ur normal mouse cursor (the drawn paw cursor was stuttering) and redraws the window much faster
