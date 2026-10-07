@@ -81,6 +81,11 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
   - **45 slash commands:** client guides (`/download`, `/install`, `/mods`, `/boost`...), `/ticket` private support, `/suggest` + `/bug` with voting threads, `/invr`, fun ones (`/headpat`, `/boop`, `/fluffrate`, `/8ball`) and staff tools (`/poll`, `/warn`, `/timeout`, `/lockdown`).
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
 
+## 🥽 Quest (standalone)
+There's an early **Quest Edition** in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info and avatar toggles over OSC.
+- Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
+- Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
+
 ## 🔒 Privacy
 - Everything runs on your PC.
 - The only things that go online:
