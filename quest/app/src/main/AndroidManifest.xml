@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- auto-updates: lets the app hand a new version of itself to Android's installer (u still tap "Update") -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- a normal 2D panel app on Quest, not a VR app -->
     <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" />
@@ -28,6 +30,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver android:name=".InstallReceiver" android:exported="false" />
 
         <!-- keeps sending chatbox stats while VRChat is open -->
         <service

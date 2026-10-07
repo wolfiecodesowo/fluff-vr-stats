@@ -1,5 +1,11 @@
 # Changelog
 
+## Quest Edition v0.7.0: auto-updates
+- 🔄 the Quest / phone app updates itself now: it downloads new versions in the background and Android asks u to tap **Update** (apps aren't allowed to install silently). ur settings stay
+- ✅ it double checks the download is really Fluff VR Stats + newer before installing
+- ⚙️ turn it off or check by hand in Settings → updates
+- install v0.7.0 once the normal way, then every update after it is automatic
+
 ## v0.3.2 + Quest Edition v0.6.1: global chat fix
 - 🌐 global chat stays connected: when the chat relay drops the connection (it does that now and then), the app, Quest and Fluff Bot reconnect instantly and pick up right where they left off, so no messages get missed or doubled
 

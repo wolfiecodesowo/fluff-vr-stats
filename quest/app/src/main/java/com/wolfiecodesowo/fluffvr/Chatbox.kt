@@ -60,6 +60,7 @@ class Settings(ctx: Context) {
         .joinToString("").also { p.edit().putString("gc_sid", it).apply() }
     var gchatMuted: Set<String> get() = p.getStringSet("gc_muted", emptySet())!!.toSet(); set(v) = p.edit().putStringSet("gc_muted", v).apply()
     var kittyPats: Int get() = p.getInt("kitty_pats", 0); set(v) = p.edit().putInt("kitty_pats", v).apply()
+    var autoUpdate: Boolean get() = p.getBoolean("auto_update", true); set(v) = p.edit().putBoolean("auto_update", v).apply()
     var goalMin: Int get() = p.getInt("goal_min", 60); set(v) = p.edit().putInt("goal_min", v).apply()
     var ears: String get() = p.getString("ears", "cat")!!; set(v) = p.edit().putString("ears", v).apply()
     var kittyName: String get() = p.getString("kitty_name", "Mochi")!!; set(v) = p.edit().putString("kitty_name", v).apply()

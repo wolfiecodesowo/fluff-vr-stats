@@ -87,17 +87,24 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).longVersionCode
     } catch (_: Exception) { 0L }
 
-    @Volatile private var newVersion: String? = null
+    private var updView: TextView? = null
+    private var updSig = ""
+    private var autoPrompted = false
     private fun checkForUpdate() {
-        Thread {
-            try {
-                val j = org.json.JSONObject(java.net.URL("https://wolfiecodesowo.github.io/fluff-vr-stats/quest/version.json?t=${System.currentTimeMillis() / 60000}").readText())
-                if (j.optLong("versionCode") > myCode()) {
-                    newVersion = j.optString("versionName", "new")
-                    ui.post { build() }
-                }
-            } catch (_: Exception) {}
-        }.start()
+        Updater.onChange = {
+            ui.post {
+                val sig = Updater.state + Updater.latestName
+                if (sig != updSig) { updSig = sig; if (tab in listOf("Home", "Settings")) build() }
+                if (Updater.state == "ready" && s.autoUpdate && !autoPrompted) { autoPrompted = true; Updater.install(this) }
+            }
+        }
+        Updater.check(this, s.autoUpdate)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // back from the "allow installs" screen -> try the install again
+        if (Updater.state == "need_permission" && packageManager.canRequestPackageInstalls()) { Updater.state = "ready"; Updater.install(this) }
     }
 
     override fun onDestroy() {
@@ -117,6 +124,7 @@ class MainActivity : Activity() {
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
             liveView?.text = liveText()
+            updView?.text = "downloading… ${Updater.progress}%"
             if (gchatList != null && GlobalChat.version != gchatSig) fillChat()
             patsView?.text = "  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  "
             if (tab == "Mods") {
@@ -203,6 +211,7 @@ class MainActivity : Activity() {
         "Avatar" to "🐱", "Music" to "🎵", "Remote" to "📱", "Settings" to "⚙️")
 
     private fun build() {
+        updView = null
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
         gchatList = null; kittyView = null; kittyText = null; gchatSig = -1
         val root = LinearLayout(this).apply {
@@ -432,11 +441,31 @@ class MainActivity : Activity() {
     }
 
     private fun updateBanner() {
-        val v = newVersion ?: return
+        if (!Updater.hasUpdate(this)) return
+        val v = Updater.latestName
         val c = card(body, "✨ update v$v is out!")
-        c.addView(text("u have v${myVersion()}. download the new APK on ur PC (or phone) and drag it into SideQuest. ur settings stay :3", 14f, SUB))
-        c.addView(button("open the download page", true) { open("https://wolfiecodesowo.github.io/fluff-vr-stats/quest/") },
-            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        val lp = { LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } }
+        when (Updater.state) {
+            "downloading" -> { updView = text("downloading… ${Updater.progress}%", 15f, TEXT, fHead); c.addView(updView) }
+            "ready" -> {
+                c.addView(text("downloaded! tap install, then tap Update on the next screen. ur settings stay :3", 14f, SUB))
+                c.addView(button("install update", true) { Updater.install(this) }, lp())
+            }
+            "need_permission" -> {
+                c.addView(text("Android needs ur OK once: turn on \"Allow from this source\" for Fluff VR Stats, then come back here.", 14f, SUB))
+                c.addView(button("install update", true) { Updater.install(this) }, lp())
+            }
+            "installing" -> c.addView(text("opening the installer… tap Update :3", 15f, TEXT, fHead))
+            "failed" -> {
+                c.addView(text("update didn't work (${Updater.error}). try again, or grab it from the website.", 14f, SUB))
+                c.addView(button("try again", true) { Updater.state = "idle"; Updater.download(this) }, lp())
+                c.addView(button("download page", false) { open(Updater.PAGE) }, lp())
+            }
+            else -> {
+                c.addView(text("u have v${myVersion()}. one tap and it updates itself, ur settings stay :3", 14f, SUB))
+                c.addView(button("update now", true) { Updater.download(this) }, lp())
+            }
+        }
     }
 
     private fun buildChatbox() {
@@ -905,6 +934,13 @@ class MainActivity : Activity() {
         chip(gr, if (s.gchatOn) "chat on" else "chat off", s.gchatOn) { s.gchatOn = !s.gchatOn }
         chip(gr, if (s.gchatNotify) "notify me ✓" else "notify me", s.gchatNotify) { s.gchatNotify = !s.gchatNotify }
         if (s.gchatMuted.isNotEmpty()) chip(gr, "unmute ${s.gchatMuted.size}", false) { s.gchatMuted = emptySet() }
+
+        val up = card(body, "🔄 updates")
+        up.addView(text("v${myVersion()} · " + if (Updater.hasUpdate(this)) "v${Updater.latestName} is out!" else "up to date", 14f, SUB))
+        val upr = row(up); upr.setPadding(0, dp(8), 0, 0)
+        chip(upr, if (s.autoUpdate) "auto update ✓" else "auto update", s.autoUpdate) { s.autoUpdate = !s.autoUpdate }
+        chip(upr, "check now", false) { Updater.check(this, true) }
+        updateBanner()
 
         val gl = card(body, "🎯 daily VR goal")
         val glr = row(gl)
