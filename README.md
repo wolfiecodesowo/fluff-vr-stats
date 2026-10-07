@@ -23,6 +23,7 @@
 >
 > **🖐️ No wrist menu on standalone Quest (yet).** Quest doesn't let any app draw menus on top of VRChat, so the hand/wrist menu from the PC version may not work on Quest.
 > **📱 Your phone is the menu instead:** install the same APK on an Android phone (same Wi-Fi), open the **Remote** tab, tap **find my Quest**, enter the pair code, and control toggles, chatbox, music, timer and mods while you play. Free, no account needed.
+> **📵 Android phones only. Not available on iPhone.**
 > *(Playing PCVR through Air Link / Steam Link / Virtual Desktop? Then use the PC version and you get the full wrist HUD.)*
 >
 > **⬇ [Download FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)** · install steps: **[wolfiecodesowo.github.io/fluff-vr-stats/quest](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/)**
@@ -98,7 +99,7 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 ## 🥽 Quest (standalone)
 There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info, avatar toggles and 14 Quest mods over OSC.
 - 🖐️ **Heads up:** the wrist/hand menu may not work on standalone Quest. Quest blocks apps from drawing over VRChat.
-- 📱 **Phone remote replaces it:** put the same APK on an Android phone and use the **Remote** tab as your menu while you play.
+- 📱 **Phone remote replaces it:** put the same APK on an Android phone and use the **Remote** tab as your menu while you play. **Android only, not available on iPhone.**
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
 

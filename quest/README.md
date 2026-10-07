@@ -13,6 +13,7 @@ Standalone Quest doesn't let apps draw anything on top of VRChat, so the **hand/
 Instead, **your phone becomes the menu**: install this same APK on an Android phone, open the **Remote** tab, tap **find my Quest**
 and type the 4-digit pair code shown on the Quest. Then you can flip avatar toggles, type in the chatbox, skip songs, run timers and turn
 mods on/off while you play. It's free and works over your home Wi-Fi (both devices on the same network).
+**📵 Android phones only. The phone remote is not available on iPhone.**
 Playing PCVR through Air Link / Steam Link / Virtual Desktop? Use the PC version and you get the full wrist HUD.
 
 ## What it does (v0.3)
