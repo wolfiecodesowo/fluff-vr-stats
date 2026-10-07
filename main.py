@@ -1573,7 +1573,7 @@ class App:
         if not want:
             return
         self.kitty.tick(now)
-        if self.kitty.changed and now - self.kitty_t > (1 / 15 if getattr(self.kitty, "fast", True) else 1 / 6):
+        if self.kitty.changed and now - self.kitty_t > (1 / 12 if getattr(self.kitty, "fast", True) else 1 / 4):
             self.kitty_t = now
             self.push(self.kitty_ov, self.kitty.render(ui.get_theme(self.cfg), now), "kitty")
         if self.kitty.sound:

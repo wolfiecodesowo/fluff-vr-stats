@@ -55,6 +55,7 @@ LINES = {
 }
 
 
+@lru_cache(maxsize=16)
 def _font(size):
     for n in ("Fredoka-Bold.ttf", "Nunito-Bold.ttf"):
         p = os.path.join(HERE, "fonts", n)
@@ -290,13 +291,37 @@ class Kitty:
             a = int(255 * (1 - k))
             _heart(d, x, y - k * 80, 12 + 6 * k, fill=(255, 150, 190, a), outline=(255, 90, 150, a), width=3)
         self._ui(d, img, now, hits, ink, accent, ink)
-        # artist credit (used with permission)
-        d.text((S - 22, 70), "art: anon artist <3", font=_font(11), fill=(150, 140, 160), anchor="ra")
         return img
 
     def _ui(self, d, img, now, hits, ink, accent, txt):
-        """name, tummy / trust bar, feed button, speech bubble (shared by both kitty styles)"""
+        """name, tummy / trust bar, feed button (cached, text is slow to draw) + speech bubble"""
         S = SIZE
+        hg = round(self.hunger(now), 2)
+        key = (self.k["name"], self.k["unlocked"], self.k["trust"], hg, ink, accent, txt,
+               bool(custom_frames()) and self.k.get("style", "custom") == "custom")
+        if getattr(self, "_ui_key", None) != key:
+            layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+            self._ui_hits = self._ui_static(ImageDraw.Draw(layer), now, ink, accent, txt, key[-1])
+            self._ui_layer, self._ui_key = layer, key
+        img.alpha_composite(self._ui_layer)
+        hits[:0] = self._ui_hits
+        if now < self.say_until and self.say:
+            fs = 20
+            while fs > 12 and d.textlength(self.say, font=_font(fs)) > 140:
+                fs -= 1
+            f3 = _font(fs)
+            w = d.textlength(self.say, font=f3) + 24
+            bx, by = 16, 184
+            bub = (255, 236, 246, 250)
+            d.rounded_rectangle([bx, by, bx + w, by + 36], 16, fill=bub, outline=ink, width=2)
+            d.text((bx + w / 2, by + 18), self.say, font=f3, fill=ink, anchor="mm")
+        self.hits = hits
+
+    def _ui_static(self, d, now, ink, accent, txt, credit):
+        S = SIZE
+        hits = []
+        if credit:      # artist credit (used with permission)
+            d.text((S - 22, 70), "art: anon artist <3", font=_font(11), fill=(150, 140, 160), anchor="ra")
         d.text((24, 18), self.k["name"], font=_font(22), fill=txt)
         if self.k["unlocked"]:
             hg = self.hunger(now)
@@ -310,7 +335,7 @@ class Kitty:
             fb = (S - 118, S - 62, S - 22, S - 20)
             d.rounded_rectangle(fb, 20, fill=accent, outline=ink, width=2)
             d.text(((fb[0] + fb[2]) / 2, (fb[1] + fb[3]) / 2), "feed", font=_font(22), fill=(30, 20, 40), anchor="mm")
-            hits.insert(0, (fb, "feed"))
+            hits.append((fb, "feed"))
         else:
             lx, ly = S - 54, 42
             d.rounded_rectangle([lx - 16, ly - 4, lx + 16, ly + 22], 5, fill=(255, 210, 90), outline=ink, width=2)
@@ -321,17 +346,7 @@ class Kitty:
             d.rounded_rectangle([40, S - 30, 40 + bw2, S - 17], 7, fill=(60, 48, 72))
             if tr:
                 d.rounded_rectangle([42, S - 28, 42 + (bw2 - 4) * tr / TRUST_NEEDED, S - 19], 5, fill=accent)
-        if now < self.say_until and self.say:
-            fs = 20
-            while fs > 12 and d.textlength(self.say, font=_font(fs)) > 140:
-                fs -= 1
-            f3 = _font(fs)
-            w = d.textlength(self.say, font=f3) + 24
-            bx, by = 16, 184
-            bub = (255, 236, 246, 250)
-            d.rounded_rectangle([bx, by, bx + w, by + 36], 16, fill=bub, outline=ink, width=2)
-            d.text((bx + w / 2, by + 18), self.say, font=f3, fill=ink, anchor="mm")
-        self.hits = hits
+        return hits
 
     def render_lineart(self, theme=None, now=None):
         now = time.time() if now is None else now

@@ -226,9 +226,20 @@ class Extras:
         if name == "EyeHeightAsMeters" and isinstance(v, (int, float)):
             self._set("height_m", round(float(v), 2))
             return
+        # VRChat sends hundreds of these a second: work out once per name what it is
+        ck = (self.cfg.get("headpat_param", ""), self.cfg.get("boop_param", ""))
+        if getattr(self, "_kind_key", None) != ck:
+            self._kind_key, self._kind = ck, {}
+        kind_of = self._kind.get(name)
+        if kind_of is None:
+            kind_of = ("headpats" if is_contact(name, ck[0], PAT_RE) else
+                       "boops" if is_contact(name, ck[1], BOOP_RE) else "")
+            self._kind[name] = kind_of
+        if not kind_of:
+            return
         for kind, cfg_key, rx, total in (("headpats", "headpat_param", PAT_RE, "headpats_total"),
                                          ("boops", "boop_param", BOOP_RE, "boops_total")):
-            if is_contact(name, self.cfg.get(cfg_key, ""), rx):
+            if kind == kind_of:
                 was, last = self._contact.get(name, (False, 0))
                 on = contact_on(v, was)
                 if on and not was and now - last > 0.8:

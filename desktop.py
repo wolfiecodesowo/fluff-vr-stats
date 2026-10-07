@@ -104,6 +104,13 @@ class DesktopApp(core.App):
     def mouse_flipped(self):
         return False
 
+    def on_hover(self, mx, my):
+        # just the hover highlight; the real Windows cursor is used on desktop
+        box = self.hit.find_box(mx, my)
+        if box != self.state.hover_box:
+            self.state.hover_box = box
+            self.t["logo"] = 0
+
     def play_intro(self):
         pass
 
@@ -127,7 +134,7 @@ class DesktopApp(core.App):
             self.frames.pop("kitty", None)
             return
         self.kitty.tick(now)
-        if self.kitty.changed and now - self.kitty_t > (1 / 15 if getattr(self.kitty, "fast", True) else 1 / 6) or "kitty" not in self.frames:
+        if self.kitty.changed and now - self.kitty_t > (1 / 12 if getattr(self.kitty, "fast", True) else 1 / 4) or "kitty" not in self.frames:
             self.kitty_t = now
             self.frames["kitty"] = self.kitty.render(ui.get_theme(self.cfg), now)
         if self.kitty.sound:
@@ -202,7 +209,7 @@ def run():
     scale = min(1.0, sw * 0.8 / ui.DASH_W, sh * 0.8 / ui.DASH_H)
     W, H = int(ui.DASH_W * scale), int(ui.DASH_H * scale)
     root.configure(bg="#160e22")
-    canvas = tk.Canvas(root, width=W, height=H, bg="#160e22", highlightthickness=0, cursor="none")
+    canvas = tk.Canvas(root, width=W, height=H, bg="#160e22", highlightthickness=0, cursor="hand2")
     canvas.pack(fill="both", expand=True)
     view = {"scale": scale, "img": None, "item": None, "last": None, "W": W, "H": H}
 
@@ -327,14 +334,17 @@ def run():
         if img is store["last"] and store["img"] is not None:
             return
         store["last"] = img
-        pic = img.resize(size, Image.LANCZOS) if img.size != size else img
+        pic = img.resize(size, Image.BILINEAR) if img.size != size else img
         if pic.mode == "RGBA":
             bg = Image.new("RGBA", pic.size, (255, 0, 254, 255))
             bg.alpha_composite(pic)
             pic = bg.convert("RGB")
-        store["img"] = ImageTk.PhotoImage(pic)
-        canvas_.delete("all")
-        canvas_.create_image(0, 0, image=store["img"], anchor="nw")
+        if store["img"] is not None and (store["img"].width(), store["img"].height()) == size:
+            store["img"].paste(pic)
+        else:
+            store["img"] = ImageTk.PhotoImage(pic)
+            canvas_.delete("all")
+            canvas_.create_image(0, 0, image=store["img"], anchor="nw")
 
     def refresh():
         if app.quit:
@@ -344,11 +354,17 @@ def run():
         if f is not None:
             s = view["scale"]
             if f is not view["last"]:
-                pic = f.convert("RGB").resize((int(ui.DASH_W * s), int(ui.DASH_H * s)), Image.LANCZOS)
-                view["img"] = ImageTk.PhotoImage(pic)
+                size = (int(ui.DASH_W * s), int(ui.DASH_H * s))
+                pic = f.convert("RGB")
+                if pic.size != size:
+                    pic = pic.resize(size, Image.BILINEAR)
+                if view["img"] is not None and (view["img"].width(), view["img"].height()) == size:
+                    view["img"].paste(pic)                  # reuse the same picture = much faster
+                else:
+                    view["img"] = ImageTk.PhotoImage(pic)
+                    canvas.delete("all")
+                    canvas.create_image(0, 0, image=view["img"], anchor="nw")
                 view["last"] = f
-                canvas.delete("all")
-                canvas.create_image(0, 0, image=view["img"], anchor="nw")
         k = app.frames.get("kitty")
         if k is not None and cfg["modules"].get("wrist_kitty", True):
             if kwin.state() == "withdrawn":

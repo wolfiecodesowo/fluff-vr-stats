@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.1: smooth fix
+- 🚀 **Less lag**: Lil Kitty draws ~3.5x faster (her text is cached) and only animates fast while u play with her
+- 🖱️ **Desktop mode feels way smoother**: uses ur normal mouse cursor (the drawn paw cursor was stuttering) and redraws the window much faster
+- 🐾 Headpat/boop detection now checks each VRChat parameter name once instead of hundreds of times a second
+
 ## v0.2.0: kitty + desktop update :3
 - 🐱 **Lil Kitty**: a fluffy cat on ur other wrist. pat her with ur free hand (she mews + purrs), pat her 20 times to make friends, then feed her. boop her nose, poke her tail, she naps when ignored
 - 🖥️ **Desktop mode**: the launcher asks "VR or Desktop?". desktop opens the menu in a normal window, kitty becomes a desktop pet, optional mini HUD. `run_desktop.bat` / `run_vr.bat` / `pick_mode.bat`
