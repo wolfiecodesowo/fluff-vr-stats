@@ -86,7 +86,7 @@ DEFAULT_CFG = {
         "world_info": True, "join_alerts": True, "avatar_toggles": True, "afk_detect": True,
         "distance": True, "wrist_pet": True, "timer": True,
         "ai_to_chatbox": False, "chatbox_status": False, "chatbox_song": False,
-        "typing_indicator": True, "mute_indicator": False, "headpat_counter": False,
+        "typing_indicator": True, "mute_indicator": False, "headpat_counter": True,
         "discord_presence": True,
         "battery_alert": True, "hydration_reminder": False, "vr_milestones": True, "zoom_lens": True,
         "boop_counter": False, "yap_meter": False, "jump_counter": False, "avatar_height": False,
@@ -453,6 +453,9 @@ class App:
 
         # music + extra mods (ping, weather, VRChat OSC)
         self.music = Music()
+        if not self.cfg.get("_pats_v2"):          # show the headpat counter on ur wrist by default now
+            self.cfg["_pats_v2"] = True
+            self.cfg["modules"]["headpat_counter"] = True
         self.extras = Extras(self.cfg)
         self.extras.music = self.music
         self.discord = DiscordLink(self.cfg)

@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private var startBtn: Button? = null
     private var musicView: TextView? = null
     private var liveView: TextView? = null
+    private var patsView: TextView? = null
     private var remoteView: TextView? = null
     private var remoteSig = ""
     private var modsSig = ""
@@ -103,6 +104,7 @@ class MainActivity : Activity() {
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
             liveView?.text = liveText()
+            patsView?.text = "  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  "
             if (tab == "Mods") {
                 QuestMods.learnTick()
                 val sig = "${QuestMods.learnKind}|${QuestMods.learnResult}|${QuestMods.patParam}"
@@ -178,7 +180,7 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------------- build ---
     private fun build() {
-        previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null
+        previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(20), dp(16), dp(20), dp(10))
         }
@@ -366,6 +368,7 @@ class MainActivity : Activity() {
         QuestMods.wifiBars(this)?.let { sb.append("📶 Wi-Fi ${"▮".repeat(it + 1)}${"▯".repeat(4 - it)}\n") }
         QuestMods.pingMs?.let { sb.append("🏓 ping ${it}ms\n") }
         QuestMods.muted?.let { sb.append(if (it) "🔇 mic muted\n" else "🎙️ mic on\n") }
+        sb.append("🐾 ${s.headpats} headpats · 👃 ${s.boops} boops · 🐇 ${s.jumps} jumps\n")
         QuestMods.batteryEta(this)?.let { sb.append("⌛ battery $it\n") }
         if (s.vrTodayS >= 60) sb.append("🥽 ${s.vrTodayS / 3600}h ${s.vrTodayS % 3600 / 60}m in VR today · 🔥 ${s.vrStreak} day streak\n")
         if (QuestMods.alertText.isNotEmpty() && System.currentTimeMillis() - QuestMods.alertAt < 60_000) sb.append("🔔 ${QuestMods.alertText}\n")
@@ -446,7 +449,8 @@ class MainActivity : Activity() {
         val hr = row(hp)
         hr.setPadding(0, dp(8), 0, 0)
         chip(hr, "save", true) { s.headpatParam = pp.text.toString().trim().ifEmpty { "HeadPat" } }
-        hr.addView(text("  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  ", 16f, TEXT, fHead))
+        patsView = text("  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  ", 16f, TEXT, fHead)
+        hr.addView(patsView)
         chip(hr, "reset all", false) { s.headpats = 0; s.boops = 0; s.jumps = 0; s.walkedM = 0f }
         val bp = edit(s.boopParam, "boop parameter (blank = auto)")
         hp.addView(bp, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })

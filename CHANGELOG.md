@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.3 + Quest Edition v0.4.4: headpat counter shows up
+- 🐾 PC: the headpat counter is on by default now, so ur count shows on ur wrist (it was only in the chatbox before)
+- 🐾 PC: Mods → Counters shows ur live headpats, boops + jumps
+- 🐾 Quest: headpat / boop / jump counts update live in the Mods tab
+
 ## Quest Edition v0.4.3
 - 🔢 the app header now shows ur real version (it always said "v0.2" before, even when u were up to date, oops)
 - ✨ the app tells u when a new Quest version is out, with a button to the download page

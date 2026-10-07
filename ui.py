@@ -1774,6 +1774,9 @@ def _tab_mods(d, hit, box, state, t):
                 ("listening for a boop..." if learning == "boops" else "learn my boop", "learn_contact", "boops"),
                 (f"pat: {pat} ✎", "mod_edit", "headpat_param"),
                 ("reset counts", "mod_reset_counts", None)]
+        # big live counts
+        counts = f"{x.get('headpats', 0)} headpats   ·   {x.get('boops', 0)} boops   ·   {x.get('jumps', 0)} jumps"
+        d.text((x0 + 6, y1 - 34), counts, font=font("head", 20), fill=t["text"], anchor="ls")
         # live status: is VRChat even talking to us?
         last = x.get("osc_last")
         if last and time.time() - last < 15:
