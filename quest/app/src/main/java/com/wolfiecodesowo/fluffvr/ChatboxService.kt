@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
@@ -35,6 +37,11 @@ class ChatboxService : Service() {
         thread = HandlerThread("chatbox").also { it.start() }
         handler = Handler(thread.looper)
         handler.post(tick)
+        handler.post(slow)
+        QuestMods.startListener(this)
+        registerReceiver(screen, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
+        })
     }
 
     private val tick = object : Runnable {
@@ -57,6 +64,30 @@ class ChatboxService : Service() {
         }
     }
 
+    /** headset off -> screen off -> AFK */
+    private val screen = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            when (i?.action) {
+                Intent.ACTION_SCREEN_OFF -> if (QuestMods.afkSince == 0L) QuestMods.afkSince = System.currentTimeMillis()
+                else -> QuestMods.afkSince = 0L
+            }
+        }
+    }
+
+    /** slower stuff: ping every 15s, weather every 15 min */
+    private var lastWeather = 0L
+    private val slow = object : Runnable {
+        override fun run() {
+            val s = Settings(this@ChatboxService)
+            if (s.line("ping")) QuestMods.measurePing()
+            if (s.line("weather") && System.currentTimeMillis() - lastWeather > 15 * 60_000) {
+                lastWeather = System.currentTimeMillis()
+                QuestMods.fetchWeather(s)
+            }
+            handler.postDelayed(this, 15_000)
+        }
+    }
+
     private fun notification(): Notification {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel("chatbox", "Chatbox stats", NotificationManager.IMPORTANCE_LOW))
@@ -73,6 +104,8 @@ class ChatboxService : Service() {
 
     override fun onDestroy() {
         running = false
+        try { unregisterReceiver(screen) } catch (_: Exception) {}
+        QuestMods.stopListener()
         handler.removeCallbacksAndMessages(null)
         thread.quitSafely()
         wake?.let { if (it.isHeld) it.release() }

@@ -33,6 +33,7 @@ class MainActivity : Activity() {
     private var stateView: TextView? = null
     private var startBtn: Button? = null
     private var musicView: TextView? = null
+    private var liveView: TextView? = null
 
     // ---- colors (same palette as the PC app's Pride Pastel theme)
     private val BG = Color.rgb(34, 22, 46)
@@ -74,6 +75,7 @@ class MainActivity : Activity() {
                 val m = MusicState.snapshot()
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
+            liveView?.text = liveText()
             ui.postDelayed(this, 1000)
         }
     }
@@ -138,7 +140,7 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------------- build ---
     private fun build() {
-        previewView = null; stateView = null; startBtn = null; musicView = null
+        previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(20), dp(16), dp(20), dp(10))
         }
@@ -147,13 +149,13 @@ class MainActivity : Activity() {
         head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(64), dp(64)))
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
         titles.addView(text("Fluff VR Stats :3", 28f, TEXT, fTitle))
-        titles.addView(text("Quest Edition · chatbox + avatar + music", 14f, SUB))
+        titles.addView(text("Quest Edition · v0.2 beta", 14f, SUB))
         head.addView(titles)
         root.addView(head)
         // tabs
         val tabs = row(root)
         tabs.setPadding(0, dp(12), 0, dp(10))
-        for (t in listOf("Chatbox", "Avatar", "Music", "Settings", "<3")) chip(tabs, t, t == tab) { tab = t }
+        for (t in listOf("Chatbox", "Mods", "Avatar", "Music", "Perf", "Settings", "<3")) chip(tabs, t, t == tab) { tab = t }
         // body
         val scroll = ScrollView(this)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -163,6 +165,8 @@ class MainActivity : Activity() {
             "Chatbox" -> buildChatbox()
             "Avatar" -> buildAvatar()
             "Music" -> buildMusic()
+            "Mods" -> buildMods()
+            "Perf" -> buildPerf()
             "Settings" -> buildSettings()
             else -> buildThanks()
         }
@@ -277,6 +281,19 @@ class MainActivity : Activity() {
                 }
             }
         }
+        val found = QuestMods.discovered().filter { (n, _) -> (0 until arr.length()).none { arr.getJSONObject(it).getString("name") == n } }
+        val det = card(body, "✨ detected from VRChat")
+        if (found.isEmpty()) {
+            det.addView(text(if (QuestMods.oscSeen == 0L) "start the chatbox + open VRChat with OSC on, then change into ur avatar. its toggles show up here so u don't have to type them!"
+                else "no new toggles found yet. change avatar or use ur menu once so VRChat sends them.", 14f, SUB))
+        } else {
+            det.addView(text("tap one to add it:", 14f, SUB))
+            var dr = row(det)
+            found.take(40).forEachIndexed { i, (n, t) ->
+                if (i > 0 && i % 3 == 0) dr = row(det)
+                chip(dr, "+ $n", false) { s.addParam(n, t) }
+            }
+        }
         val add = card(body, "add a toggle")
         val nameEd = edit("", "parameter name, e.g. Hoodie")
         add.addView(nameEd)
@@ -288,6 +305,117 @@ class MainActivity : Activity() {
                 if (n.isNotEmpty()) s.addParam(n, t)
             }
         }
+    }
+
+    private fun liveText(): String {
+        val sb = StringBuilder()
+        val osc = QuestMods.oscSeen
+        sb.append(if (osc > 0 && System.currentTimeMillis() - osc < 10_000) "🟢 VRChat is talking to us (OSC)\n"
+            else "⚪ not hearing VRChat yet (start chatbox + turn on OSC)\n")
+        Chatbox.battery(this)?.let { (p, c) -> sb.append("🔋 battery $p%${if (c) " ⚡ charging" else ""}\n") }
+        QuestMods.tempC(this)?.let { sb.append("🌡️ headset temp ${"%.1f".format(it)}°C${if (it >= 42) "  (toasty! take a break)" else ""}\n") }
+        QuestMods.freeRamGb(this)?.let { sb.append("🧠 ${"%.1f".format(it)} GB RAM free\n") }
+        QuestMods.wifiBars(this)?.let { sb.append("📶 Wi-Fi ${"▮".repeat(it + 1)}${"▯".repeat(4 - it)}\n") }
+        QuestMods.pingMs?.let { sb.append("🏓 ping ${it}ms\n") }
+        QuestMods.muted?.let { sb.append(if (it) "🔇 mic muted\n" else "🎙️ mic on\n") }
+        return sb.toString().trimEnd()
+    }
+
+    private fun buildMods() {
+        val live = card(body, "live")
+        liveView = text("", 15f, TEXT)
+        live.addView(liveView)
+
+        val list = card(body, "Quest mods")
+        list.addView(text("these replace the PC overlay mods. tap to turn on, they show up in ur chatbox.", 14f, SUB).apply { setPadding(0, 0, 0, dp(8)) })
+        for ((k, label, desc) in Settings.MODS) {
+            val r = row(list, wrap = false)
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(text(label, 17f, TEXT, fHead))
+            col.addView(text(desc, 13f, SUB))
+            r.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { bottomMargin = dp(10) })
+            val on = s.line(k)
+            r.addView(button(if (on) "on" else "off", on) { s.setLine(k, !s.line(k)); build() })
+        }
+
+        val tm = card(body, "⏳ timer / stopwatch")
+        val t1 = row(tm)
+        for (m in listOf(1, 5, 10, 15, 30)) chip(t1, "+${m} min", false) {
+            val base = maxOf(System.currentTimeMillis(), s.timerEnd)
+            s.stopwatchStart = 0L; s.timerEnd = base + m * 60_000L
+        }
+        val t2 = row(tm)
+        t2.setPadding(0, dp(6), 0, 0)
+        chip(t2, if (s.stopwatchStart > 0) "stopwatch running" else "start stopwatch", s.stopwatchStart > 0) {
+            if (s.stopwatchStart == 0L) { s.timerEnd = 0L; s.stopwatchStart = System.currentTimeMillis() }
+        }
+        chip(t2, "clear", false) { s.timerEnd = 0L; s.stopwatchStart = 0L }
+
+        val cn = card(body, "🔢 custom counter")
+        val lbl = edit(s.counterLabel, "what are u counting? e.g. water sips")
+        cn.addView(lbl)
+        val cr = row(cn)
+        cr.setPadding(0, dp(8), 0, 0)
+        chip(cr, "−", false) { s.counter = maxOf(0, s.counter - 1) }
+        cr.addView(text("  ${s.counter}  ", 22f, TEXT, fHead))
+        chip(cr, "+", true) { s.counter = s.counter + 1 }
+        chip(cr, "save label", false) { s.counterLabel = lbl.text.toString().trim().ifEmpty { "boops" } }
+        chip(cr, "reset", false) { s.counter = 0 }
+
+        val wx = card(body, "🌤️ weather")
+        val city = edit(s.city, "ur city, e.g. Denver")
+        wx.addView(city)
+        val wr = row(wx)
+        wr.setPadding(0, dp(8), 0, 0)
+        chip(wr, "save", true) {
+            s.city = city.text.toString().trim(); QuestMods.weather = null
+            Thread { QuestMods.fetchWeather(Settings(this)) }.start()
+        }
+        chip(wr, "°F", s.fahrenheit) { s.fahrenheit = true }
+        chip(wr, "°C", !s.fahrenheit) { s.fahrenheit = false }
+        QuestMods.weather?.let { wx.addView(text("now: $it", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) }) }
+
+        val hp = card(body, "🐾 headpats")
+        hp.addView(text("ur avatar needs a contact receiver for headpats. type its parameter name:", 14f, SUB))
+        val pp = edit(s.headpatParam, "HeadPat")
+        hp.addView(pp, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        val hr = row(hp)
+        hr.setPadding(0, dp(8), 0, 0)
+        chip(hr, "save", true) { s.headpatParam = pp.text.toString().trim().ifEmpty { "HeadPat" } }
+        hr.addView(text("  ${s.headpats} pats  ", 16f, TEXT, fHead))
+        chip(hr, "reset", false) { s.headpats = 0 }
+
+        val hy = card(body, "💧 hydration reminder")
+        val hyr = row(hy)
+        for (m in listOf(15, 30, 45, 60)) chip(hyr, "every ${m}m", s.hydrateMin == m) { s.hydrateMin = m }
+    }
+
+    private fun buildPerf() {
+        val live = card(body, "headset stats")
+        liveView = text("", 15f, TEXT)
+        live.addView(liveView)
+        live.addView(text("tip: turn on 🌡️ temp + 🧠 RAM in Mods to show them in ur chatbox", 13f, SUB).apply { setPadding(0, dp(8), 0, 0) })
+
+        val fps = card(body, "📈 FPS counter")
+        fps.addView(text("Android doesn't let normal apps read VRChat's FPS, so we can't show it in the chatbox (yet). " +
+            "but Meta has a free official FPS overlay that floats in ur view inside any game:", 14f, SUB))
+        fps.addView(text("1. install \"OVR Metrics Tool\" (free, from Meta / SideQuest)\n" +
+            "2. open it → turn on \"Enable persistent overlay\"\n" +
+            "3. pick FPS (and GPU / CPU if u want)\n" +
+            "4. open VRChat, the FPS sits in the corner of ur view", 15f, TEXT).apply { setPadding(0, dp(8), 0, 0) })
+        val fr = row(fps)
+        fr.setPadding(0, dp(8), 0, 0)
+        chip(fr, "OVR Metrics Tool page", true) { open("https://developers.meta.com/horizon/downloads/package/ovr-metrics-tool/") }
+
+        val tw = card(body, "⚙️ performance tweaks")
+        tw.addView(text("things like refresh rate, texture size and CPU/GPU level are locked to normal apps. " +
+            "they need a PC tool or the Quest's own settings:", 14f, SUB))
+        tw.addView(text("• refresh rate (72 / 90 / 120 Hz): Quest Settings → Display\n" +
+            "• Quest Games Optimizer or SideQuest's tools: texture size, CPU/GPU level, FFR (needs a PC + Developer Mode)\n" +
+            "• in VRChat: lower avatar performance limits + shadows = big FPS boost in busy worlds\n" +
+            "• close other apps before VRChat (check free RAM above)\n" +
+            "• hot headset? take a 5 min break, it throttles when it's toasty", 15f, TEXT).apply { setPadding(0, dp(8), 0, 0) })
+        tw.addView(text("tweaks that change system settings can make games crash or drain battery, use them at ur own risk!", 13f, SUB).apply { setPadding(0, dp(8), 0, 0) })
     }
 
     private fun buildMusic() {
@@ -334,7 +462,7 @@ class MainActivity : Activity() {
         val c = card(body)
         c.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(160), dp(160)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         c.addView(text("thank u for downloading!!", 24f, TEXT, fTitle).apply { gravity = Gravity.CENTER })
-        c.addView(text("this is the first Quest version. it's small for now, more mods are coming. come say hi in the Discord <3",
+        c.addView(text("this is an early beta of the Quest version. more mods are coming. come say hi in the Discord <3",
             15f, SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(12)) })
         val r = row(c)
         chip(r, "GitHub", true) { open("https://github.com/wolfiecodesowo/fluff-vr-stats") }

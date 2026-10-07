@@ -8,11 +8,15 @@ A small companion app that runs **on your Quest (standalone)** next to VRChat.
 
 Standalone Quest can't draw overlays on top of VRChat, so there is no wrist HUD here. Instead this app runs in the background and talks to VRChat over **OSC**, like the PC app's chatbox.
 
-## What it does (v0.1)
+## What it does (v0.2)
 - 🗨️ **Chatbox stats**: rotating status messages, time, **headset battery**, time in VR, song + progress bar
 - 🐱 **Avatar toggles**: add your parameter names and flip them (on/off, numbers, sliders)
 - 🎵 **Music**: song info + play/pause/skip (needs "notification access")
 - 💬 **Say something**: type a chatbox message with the typing bubble
+- 🧩 **Quest mods** (replace the PC overlay mods): AFK detector, Wi-Fi + ping, timer/stopwatch, weather, date,
+  headpat counter, mute indicator, headset temp, free RAM, low battery warning, hydration reminder, custom counter, kaomoji
+- ✨ **Auto-detected avatar toggles**: listens to VRChat's OSC (port 9001) and lists your avatar's parameters
+- 📈 **Perf tab**: live headset stats + how to get Meta's FPS overlay and safe performance tweaks
 
 ## Install (sideload)
 1. Turn on **Developer Mode** for your Quest in the Meta Horizon phone app.
