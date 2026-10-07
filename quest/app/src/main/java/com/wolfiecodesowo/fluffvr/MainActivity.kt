@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,7 +29,13 @@ class MainActivity : Activity() {
     private lateinit var s: Settings
     private lateinit var body: LinearLayout
     private val ui = Handler(Looper.getMainLooper())
-    private var tab = "Chatbox"
+    private var tab = "Home"
+    private var gchatList: LinearLayout? = null
+    private var gchatSig = -1
+    private var kittyView: ImageView? = null
+    private var kittyText: TextView? = null
+    private var kittyFrame = 0
+    private var kittyHappyUntil = 0L
     private var previewView: TextView? = null
     private var stateView: TextView? = null
     private var startBtn: Button? = null
@@ -49,7 +56,11 @@ class MainActivity : Activity() {
     private val ACCENTS = intArrayOf(Color.rgb(255, 143, 199), Color.rgb(181, 140, 255),
         Color.rgb(123, 224, 181), Color.rgb(255, 170, 90), Color.rgb(110, 200, 255))
     private val PINK get() = ACCENTS[s.theme.coerceIn(0, ACCENTS.size - 1)]
-    private val INK = Color.rgb(24, 14, 34)
+    private val INK = Color.rgb(14, 9, 18)
+    private val INNER_EAR = Color.rgb(255, 166, 210)
+    private val STRIPE = intArrayOf(Color.rgb(255, 140, 170), Color.rgb(255, 186, 130), Color.rgb(255, 234, 140),
+        Color.rgb(150, 236, 176), Color.rgb(130, 200, 255), Color.rgb(190, 160, 255))
+    private val client by lazy { if ((Build.MANUFACTURER ?: "").lowercase().let { "oculus" in it || "meta" in it }) "quest" else "phone" }
 
     private val fTitle by lazy { resources.getFont(R.font.lilita) }
     private val fHead by lazy { resources.getFont(R.font.fredoka_bold) }
@@ -60,8 +71,10 @@ class MainActivity : Activity() {
         s = Settings(this)
         window.statusBarColor = BG
         window.navigationBarColor = BG
+        GlobalChat.start(this)
         build()
         ui.post(refresher)
+        ui.post(kittyAnim)
         checkForUpdate()
     }
 
@@ -104,6 +117,7 @@ class MainActivity : Activity() {
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
             }
             liveView?.text = liveText()
+            if (gchatList != null && GlobalChat.version != gchatSig) fillChat()
             patsView?.text = "  ${s.headpats} pats · ${s.boops} boops · ${s.jumps} jumps  "
             if (tab == "Mods") {
                 QuestMods.learnTick()
@@ -132,26 +146,32 @@ class MainActivity : Activity() {
     private fun text(t: String, size: Float = 16f, color: Int = TEXT, font: Typeface? = fBody) =
         TextView(this).apply { text = t; textSize = size; setTextColor(color); typeface = font }
 
-    private fun card(parent: LinearLayout, title: String? = null): LinearLayout {
+    private fun fluff(fill: Int, ears: Boolean = false, tufts: Boolean = true, radius: Int = 22) =
+        FluffDrawable(fill, INK, INNER_EAR, dp(radius).toFloat(), resources.displayMetrics.density,
+            if (ears) s.ears else "none", tufts, (fill and 0xff) + radius)
+
+    private fun card(parent: LinearLayout, title: String? = null, ears: Boolean = title != null, fill: Int = PANEL): LinearLayout {
+        val bg = fluff(fill, ears)
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = round(PANEL, 22, 2, Color.argb(60, 255, 255, 255))
-            setPadding(dp(18), dp(14), dp(18), dp(16))
+            background = bg
+            setPadding(bg.insetSide + dp(16), bg.insetTop + dp(12), bg.insetSide + dp(16), bg.insetBottom + dp(14))
         }
         if (title != null) c.addView(text(title, 20f, TEXT, fHead).apply { setPadding(0, 0, 0, dp(8)) })
-        parent.addView(c, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(12) })
+        parent.addView(c, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
         return c
     }
 
     private fun styleButton(b: Button, active: Boolean) {
-        b.background = round(if (active) PINK else PANEL2, 30)
+        b.background = fluff(if (active) PINK else PANEL2, tufts = false, radius = 30)
         b.setTextColor(if (active) INK else TEXT)
+        b.stateListAnimator = null
     }
 
     private fun button(label: String, active: Boolean = false, onClick: (Button) -> Unit): Button =
         Button(this).apply {
             text = label; isAllCaps = false; typeface = fHead; textSize = 15f
-            setPadding(dp(18), dp(6), dp(18), dp(6)); minHeight = dp(44); minimumHeight = dp(44)
+            setPadding(dp(22), dp(8), dp(22), dp(10)); minHeight = dp(50); minimumHeight = dp(50)
             styleButton(this, active)
             setOnClickListener { onClick(this) }
         }
@@ -174,45 +194,231 @@ class MainActivity : Activity() {
 
     private fun edit(value: String, hint: String, multi: Boolean = false) = EditText(this).apply {
         setText(value); this.hint = hint; setHintTextColor(SUB); setTextColor(TEXT); typeface = fBody
-        background = round(PANEL2, 16); setPadding(dp(14), dp(10), dp(14), dp(10))
+        background = round(PANEL2, 16, 3, INK); setPadding(dp(14), dp(10), dp(14), dp(10))
         if (multi) { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 3 }
     }
 
     // --------------------------------------------------------------- build ---
+    private val TABS = listOf("Home" to "🏠", "Chatbox" to "💬", "Mods" to "🧩", "Global" to "🌐",
+        "Avatar" to "🐱", "Music" to "🎵", "Remote" to "📱", "Settings" to "⚙️")
+
     private fun build() {
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
+        gchatList = null; kittyView = null; kittyText = null; gchatSig = -1
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(20), dp(16), dp(20), dp(10))
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(BG); setPadding(dp(14), dp(12), dp(14), dp(8))
         }
-        // header
+        // header: sticker logo + hand-lettered name + version
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(64), dp(64)))
-        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
-        titles.addView(text("Fluff VR Stats :3", 28f, TEXT, fTitle))
-        titles.addView(text("Quest Edition · v${myVersion()} beta", 14f, SUB))
-        head.addView(titles)
+        head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(58), dp(58)))
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
+        val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        tl.addView(text("Fluff VR Stats", 26f, TEXT, fTitle))
+        tl.addView(text(" :3", 26f, PINK, fTitle))
+        titles.addView(tl)
+        titles.addView(text("Quest Edition · v${myVersion()}", 13f, SUB))
+        head.addView(titles, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        if (GlobalChat.unread > 0 && tab != "Global") head.addView(text(" 🌐 ${GlobalChat.unread} new ", 13f, INK, fHead).apply {
+            background = fluff(PINK, tufts = false, radius = 16); setPadding(dp(12), dp(6), dp(12), dp(8))
+            setOnClickListener { tab = "Global"; build() }
+        })
         root.addView(head)
-        // tabs
-        val tabs = row(root)
-        tabs.setPadding(0, dp(12), 0, dp(10))
-        for (t in listOf("Chatbox", "Mods", "Avatar", "Music", "Remote", "Perf", "Settings", "<3")) chip(tabs, t, t == tab) { tab = t }
+        // pride stripe "collar" with stitches
+        val stripe = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; background = round(INK, 6); setPadding(dp(2), dp(2), dp(2), dp(2)) }
+        STRIPE.forEach { c -> stripe.addView(View(this).apply { setBackgroundColor(c) }, LinearLayout.LayoutParams(0, dp(6), 1f)) }
+        root.addView(stripe, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(8) })
         // body
         val scroll = ScrollView(this)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(body)
         root.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
         when (tab) {
+            "Home" -> buildHome()
             "Chatbox" -> buildChatbox()
+            "Global" -> buildGlobal()
             "Avatar" -> buildAvatar()
             "Music" -> buildMusic()
             "Mods" -> buildMods()
-            "Perf" -> buildPerf()
             "Remote" -> buildRemote()
-            "Settings" -> buildSettings()
-            else -> buildThanks()
+            else -> buildSettings()
         }
+        // bottom nav: icon + name, open tab gets ears
+        val navBg = fluff(FluffDrawable.blend(PANEL, BG, 0.35f), tufts = false, radius = 26)
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; background = navBg
+            setPadding(navBg.insetSide + dp(4), navBg.insetTop + dp(2), navBg.insetSide + dp(4), navBg.insetBottom + dp(2))
+        }
+        for ((t, icon) in TABS) {
+            val on = t == tab
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                val bg = if (on) fluff(PINK, ears = true, tufts = false, radius = 18) else null
+                background = bg
+                setPadding(0, (bg?.insetTop ?: dp(14)) - dp(2), 0, (bg?.insetBottom ?: dp(4)) + dp(2))
+                addView(text(icon, 18f, TEXT).apply { gravity = Gravity.CENTER })
+                addView(text(t.lowercase(), 10f, if (on) INK else SUB, fHead).apply { gravity = Gravity.CENTER; maxLines = 1 })
+                setOnClickListener { tab = t; if (t == "Global") GlobalChat.unread = 0; build() }
+            }
+            nav.addView(item, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        }
+        root.addView(nav, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         setContentView(root)
         refresher.run()
+    }
+
+    // ---------------------------------------------------------------- home ---
+    private fun tile(parent: LinearLayout, label: String, value: String, color: Int = TEXT) {
+        val bg = fluff(PANEL, tufts = true, radius = 18)
+        val c = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = bg
+            setPadding(bg.insetSide + dp(12), bg.insetTop + dp(8), bg.insetSide + dp(8), bg.insetBottom + dp(8))
+        }
+        c.addView(text(label, 12f, SUB))
+        c.addView(text(value, 24f, color, fTitle))
+        parent.addView(c, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+    }
+
+    private fun greeting(): String {
+        val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val g = if (h in 5..11) "good morning" else if (h in 12..16) "good afternoon" else if (h in 17..21) "good evening" else "hiii night owl"
+        return g + (s.gchatName.takeIf { it.isNotEmpty() }?.let { ", $it" } ?: "") + " ~"
+    }
+
+    private fun buildHome() {
+        updateBanner()
+        val top = card(body, greeting())
+        val r = row(top, wrap = false)
+        stateView = text("paused", 15f, SUB)
+        r.addView(stateView, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        startBtn = button("start chatbox", ChatboxService.running) {
+            if (ChatboxService.running) ChatboxService.stop(this) else ChatboxService.start(this)
+            ui.postDelayed({ refresher.run() }, 300)
+        }
+        r.addView(startBtn)
+
+        val t1 = row(body, wrap = false)
+        tile(t1, "headpats", "${s.headpats}", PINK); tile(t1, "boops", "${s.boops}"); tile(t1, "jumps", "${s.jumps}")
+        val t2 = row(body, wrap = false)
+        t2.setPadding(0, 0, 0, dp(6))
+        tile(t2, "VR today", "${s.vrTodayS / 3600}h ${s.vrTodayS % 3600 / 60}m")
+        tile(t2, "streak", "${s.vrStreak} days", Color.rgb(255, 222, 130))
+        tile(t2, "battery", Chatbox.battery(this)?.let { "${it.first}%" } ?: "--")
+
+        val qa = card(body, "quick actions")
+        val q = row(qa)
+        chip(q, "+5 min timer", false) { val base = maxOf(System.currentTimeMillis(), s.timerEnd); s.stopwatchStart = 0L; s.timerEnd = base + 5 * 60_000L }
+        chip(q, "learn headpat", QuestMods.learnKind == "pat") { QuestMods.startLearn("pat"); tab = "Mods" }
+        chip(q, "send test msg", false) { Osc.chatbox(s.host, s.port, "hiii from Fluff VR Stats :3 🐾") }
+        chip(q, "global chat", false) { tab = "Global"; GlobalChat.unread = 0 }
+
+        kittyCard()
+
+        val gc = card(body, "🌐 global chat")
+        gchatList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        gc.addView(gchatList)
+        gc.addView(button("open global chat", true) { tab = "Global"; GlobalChat.unread = 0; build() },
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+    }
+
+    // ---- Lil Kitty: tap to pat her (art by an anonymous artist, used with permission)
+    private val kittyFrames = intArrayOf(R.drawable.kitty_00, R.drawable.kitty_01, R.drawable.kitty_02, R.drawable.kitty_03,
+        R.drawable.kitty_04, R.drawable.kitty_05, R.drawable.kitty_06, R.drawable.kitty_07, R.drawable.kitty_08,
+        R.drawable.kitty_09, R.drawable.kitty_10, R.drawable.kitty_11, R.drawable.kitty_12)
+    private val kittyAnim = object : Runnable {
+        override fun run() {
+            kittyView?.let { kittyFrame = (kittyFrame + 1) % kittyFrames.size; it.setImageResource(kittyFrames[kittyFrame]) }
+            ui.postDelayed(this, if (System.currentTimeMillis() < kittyHappyUntil) 80 else 160)
+        }
+    }
+
+    private fun kittyCard() {
+        val c = card(body, "🐾 ${s.kittyName}")
+        val r = row(c, wrap = false)
+        kittyView = ImageView(this).apply {
+            setImageResource(kittyFrames[0]); adjustViewBounds = true
+            setOnClickListener { patKitty() }
+        }
+        r.addView(kittyView, LinearLayout.LayoutParams(dp(110), dp(147)))
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0) }
+        kittyText = text(kittyLine(), 16f, TEXT, fHead)
+        col.addView(kittyText)
+        col.addView(text("tap her to give pats", 13f, SUB).apply { setPadding(0, dp(4), 0, dp(6)) })
+        col.addView(button("pat pat", true) { patKitty() })
+        r.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        c.addView(text("kitty art: anon artist <3", 11f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+    }
+
+    private fun kittyLine(): String {
+        val n = s.kittyPats
+        return "$n pats " + when { n == 0 -> "(she's waiting…)"; n < 10 -> "mrrp?"; n < 50 -> "purrrr~"; n < 200 -> "she loves u 💗"; else -> "best friends forever 💗💗" }
+    }
+
+    private var player: android.media.MediaPlayer? = null
+    private fun patKitty() {
+        s.kittyPats = s.kittyPats + 1
+        kittyHappyUntil = System.currentTimeMillis() + 1500
+        kittyText?.text = kittyLine()
+        val snd = if (s.kittyPats % 10 == 0) R.raw.purr else listOf(R.raw.meow1, R.raw.meow2, R.raw.meow3, R.raw.mrrp).random()
+        try {
+            player?.release()
+            player = android.media.MediaPlayer.create(this, snd)?.apply { setOnCompletionListener { it.release(); if (player === it) player = null }; start() }
+        } catch (_: Exception) {}
+        kittyView?.animate()?.scaleX(1.08f)?.scaleY(0.94f)?.setDuration(90)?.withEndAction {
+            kittyView?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
+        }?.start()
+    }
+
+    // ---------------------------------------------------------- global chat ---
+    private fun fillChat() {
+        val list = gchatList ?: return
+        gchatSig = GlobalChat.version
+        list.removeAllViews()
+        val all = GlobalChat.msgs.toList()
+        val msgs = if (tab == "Global") all.takeLast(40) else all.takeLast(4)
+        if (msgs.isEmpty()) list.addView(text(if (GlobalChat.status == "live") "quiet in here… say hiii!" else "connecting… (${GlobalChat.status})", 14f, SUB))
+        for (m in msgs) {
+            val b = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = round(if (m.mine) FluffDrawable.blend(PANEL2, PINK, 0.35f) else PANEL2, 16, 3, INK)
+                setPadding(dp(12), dp(6), dp(12), dp(8))
+            }
+            val tag = when (m.client) { "quest" -> " · quest"; "discord" -> " · discord"; "desktop" -> " · desktop"; "phone" -> " · phone"; else -> "" }
+            b.addView(text(m.name + tag, 12f, if (m.mine) Color.rgb(255, 222, 130) else PINK, fHead))
+            b.addView(text(m.text, 15f, TEXT))
+            if (!m.mine) b.setOnLongClickListener {
+                GlobalChat.mute(s, m.sid); android.widget.Toast.makeText(this, "muted ${m.name} (just for u)", android.widget.Toast.LENGTH_SHORT).show(); true
+            }
+            list.addView(b, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
+                bottomMargin = dp(6); gravity = if (m.mine) Gravity.END else Gravity.START
+            })
+        }
+        if (tab == "Global") GlobalChat.unread = 0
+    }
+
+    private fun buildGlobal() {
+        val me = card(body, "🌐 global chat")
+        me.addView(text("talk to everyone on Fluff VR Stats: PC, desktop, Quest + our Discord's #global-chat. be nice, no links, never share personal info. long-press a message to mute someone.", 13f, SUB))
+        if (!s.gchatOn) {
+            me.addView(button("turn global chat on", true) { s.gchatOn = true; build() }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+            return
+        }
+        if (s.gchatName.isEmpty()) {
+            val nm = edit("", "pick a name first :3")
+            me.addView(nm, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+            me.addView(button("save name", true) { val n = GlobalChat.cleanName(nm.text.toString()); if (n.isNotEmpty()) { s.gchatName = n; build() } },
+                LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        }
+        val c = card(body, ears = false)
+        gchatList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        c.addView(gchatList, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        val say = card(body, ears = false)
+        val msg = edit("", "say something to everyone…")
+        say.addView(msg)
+        val r = row(say); r.setPadding(0, dp(8), 0, 0)
+        chip(r, "send 🐾", true) {
+            val why = GlobalChat.send(s, msg.text.toString(), client)
+            if (why != null) android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_SHORT).show() else msg.setText("")
+        }
     }
 
     private fun updateBanner() {
@@ -675,9 +881,29 @@ class MainActivity : Activity() {
         }
         chip(r, "send test message", false) { Osc.chatbox(s.host, s.port, "hiii from Fluff VR Stats :3 🐾") }
 
-        val th = card(body, "accent color")
+        val th = card(body, "look")
         val tr = row(th)
         listOf("pink", "purple", "mint", "orange", "sky").forEachIndexed { i, n -> chip(tr, n, s.theme == i) { s.theme = i } }
+        val er = row(th); er.setPadding(0, dp(6), 0, 0)
+        for (e in listOf("cat", "fox", "wolf", "bunny", "bear")) chip(er, "$e ears", s.ears == e) { s.ears = e }
+
+        val g = card(body, "🌐 global chat")
+        val nm = edit(s.gchatName, "ur name in global chat")
+        g.addView(nm)
+        val gr = row(g); gr.setPadding(0, dp(8), 0, 0)
+        chip(gr, "save name", true) { s.gchatName = GlobalChat.cleanName(nm.text.toString()) }
+        chip(gr, if (s.gchatOn) "chat on" else "chat off", s.gchatOn) { s.gchatOn = !s.gchatOn }
+        chip(gr, if (s.gchatNotify) "notify me ✓" else "notify me", s.gchatNotify) { s.gchatNotify = !s.gchatNotify }
+        if (s.gchatMuted.isNotEmpty()) chip(gr, "unmute ${s.gchatMuted.size}", false) { s.gchatMuted = emptySet() }
+
+        val k = card(body, "🐾 lil kitty")
+        val kn = edit(s.kittyName, "name ur kitty")
+        k.addView(kn)
+        val kr = row(k); kr.setPadding(0, dp(8), 0, 0)
+        chip(kr, "save", true) { s.kittyName = kn.text.toString().trim().take(16).ifEmpty { "Mochi" } }
+
+        buildPerf()
+        buildThanks()
     }
 
     private fun buildThanks() {

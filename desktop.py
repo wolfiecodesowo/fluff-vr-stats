@@ -89,6 +89,9 @@ class DesktopApp(core.App):
         self.quit = False
         super().__init__(cfg, NullVR())
         self.desktop = True
+        self.state.desktop = True
+        self.gchat.client = "desktop"
+        self.raise_window = False
 
     # pictures go to the window instead of SteamVR
     def push(self, handle, img=None, key="img", frame=None):
@@ -176,18 +179,15 @@ class DesktopApp(core.App):
                 self.state.cursor = None
                 self.state.hover_box = None
                 self.t["logo"] = 0
-            elif kind == "scroll" and self.state.tab == "Chat":
+            elif kind == "scroll" and self.state.tab in ("Chat", "Global"):
                 self.scroll(ev[1] * 60)
             elif kind == "kb":
                 self.safe("typing", self.stop_typing)
                 if ev[1] is not None:
                     self.safe("keyboard", self.keyboard_done, ev[1])
             elif kind == "hud":
-                cmd = ev[1]
-                if cmd != "zoom":                     # zoom lens is VR-only
-                    self.safe("music", self.music.command, cmd)
-                    self.state.hud_pressed, self.state.hud_pressed_t = cmd, time.time()
-                    self.state.hud_dirty = True
+                self.safe("wrist button", self.hud_command, ev[1])
+                self.t["hud"] = 0
             elif kind == "kitty":
                 self.safe("kitty", self.kitty_click, ev[1], ev[2], ev[3])
 
@@ -366,19 +366,80 @@ def run():
     hc.bind("<Button-5>", h_wheel)
     hc.bind("<Button-3>", hud_menu)
 
-    # F9 anywhere (even while VRChat is focused) shows / hides the floating wrist menu
-    hotkey = {"hit": False}
+    # ---- zoom magnifier (desktop version of the VR zoom lens): round, always on top, drag to move,
+    # scroll to resize. It's hidden from screen capture so it doesn't zoom into itself.
+    zwin = tk.Toplevel(root)
+    zwin.overrideredirect(True)
+    zwin.attributes("-topmost", True)
+    try:
+        zwin.attributes("-transparentcolor", KEY)
+    except tk.TclError:
+        pass
+    zs = {"size": int(dcfg.get("zoom_px", 320)), "img": None, "last": None, "drag": None, "hidden_set": False}
+    zc = tk.Canvas(zwin, width=zs["size"], height=zs["size"], bg=KEY, highlightthickness=0, cursor="fleur")
+    zc.pack()
+    zp = dcfg.get("zoom_pos") or [sw - zs["size"] - 60, 80]
+    zwin.geometry(f"+{int(zp[0])}+{int(zp[1])}")
+
+    def z_down(e):
+        zs["drag"] = (e.x_root - zwin.winfo_x(), e.y_root - zwin.winfo_y())
+
+    def z_move(e):
+        if zs["drag"]:
+            zwin.geometry(f"+{e.x_root - zs['drag'][0]}+{e.y_root - zs['drag'][1]}")
+
+    def z_up(e):
+        zs["drag"] = None
+        dcfg["zoom_pos"] = [zwin.winfo_x(), zwin.winfo_y()]
+        app.state.dirty_cfg = True
+
+    def z_wheel(e):
+        d_ = 1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else -1
+        zs["size"] = max(160, min(720, zs["size"] + d_ * 40))
+        dcfg["zoom_px"] = zs["size"]
+        zc.config(width=zs["size"], height=zs["size"])
+        zs["img"], zs["last"] = None, None
+        app.state.dirty_cfg = True
+    zc.bind("<Button-1>", z_down)
+    zc.bind("<B1-Motion>", z_move)
+    zc.bind("<ButtonRelease-1>", z_up)
+    zc.bind("<MouseWheel>", z_wheel)
+    zc.bind("<Button-4>", z_wheel)
+    zc.bind("<Button-5>", z_wheel)
+    zc.bind("<Button-3>", lambda e: app.events.put(("hud", "zoom")))      # right-click closes it
+    zc.bind("<Double-Button-1>", lambda e: app.events.put(("hud", "zoom")))
+
+    def hide_from_capture():
+        if sys.platform != "win32" or zs["hidden_set"]:
+            return
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            hwnd = u.GetParent(zwin.winfo_id()) or zwin.winfo_id()
+            if not u.SetWindowDisplayAffinity(hwnd, 0x11):        # WDA_EXCLUDEFROMCAPTURE (Win10 2004+)
+                u.SetWindowDisplayAffinity(hwnd, 0x01)             # older Windows: WDA_MONITOR
+            zs["hidden_set"] = True
+        except Exception:
+            zs["hidden_set"] = True
+
+    # F9 anywhere (even while VRChat is focused) shows / hides the floating wrist menu, F10 = zoom
+    hotkey = {"hit": False, "zoom": False}
     if sys.platform == "win32":
         def hotkey_thread():
             import ctypes
             import ctypes.wintypes as wt
             u = ctypes.windll.user32
-            if not u.RegisterHotKey(None, 0xF1F, 0x4000, 0x78):      # MOD_NOREPEAT, VK_F9
+            ok9 = u.RegisterHotKey(None, 0xF1F, 0x4000, 0x78)       # MOD_NOREPEAT, VK_F9
+            ok10 = u.RegisterHotKey(None, 0xF20, 0x4000, 0x79)      # VK_F10
+            if not (ok9 or ok10):
                 return
             msg = wt.MSG()
             while u.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
                 if msg.message == 0x0312:                            # WM_HOTKEY
-                    hotkey["hit"] = True
+                    if msg.wParam == 0xF20:
+                        hotkey["zoom"] = True
+                    else:
+                        hotkey["hit"] = True
         threading.Thread(target=hotkey_thread, daemon=True, name="hotkey").start()
 
     # ---- menu
@@ -404,6 +465,7 @@ def run():
     m1 = tk.Menu(menu, tearoff=0)
     m1.add_command(label="Lil Kitty on desktop (on/off)", command=lambda: toggle("kitty"))
     m1.add_command(label="Floating wrist menu (on/off)   F9", command=lambda: toggle("hud"))
+    m1.add_command(label="Zoom magnifier (on/off)   F10", command=lambda: app.events.put(("hud", "zoom")))
     menu.add_cascade(label="View", menu=m1)
     m2 = tk.Menu(menu, tearoff=0)
     m2.add_command(label="Switch to VR mode", command=switch_vr)
@@ -465,6 +527,25 @@ def run():
         if hotkey["hit"]:
             hotkey["hit"] = False
             toggle("hud")
+        if hotkey["zoom"]:
+            hotkey["zoom"] = False
+            app.events.put(("hud", "zoom"))
+        if app.raise_window:
+            app.raise_window = False
+            try:
+                root.deiconify()
+                root.lift()
+                root.focus_force()
+            except tk.TclError:
+                pass
+        zimg = app.zoom.image if (app.zoom.active and cfg["zoom"].get("enabled")) else None
+        if zimg is not None:
+            if zwin.state() == "withdrawn":
+                zwin.deiconify()
+                root.after(50, hide_from_capture)
+            show(zc, zs, zimg, (zs["size"], zs["size"]))
+        elif zwin.state() != "withdrawn":
+            zwin.withdraw()
         h = app.frames.get("hud")
         if h is not None and dcfg.get("mini_hud"):
             hw = int(dcfg.get("hud_w", 340))
@@ -485,6 +566,7 @@ def run():
         root.after(33, refresh)
 
     hwin.withdraw()
+    zwin.withdraw()
     root.after(100, refresh)
     print("  Fluff VR Stats :3 is running in desktop mode! (close the window to quit)")
     root.mainloop()

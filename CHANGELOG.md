@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 + Quest Edition v0.5.0: furry glow-up + global chat
+- 🐾 **Furrier look everywhere**: every card is hand-inked with lil fur tufts, big cards + buttons get ears (they match ur ear style: cat, fox, wolf, bunny, bear...)
+- 🏠 **New Home tab** (PC + Quest): ur stats at a glance, quick actions, now playing, Lil Kitty and global chat in one place
+- 🧭 **New nav bar** along the bottom of the menu with every tab named, no more guessing icons
+- ⚙️ **New Settings tab**: start mode (ask/VR/desktop), auto-updates, wrist hand, cursor, sounds, clock, units and more, right in the app
+- 👆 **Clickable wrist buttons**: zoom, chatbox on/off, 5 min timer, AI Look, kitty, global chat (also menu, desktop-in-VR, pat). tap them with ur other hand in VR or click them on desktop. pick ur 6 in the Wrist tab
+- 🌐 **Global chat (mod)**: one chat room for everyone on Fluff VR Stats, PC, desktop, Quest + our Discord's #global-chat. new msgs pop up on ur wrist. no links, slow mode, bad-word filter, mute anyone just for u. turn it off in Mods → Fun
+- 🔍 **Zoom fixed**: it always shows up now (even when VRChat is minimized it zooms ur screen or the SteamVR VR View instead of silently doing nothing), the wrist button works in every mode, and "telescope" (hold a controller to ur eye) is an extra you can turn on
+- 🔍 **Zoom on desktop**: F10 or the wrist button opens a round magnifier window. drag it, scroll to resize, right-click to close
+- 🐱 **Quest**: pet Lil Kitty right in the app (she meows + purrs), global chat tab, ear style picker, cleaner Settings
+- 🤖 Fluff Bot links #global-chat with the app both ways
+
 ## v0.2.3 + Quest Edition v0.4.4: headpat counter shows up
 - 🐾 PC: the headpat counter is on by default now, so ur count shows on ur wrist (it was only in the chatbox before)
 - 🐾 PC: Mods → Counters shows ur live headpats, boops + jumps

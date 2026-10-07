@@ -27,6 +27,12 @@ from discord.ext import tasks
 
 import content as C
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    import gchat as G           # same rules + topic as the app's Global chat
+except Exception:               # (bot copied somewhere without the app next to it)
+    G = None
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(HERE, "bot_config.json")
 CLIENT_CFG = os.path.join(os.path.dirname(HERE), "config.json")
@@ -197,6 +203,8 @@ class FluffBot(discord.Client):
         self.stats_loop.start()
         self.release_loop.start()
         self.bump_loop.start()
+        if G is not None:
+            self.gchat_task = asyncio.create_task(self.gchat_listen())
 
     # ---- helpers
     def guild(self):
@@ -312,6 +320,10 @@ class FluffBot(discord.Client):
             return
         if msg.author.bot or not msg.guild or not isinstance(msg.author, discord.Member):
             return
+        gc = self.ch("gchat")
+        if gc and msg.channel.id == gc.id and G is not None:
+            await self.gchat_from_discord(msg)
+            return
         if INVITE_RE.search(msg.content or "") and not self.is_staff(msg.author):
             try:
                 await msg.delete()
@@ -319,6 +331,97 @@ class FluffBot(discord.Client):
                 await self.modlog(f"🚫 removed an invite link from {msg.author.mention} in {msg.channel.mention}")
             except discord.HTTPException:
                 pass
+
+    # ---- global chat bridge: #global-chat <-> the Global chat tab in the app (via ntfy.sh)
+    async def ensure_gchat(self, guild):
+        if self.ch("gchat"):
+            return
+        main = self.ch("main")
+        try:
+            c = await guild.create_text_channel("🌐・global-chat", category=main.category if main else None,
+                                                topic=C.TOPICS.get("gchat"), slowmode_delay=3,
+                                                reason="Fluff Bot global chat bridge")
+            CFG.setdefault("channels", {})["gchat"] = c.id
+            for spec in C.POSTS.get("gchat", []):
+                await c.send(embed=make_embed(spec))
+            save_cfg(CFG)
+        except discord.HTTPException:
+            pass
+
+    async def gchat_listen(self):
+        """App -> Discord: every message from the app gets posted in #global-chat."""
+        import aiohttp
+        await self.wait_until_ready()
+        g = self.guild()
+        if g:
+            await self.ensure_gchat(g)
+        since, backoff = "10m", 2
+        while not self.is_closed():
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=90)) as s:
+                    async with s.get(f"{G.BASE}/{G.TOPIC}/json?since={since}", headers=G.UA) as r:
+                        backoff = 2
+                        async for raw in r.content:
+                            line = raw.decode("utf-8", "ignore").strip()
+                            if not line:
+                                continue
+                            try:
+                                since = str(json.loads(line).get("id") or since)
+                            except ValueError:
+                                pass
+                            m = G.GlobalChat.parse(self._gc_parser(), line)
+                            if not m or m["client"] == "discord":
+                                continue
+                            c = self.ch("gchat")
+                            if c:
+                                tag = {"quest": " · quest", "desktop": " · desktop", "phone": " · phone"}.get(m["client"], "")
+                                name = discord.utils.escape_markdown(m["name"])
+                                text = discord.utils.escape_mentions(discord.utils.escape_markdown(m["text"]))
+                                try:
+                                    await c.send(f"**{name}**{tag}: {text}", allowed_mentions=discord.AllowedMentions.none())
+                                except discord.HTTPException:
+                                    pass
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.info("global chat relay reconnecting: %s", e)
+            await asyncio.sleep(backoff)
+            backoff = min(60, backoff * 2)
+
+    def _gc_parser(self):
+        """tiny stand-in 'self' so the app's parser can be reused (no thread, no network)"""
+        p = getattr(self, "_gcp", None)
+        if p is None:
+            p = self._gcp = type("P", (), {"sid": "fluffbot"})()
+        return p
+
+    async def gchat_from_discord(self, msg):
+        """Discord -> app: messages typed in #global-chat show up in the app."""
+        text, why = G.clean(msg.content)
+        if text is None:
+            if why and why != "empty":
+                try:
+                    await msg.delete()
+                    await msg.channel.send(f"{msg.author.mention} {why}", delete_after=6)
+                except discord.HTTPException:
+                    pass
+            return
+        last = getattr(self, "_gc_last", {})
+        self._gc_last = last
+        now = asyncio.get_event_loop().time()
+        if now - last.get(msg.author.id, 0) < G.SLOW_S:
+            return
+        last[msg.author.id] = now
+        body = json.dumps({"v": 1, "n": G.clean_name(msg.author.display_name) or "fluff", "m": text,
+                           "s": "d" + str(msg.author.id)[-9:], "c": "discord"}, ensure_ascii=False).encode("utf-8")
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post(f"{G.BASE}/{G.TOPIC}", data=body, headers=G.UA) as r:
+                    if r.status >= 300:
+                        log.info("global chat send failed: %s", r.status)
+        except Exception as e:
+            log.info("global chat send failed: %s", e)
 
     # ---- bumping (DISBOARD)
     BUMP_COOLDOWN = 2 * 3600

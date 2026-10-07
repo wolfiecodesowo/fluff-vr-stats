@@ -14,6 +14,7 @@ import logging
 import logging.handlers
 import math
 import os
+import random
 import sys
 import tempfile
 import threading
@@ -63,6 +64,8 @@ from gltex import GLUploader
 from music import Music
 from discord_link import DiscordLink
 from zoom import Zoom
+from gchat import GlobalChat
+import zoom as zoom_mod
 from vrclog import VRCLog
 from avatar import Avatar
 from tweaks import Tweaks, TWEAKS
@@ -93,8 +96,10 @@ DEFAULT_CFG = {
         "mute_reminder": True, "song_toast": False, "kaomoji": False, "countdown": False,
         "vr_streak": True, "quote_of_hour": False, "theme_shuffle": False,
         "eye_break": False, "posture_reminder": False, "bedtime_alert": False, "pat_party": True,
-        "ai_look": True, "wrist_kitty": True,
+        "ai_look": True, "wrist_kitty": True, "global_chat": True, "wrist_buttons": True,
     },
+    "wrist_actions": ["zoom", "chatbox", "timer", "look", "kitty", "gchat"],
+    "gchat": {"name": "", "muted": [], "hud": True},
     "countdown": {"name": "my birthday", "date": ""},
     "eye_break_min": 20,
     "posture_min": 30,
@@ -308,6 +313,21 @@ def make_icon(path, cfg):
     img.save(path)
 
 
+def _get_path(cfg, key):
+    cur = cfg
+    for k in key.split("."):
+        cur = cur.get(k) if isinstance(cur, dict) else None
+    return cur
+
+
+def _set_path(cfg, key, val):
+    parts = key.split(".")
+    cur = cfg
+    for k in parts[:-1]:
+        cur = cur.setdefault(k, {})
+    cur[parts[-1]] = val
+
+
 # --------------------------------------------------------------- state ---
 class State:
     def __init__(self, cfg):
@@ -316,7 +336,7 @@ class State:
         self.chat = []           # (role, text)
         self.thinking = False
         self.ai_error = None
-        self.tab = "Stats"
+        self.tab = "Home"
         self.chat_scroll = 0
         self.chat_content_top = 0
         self.dirty_cfg = False
@@ -353,12 +373,23 @@ class State:
         self.cursor = None
         self.trail = []
         self.click_fx = []
+        self.gchat_scroll = 0
+        self.desktop = False
+        self.version = _version()
 
     def last_reply(self):
         for role, text in reversed(self.chat):
             if role == "assistant":
                 return text
         return ""
+
+
+def _version():
+    try:
+        with open(os.path.join(HERE, "VERSION"), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return "dev"
 
 
 # ----------------------------------------------------------------- app ---
@@ -465,10 +496,15 @@ class App:
         self.last_prio = 0
         self.avatar = Avatar()
         self.extras.avatar = self.avatar
+        self.gchat = GlobalChat(self.cfg, client="pc", on_message=self.on_gchat)
+        self.state.gchat = self.gchat
         try:                   # a new version came out while u were playing -> tell u (installs next launch)
             import updater
-            updater.check_in_background(lambda tag: self.show_alert(
-                f"update {tag} is out!! restart the app to get it :3", secs=12))
+            def _found(tag):
+                self.state.extras["update_available"] = tag
+                self.state.dash_dirty = True
+                self.show_alert(f"update {tag} is out!! restart the app to get it :3", secs=12)
+            updater.check_in_background(_found)
         except Exception:
             pass
         self.last_motion = 0
@@ -587,7 +623,7 @@ class App:
                 self.ov.destroyOverlay(self.kitty_ov)
             except Exception:
                 pass
-        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None),
+        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None), getattr(self, "gchat", None),
                      getattr(self, "music", None), getattr(self, "vrclog", None)):
             try:
                 part.stop()
@@ -721,25 +757,33 @@ class App:
                 return True
         return False
 
-    def update_zoom(self):
+    def zoom_wanted(self):
+        """Lens is up while: u tapped it on (wrist button / menu / F10), or (gesture mode) a controller is held to ur eye."""
         z = self.cfg["zoom"]
-        on = self.cfg["modules"].get("zoom_lens", True) and z.get("enabled")
-        if self.cfg["modules"].get("zoom_lens", True) and z.get("mode", "gesture") == "gesture":
+        if not self.cfg["modules"].get("zoom_lens", True):
+            return False
+        on = bool(getattr(self, "zoom_manual", False))
+        if z.get("mode", "gesture") == "gesture" and not on:
             now = time.time()
             if self.zoom_gesture():
                 self.gesture_since = self.gesture_since or now
             else:
                 self.gesture_since = None
-            held = self.gesture_since is not None and now - self.gesture_since > 0.25
-            if held != z.get("enabled"):
-                z["enabled"] = held                    # live state only, not a setting change
-                if held:
-                    self.zoom_placed = None
-            on = held
+            on = self.gesture_since is not None and now - self.gesture_since > 0.25
+        return on
+
+    def update_zoom(self):
+        z = self.cfg["zoom"]
+        on = self.zoom_wanted()
+        self.zoom.active = on
+        if bool(z.get("enabled")) != on:          # live state (drawn on the buttons), not a saved setting
+            z["enabled"] = on
+            self.state.hud_dirty = self.state.dash_dirty = True
         if not on:
             if self.zoom_shown:
                 self.ov.hideOverlay(self.zoom_ov)
                 self.zoom_shown = False
+                self.zoom_placed = None
             return
         place = (z.get("size_m", 0.24), z.get("distance_m", 0.55))
         if place != self.zoom_placed:          # stick it to the headset, straight ahead
@@ -748,19 +792,96 @@ class App:
             self.ov.setOverlayTransformTrackedDeviceRelative(
                 self.zoom_ov, openvr.k_unTrackedDeviceIndex_Hmd, to_hmd34(euler_to_rot(0, 0, 0), [0.0, -0.02, -place[1]]))
         frame = self.zoom.take()
+        if frame is None and not self.zoom_shown:
+            frame = getattr(self, "_zoom_hello", None)
+            if frame is None:                  # instant "here i am" lens while the first picture loads
+                img = zoom_mod.placeholder(ui.get_theme(self.cfg), z.get("level", 3), "zooming in…")
+                frame = self._zoom_hello = (img.tobytes(), img.width, img.height)
         if frame:
             self.push(self.zoom_ov, frame=frame)
             if not self.zoom_shown:
                 self.ov.showOverlay(self.zoom_ov)
                 self.zoom_shown = True
 
-    def toggle_zoom(self):
+    def toggle_zoom(self, on=None):
         z = self.cfg["zoom"]
-        z["mode"] = "toggle"                          # tapping the button = classic on/off mode
-        z["enabled"] = not z.get("enabled")
+        self.zoom_manual = (not getattr(self, "zoom_manual", False)) if on is None else bool(on)
         self.cfg["modules"]["zoom_lens"] = True
         self.state.dirty_cfg = self.state.dash_dirty = self.state.hud_dirty = True
-        self.show_alert(f"zoom {z.get('level', 3)}x on 🔍" if z["enabled"] else "zoom off", secs=3)
+        if self.zoom_manual:
+            self.show_alert(f"zoom {z.get('level', 3)}x on 🔍 (tap again to close)", secs=3)
+        else:
+            self.show_alert("zoom off", secs=2)
+
+    def on_gchat(self, msg):
+        st = self.state
+        st.dash_dirty = True
+        if not msg.get("mine") and self.cfg["gchat"].get("hud", True):
+            st.hud_dirty = True
+
+    def hud_command(self, cmd):
+        """A button on the wrist (VR: tap with ur other hand, desktop: click the floating menu)."""
+        cfg, st = self.cfg, self.state
+        if cmd in ("next", "prev", "play_pause", "play", "pause", "vol_up", "vol_down", "mute"):
+            self.music.command(cmd)
+        elif cmd == "zoom":
+            self.toggle_zoom()
+        elif cmd == "chatbox":
+            on = not cfg["modules"].get("chatbox_status")
+            cfg["modules"]["chatbox_status"] = on
+            if not on:
+                try:
+                    osc.chatbox("", cfg.get("osc_port", 9000))
+                except Exception:
+                    pass
+            self.show_alert("chatbox ON ~ ur stats are showing" if on else "chatbox off", secs=3)
+            st.dirty_cfg = True
+        elif cmd == "timer":
+            tm = st.timer
+            if tm["running"]:
+                self.timer_action("toggle")
+                self.timer_action("reset")
+                self.show_alert("timer stopped", secs=2)
+            else:
+                tm.update(mode="timer", left=300.0)
+                self.timer_action("toggle")
+                self.show_alert("5 min timer started ⏱", secs=3)
+            cfg["modules"]["timer"] = True
+        elif cmd == "look":
+            self.ai_look()
+        elif cmd == "kitty":
+            cfg["modules"]["wrist_kitty"] = not cfg["modules"].get("wrist_kitty", True)
+            self.show_alert("kitty says hiii :3" if cfg["modules"]["wrist_kitty"] else "kitty is napping", secs=3)
+            st.dirty_cfg = True
+        elif cmd == "gchat":
+            st.tab = "Global"
+            self.gchat.unread = 0
+            if st.desktop:
+                self.raise_window = True
+            else:
+                try:
+                    self.ov.showDashboard("fluffvr.stats.dash")
+                except Exception:
+                    pass
+        elif cmd == "menu":
+            st.tab = "Home"
+            if st.desktop:
+                self.raise_window = True
+            try:
+                self.ov.showDashboard("fluffvr.stats.dash")
+            except Exception:
+                pass
+        elif cmd == "screen":
+            cfg["screen"]["enabled"] = not cfg["screen"]["enabled"]
+            self.scr_placed = False
+            st.dirty_cfg = True
+        elif cmd == "pat":
+            cfg["floof_pats"] = cfg.get("floof_pats", 0) + 1
+            st.last_pat = time.time()
+            self.show_alert(random.choice(["purrr~", "hehe thank u <3", "*happy tail wag*", "mrrp! :3"]), secs=2)
+            st.dirty_cfg = True
+        st.hud_pressed, st.hud_pressed_t = cmd, time.time()
+        st.hud_dirty = st.dash_dirty = True
 
     def find_controller(self):
         role = openvr.TrackedControllerRole_LeftHand if self.cfg["wrist"]["hand"] == "left" \
@@ -807,7 +928,7 @@ class App:
         st, cfg = self.state, self.cfg
         if action == "tab":
             st.tab = args[0]
-            st.chat_scroll = 0
+            st.chat_scroll = st.gchat_scroll = 0
             if st.tab == "Boost":
                 self.safe("boost status", self.refresh_boost)
         elif action == "toggle":
@@ -820,11 +941,13 @@ class App:
         elif action == "mod_edit":
             key = args[0]
             cur = {"kitty_name": cfg.get("kitty", {}).get("name", "Mochi"),
+                   "gchat_name": cfg.get("gchat", {}).get("name", ""),
                    "countdown_name": cfg.get("countdown", {}).get("name", ""),
                    "countdown_date": cfg.get("countdown", {}).get("date", "")}.get(key, str(cfg.get(key, "")))
             desc = {"headpat_param": "Headpat parameter name (blank = auto)", "boop_param": "Boop parameter name (blank = auto)",
                     "countdown_name": "Countdown to what?", "countdown_date": "Date (YYYY-MM-DD)",
-                    "bedtime": "Bedtime (HH:MM, 24h)", "kitty_name": "Name ur kitty"}.get(key, key)
+                    "bedtime": "Bedtime (HH:MM, 24h)", "kitty_name": "Name ur kitty",
+                    "gchat_name": "Ur name in global chat", "weather_location": "Weather city (blank = auto)"}.get(key, key)
             self.open_keyboard(desc, cur, ("cfg", key))
         elif action == "kitty_color":
             cols = list(self.kitty_mod.COLORS)
@@ -977,7 +1100,7 @@ class App:
         elif action == "zoom_set":
             cfg["zoom"][args[0]] = args[1]
             if args[0] == "mode":
-                cfg["zoom"]["enabled"] = False
+                self.zoom_manual = False
             self.zoom_placed = None
             st.dirty_cfg = True
         elif action == "join_discord":
@@ -990,6 +1113,46 @@ class App:
                 self.show_alert("no Discord invite set yet", "warn", 5)
         elif action == "scroll":
             self.scroll(args[0] * 120)
+        elif action == "hud_cmd":
+            self.hud_command(args[0])
+        elif action == "gchat_send":
+            if not cfg["gchat"].get("name"):
+                self.open_keyboard("Pick a name for global chat first :3", "", ("cfg", "gchat_name"))
+            else:
+                self.open_keyboard("Say something to everyone (no links, be nice <3)", "", "gchat")
+        elif action == "gchat_mute":
+            self.gchat.mute(args[0])
+            st.dirty_cfg = True
+            self.show_alert("muted them (only for u) ~ unmute in Settings", secs=5)
+        elif action == "gchat_unmute_all":
+            cfg["gchat"]["muted"] = []
+            st.dirty_cfg = True
+        elif action == "gchat_scroll":
+            st.gchat_scroll = max(0, st.gchat_scroll + args[0])
+        elif action == "wrist_action":            # Wrist tab: add / remove a button on ur wrist
+            acts = cfg.setdefault("wrist_actions", [])
+            if args[0] in acts:
+                acts.remove(args[0])
+            elif len(acts) < 6:
+                acts.append(args[0])
+            else:
+                self.show_alert("max 6 wrist buttons ~ remove one first", "warn", 4)
+            st.dirty_cfg = st.hud_dirty = True
+        elif action == "set":                     # Settings tab: set / cycle simple options
+            key, val = args[0], args[1]
+            if val == "__cycle__":
+                opts = args[2]
+                cur = _get_path(cfg, key)
+                val = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0]
+            _set_path(cfg, key, val)
+            st.dirty_cfg = st.hud_dirty = True
+            if key.startswith("wrist."):
+                self.apply_wrist()
+                self.hud_alpha = None
+        elif action == "open_link":
+            import webbrowser
+            webbrowser.open(args[0])
+            self.show_alert("opened on ur desktop :3", secs=4)
         st.dash_dirty = True
 
     def mouse_flipped(self):
@@ -1105,9 +1268,21 @@ class App:
         if target == "chat":
             self.send_chat(text)
             return
+        if target == "gchat":
+            why = self.gchat.send(text)
+            if why:
+                self.show_alert(why, "warn", 5)
+            st.dash_dirty = True
+            return
         if isinstance(target, tuple) and target[0] == "cfg":
             key, text = target[1], text.strip()
-            if key == "kitty_name":
+            if key == "gchat_name":
+                from gchat import clean_name
+                name = clean_name(text)
+                if name:
+                    self.cfg["gchat"]["name"] = name
+                    self.show_alert(f"hiii {name}! ur global chat name is set :3", secs=5)
+            elif key == "kitty_name":
                 if text:
                     self.cfg.setdefault("kitty", {})["name"] = text[:16]
                     self.kitty.changed = True
@@ -1148,6 +1323,10 @@ class App:
 
     def scroll(self, amount):
         st = self.state
+        if st.tab == "Global":
+            st.gchat_scroll = max(0, min(len(self.gchat.msgs) - 1, st.gchat_scroll + (1 if amount > 0 else -1)))
+            st.dash_dirty = True
+            return
         top_room = max(0, (ui.DASH_H * 0.25) - st.chat_content_top) + st.chat_scroll
         st.chat_scroll = max(0, min(st.chat_scroll + amount, top_room))
         st.dash_dirty = True
@@ -1684,7 +1863,7 @@ class App:
 
     # ---- tap your wrist with the other controller
     def check_touch(self):
-        if not (self.cfg["modules"].get("music_controls") or self.cfg["modules"].get("zoom_lens")) \
+        if not (self.cfg["modules"].get("music_controls") or self.cfg["modules"].get("wrist_buttons")) \
                 or self.ctrl_index is None \
                 or (self.hud_alpha or 0) < 0.3 or not self.state.hud_hits:
             return
@@ -1726,10 +1905,7 @@ class App:
             if x0 <= px <= x1 and y0 <= py <= y1:
                 self.touch_armed = False
                 self.last_touch = time.time()
-                if cmd == "zoom":
-                    self.toggle_zoom()
-                else:
-                    self.music.command(cmd)
+                self.hud_command(cmd)
                 self.state.hud_pressed, self.state.hud_pressed_t = cmd, time.time()
                 self.state.hud_dirty = True
                 try:

@@ -47,3 +47,6 @@ cd quest
 ./gradlew assembleRelease
 ```
 Needs JDK 17+ and the Android SDK (platform 34).
+
+## Art credits
+Lil Kitty (`res/drawable/kitty_*.png`) is by a lovely anonymous artist, used with their permission as long as they get credit. Not covered by the MIT license. Please don't reuse it elsewhere without asking. <3

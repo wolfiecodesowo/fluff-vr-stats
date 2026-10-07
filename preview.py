@@ -46,13 +46,33 @@ st.avatar = {"id": "avtr_x", "name": "Mayu Goth Kitty", "values": {"Hoodie": Tru
                         [("Hoodie", "Bool"), ("Collar", "Bool"), ("EarPiercings", "Bool"), ("Chains", "Bool"),
                          ("HairStyle", "Int"), ("TailFluff", "Float"), ("GoldMetal", "Bool"), ("Glasses", "Bool")]]}
 
+class _FakeChat:
+    unread, status, error = 2, "live", ""
+    def __init__(self):
+        n = time.time()
+        self.msgs = [dict(id=str(i), name=nm, text=tx, time=n - 60 + i * 9, sid=nm, client=c, mine=nm == "me")
+                     for i, (nm, tx, c) in enumerate([("Kitsu", "anyone in the black cat rn?", "pc"),
+                                                     ("me", "omw!! saving u a spot", "pc"),
+                                                     ("Bunbun", "hiii from my quest :3", "quest"),
+                                                     ("Sable", "the new wrist buttons are so cute", "discord"),
+                                                     ("Mochi", "headpat count 40 today lets gooo", "desktop")])]
+    def visible(self, n=None):
+        return self.msgs[-n:] if n else list(self.msgs)
+    def name(self):
+        return "me"
+st.gchat = _FakeChat()
+cfg["gchat"]["name"] = "me"
 ui.render_hud(st).save(os.path.join(out, "preview_hud.png"))
+st.extras.update(boops=4, vr_today_s=6200, vr_streak=3)
+st.version = "v0.3.0"
 for tab in ui.TABS:
     st.tab = tab
     st.logo_frame = None
     img, _ = ui.render_dashboard(st)
     img = ui.add_logo(img, 0, st.anim_slots)
     name = "thanks" if tab == "<3" else tab.lower()
+    if tab == "Home":
+        st.gchat.unread = 2
     img.save(os.path.join(out, f"preview_dash_{name}.png"))
 # error card examples
 st.tab = "Stats"

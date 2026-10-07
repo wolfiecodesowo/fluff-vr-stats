@@ -91,6 +91,7 @@ LAYOUT = [
         ("text", "main", "💬・main-chat"),
         ("text", "memes", "😹・memes"),
         ("text", "bump", "🔔・bump"),
+        ("text", "gchat", "🌐・global-chat"),
     ]),
     ("🌟 SHOWCASE", "read", [
         ("text", "videos", "🎬・feature-videos"),
@@ -663,3 +664,11 @@ POSTS["bump"] = [_e("🔔 help the server grow!!",
     "**get reminded:** grab the 🔔 Bumper role in #get-roles (or use `/bumpremind`)\n"
     "**leaderboard:** `/bumpers` shows the top bumpers 🏆\n"
     "**next bump:** `/bumpstatus`", MINT)]
+
+# ---- global chat: this channel is linked to the Global chat tab inside the app (PC, desktop + Quest)
+TOPICS["gchat"] = "linked to Global chat in the app!! talk here and fluffs in VR see it on their wrist :3 no links, be nice"
+POSTS["gchat"] = [_e("🌐 global chat",
+    "this channel is **linked to the app**. anything u say here shows up in the **Global** tab of Fluff VR Stats "
+    "(PC, desktop + Quest) and on people's wrists in VR, and their messages show up here ✨\n\n"
+    "**rules:** be nice · no links (they get blocked) · never share personal info · slow mode 3s\n"
+    "turn it on in the app: **Mods > Fun > Global chat**", MINT)]

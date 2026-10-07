@@ -28,15 +28,15 @@ LENS = 512              # texture size (square)
 DEFAULT = {"enabled": False, "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True}
 
 
-def vrchat_rect():
-    """Screen rect (left, top, width, height) of VRChat's window content, or None."""
+def _window_rect(title):
+    """Screen rect (left, top, width, height) of a window's content, or None (missing / minimized)."""
     if sys.platform != "win32":
         return None
     try:
         import ctypes.wintypes as wt
         u = ctypes.windll.user32
-        hwnd = u.FindWindowW(None, "VRChat")
-        if not hwnd or u.IsIconic(hwnd):
+        hwnd = u.FindWindowW(None, title)
+        if not hwnd or u.IsIconic(hwnd) or not u.IsWindowVisible(hwnd):
             return None
         r = wt.RECT()
         u.GetClientRect(hwnd, ctypes.byref(r))
@@ -48,6 +48,25 @@ def vrchat_rect():
         return pt.x, pt.y, w, h
     except Exception:
         return None
+
+
+def vrchat_rect():
+    return _window_rect("VRChat")
+
+
+def find_source(sct, pref="auto"):
+    """Where to zoom from. auto = VRChat window -> SteamVR 'VR View' -> main monitor.
+    Returns (rect, label)."""
+    order = {"vrchat": ["vrchat"], "vrview": ["vrview"], "monitor": []}.get(pref, ["vrchat", "vrview"])
+    for src in order:
+        r = _window_rect("VRChat") if src == "vrchat" else _window_rect("VR View")
+        if r:
+            return r, "VRChat" if src == "vrchat" else "VR View"
+    try:
+        mon = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+        return (mon["left"], mon["top"], mon["width"], mon["height"]), "screen"
+    except Exception:
+        return None, None
 
 
 @lru_cache(maxsize=1)
@@ -87,74 +106,106 @@ def draw_ring(img, t, level, found):
     d.rounded_rectangle([bx - tw / 2 - 16, by - 24, bx + tw / 2 + 16, by + 20], radius=20,
                         fill=t["panel"], outline=t["line"], width=3)
     d.text((bx, by - 2), lab, font=f, fill=t["text"], anchor="mm")
-    if not found:
-        d.text((c, 70), "VRChat window not found", font=ui.font("body2", 18), fill=t["sub"], anchor="mm")
+    if found and found not in ("VRChat",):
+        lab = "zooming ur screen" if found == "screen" else f"zooming {found}"
+        f2 = ui.font("body2", 18)
+        w2 = f2.getlength(lab)
+        d.rounded_rectangle([c - w2 / 2 - 12, 52, c + w2 / 2 + 12, 82], radius=14, fill=t["panel"])
+        d.text((c, 67), lab, font=f2, fill=t["sub"], anchor="mm")
+
+
+def placeholder(t, level, msg):
+    """Lens shown while there's no picture yet (or capture is broken), so u always SEE the zoom."""
+    s = LENS
+    out = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    inner = Image.new("RGBA", (s, s), t["panel"][:3] + (235,))
+    out.paste(inner, (0, 0), _lens_mask())
+    d = ImageDraw.Draw(out)
+    c = s / 2
+    ui.paw(d, c, c - 40, 34, t["primary"])
+    f = ui.font("head", 26)
+    lines = ui.wrap(msg, f, s - 150)[:3]
+    for i, ln in enumerate(lines):
+        d.text((c, c + 30 + i * 32), ln, font=f, fill=t["text"], anchor="mm")
+    draw_ring(out, t, level, None)
+    return out
 
 
 class Zoom:
-    def __init__(self, cfg):
+    """Capture thread. Turn it on with .active = True (main.py does that while the lens is up).
+    While active it ALWAYS makes frames: the real zoom, or a placeholder lens saying what's wrong."""
+
+    def __init__(self, cfg, size=LENS, ring=True):
         self.cfg = cfg
         cfg.setdefault("zoom", dict(DEFAULT))
         for k, v in DEFAULT.items():
             cfg["zoom"].setdefault(k, v)
+        self.size, self.ring = size, ring
         self.lock = threading.Lock()
         self.frame = None
+        self.image = None             # last PIL frame (desktop magnifier uses this)
         self.new = False
-        self.error = None if _MSS else "Zoom needs the 'mss' package (run install.bat)"
-        self.found = False
+        self.error = None if _MSS else "zoom needs the 'mss' package ~ run install.bat"
+        self.found = None             # "VRChat" / "VR View" / "screen"
+        self.active = False
         self.running = True
-        if _MSS:
-            threading.Thread(target=self._loop, daemon=True, name="zoom").start()
+        threading.Thread(target=self._loop, daemon=True, name="zoom").start()
 
-    def _on(self):
-        return self.cfg["modules"].get("zoom_lens", True) and self.cfg["zoom"].get("enabled")
+    def _publish(self, img):
+        if img.size != (LENS, LENS) and self.size == LENS:
+            img = img.resize((LENS, LENS))
+        with self.lock:
+            self.image = img
+            self.frame = (img.tobytes(), img.width, img.height)
+            self.new = True
 
     def _loop(self):
-        try:
-            sct = _MSS()
-        except Exception as e:
-            self.error = f"Zoom capture failed: {e}"
-            return
+        sct = None
         last_rect_check, rect = 0, None
         while self.running:
-            if not self._on():
-                time.sleep(0.2)
+            if not self.active:
+                time.sleep(0.15)
                 continue
             t0 = time.time()
+            z = self.cfg["zoom"]
+            th = ui.get_theme(self.cfg)
             try:
-                z = self.cfg["zoom"]
-                if t0 - last_rect_check > 2:          # VRChat window can move / resize
+                if sct is None:
+                    if not _MSS:
+                        raise RuntimeError(self.error)
+                    sct = _MSS()
+                if t0 - last_rect_check > 2 or rect is None:     # windows can move / resize / minimize
                     last_rect_check = t0
-                    rect = vrchat_rect()
-                    self.found = rect is not None
-                    if rect is None:
-                        mon = sct.monitors[1]
-                        rect = (mon["left"], mon["top"], mon["width"], mon["height"])
+                    rect, self.found = find_source(sct, z.get("source", "auto"))
+                if rect is None:
+                    raise RuntimeError("couldn't find a screen to zoom")
                 left, top, w, h = rect
                 level = max(1.5, float(z.get("level", 3)))
-                side = int(min(w, h) / level)
+                side = max(16, int(min(w, h) / level))
                 cx, cy = left + w // 2, top + h // 2
                 box = {"left": cx - side // 2, "top": cy - side // 2, "width": side, "height": side}
                 shot = sct.grab(box)
                 img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
                 img = img.resize((LENS, LENS), Image.BILINEAR)
-                th = ui.get_theme(self.cfg)
                 out = Image.new("RGBA", (LENS, LENS), (0, 0, 0, 0))
-                mask = _lens_mask()
-                out.paste(img, (0, 0), mask)
+                out.paste(img, (0, 0), _lens_mask())
                 if z.get("crosshair", True):
                     d = ImageDraw.Draw(out)
                     c = LENS / 2
                     ui.paw(d, c, c + 2, 5, th["primary"])
                     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         d.line([(c + dx * 14, c + dy * 14), (c + dx * 34, c + dy * 34)], fill=th["primary"], width=3)
-                draw_ring(out, th, z.get("level", 3), self.found)
-                with self.lock:
-                    self.frame = (out.tobytes(), LENS, LENS)
-                    self.new = True
+                if self.ring:
+                    draw_ring(out, th, z.get("level", 3), self.found)
+                self._publish(out)
                 self.error = None
             except Exception as e:
-                self.error = f"Zoom error: {e}"
+                self.error = str(e) or e.__class__.__name__
+                sct, rect = None, None                          # start fresh next time
+                try:
+                    self._publish(placeholder(th, z.get("level", 3), "zoom hiccup: " + self.error[:60]))
+                except Exception:
+                    pass
                 time.sleep(1)
             fps = max(5, int(self.cfg["zoom"].get("fps", 30)))
             time.sleep(max(0.0, 1.0 / fps - (time.time() - t0)))

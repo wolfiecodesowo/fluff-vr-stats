@@ -40,6 +40,10 @@ class ChatboxService : Service() {
         handler.post(slow)
         QuestMods.startListener(this)
         RemoteLink.startServer(this)
+        GlobalChat.start(this)
+        GlobalChat.onMessage = { m ->
+            if (!m.mine && Settings(this).gchatNotify) QuestMods.alert(this, "🌐 ${m.name}: ${m.text}")
+        }
         registerReceiver(screen, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         })

@@ -276,15 +276,88 @@ _CUR = {}   # theme currently being drawn (for the soft lineart on inner panels)
 def pill(d, box, fill, outline=None, width=2):
     r = (box[3] - box[1]) / 2
     if outline is None and _CUR:
-        outline = _CUR["line_soft"]
+        outline, width = _CUR["line"], max(width, 3)          # hand-inked edge, like the furry frame
     elif outline is False:
         outline = None
     d.rounded_rectangle(box, radius=r, fill=fill, outline=outline, width=width)
 
 
-def panel(d, box, radius, t, fill=None):
-    """Inner panel with a soft hand-inked outline."""
-    d.rounded_rectangle(box, radius=radius, fill=fill or t["panel"], outline=t["line_soft"], width=2)
+@lru_cache(maxsize=400)
+def fluff_shape(w, h, radius, fill, ink, inner, ears_kind, ear_size, tufts, seed):
+    """A doodled furry card: ink outline, little fur tufts poking out, optional ears.
+    Returns (RGBA image, (ox, oy)) where (ox, oy) is where the card's top-left sits inside it."""
+    pad = int(ear_size * 1.6) + 10 if ears_kind != "none" else 10
+    side = 10
+    W, H = (w + side * 2) * SS, (h + pad + 12) * SS
+    X0, Y0 = side * SS, pad * SS
+    X1, Y1 = X0 + w * SS, Y0 + h * SS
+    rnd = random.Random(seed)
+    m = Image.new("L", (W, H), 0)
+    md = ImageDraw.Draw(m)
+    md.rounded_rectangle([X0, Y0, X1, Y1], radius=radius * SS, fill=255)
+    tk = {"theme": None}
+    if ears_kind != "none":
+        ears(md, X0, X1, Y0, ear_size * SS, {"ears": ears_kind, "bg": (255, 255, 255, 255), "inner_ear": 255},
+             outer=255, inner=None)
+    if tufts:
+        def tuft(cx, cy, dx, dy, n):
+            for k in range(n):
+                off = (k - (n - 1) / 2) * 7 * SS
+                ln = rnd.uniform(4, 7) * SS
+                bw = rnd.uniform(3.5, 5) * SS
+                if dy:      # top / bottom edge
+                    md.polygon([(cx + off - bw, cy - dy * 3 * SS), (cx + off + bw, cy - dy * 3 * SS),
+                                (cx + off + rnd.uniform(-2, 2) * SS, cy + dy * ln)], fill=255)
+                else:
+                    md.polygon([(cx - dx * 3 * SS, cy + off - bw), (cx - dx * 3 * SS, cy + off + bw),
+                                (cx + dx * ln, cy + off + rnd.uniform(-2, 2) * SS)], fill=255)
+        tuft(rnd.uniform(X0 + radius * SS + 8 * SS, X0 + (X1 - X0) * 0.4), Y1, 0, 1, rnd.randint(2, 3))
+        if h > 70:
+            tuft(X0, rnd.uniform(Y0 + (Y1 - Y0) * 0.45, Y1 - radius * SS - 4 * SS), -1, 0, 2)
+            tuft(X1, rnd.uniform(Y0 + radius * SS + 4 * SS, Y0 + (Y1 - Y0) * 0.55), 1, 0, 2)
+    mask = m.resize((W // SS, H // SS), Image.LANCZOS)
+    inkm = mask.filter(ImageFilter.MaxFilter(5))
+    img = Image.new("RGBA", mask.size, (0, 0, 0, 0))
+    img.paste(Image.new("RGBA", mask.size, ink + (255,)), (0, 0), inkm)
+    img.paste(Image.new("RGBA", mask.size, fill[:3] + (255,)), (0, 0), mask)
+    if ears_kind != "none" and inner:
+        det = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ears(ImageDraw.Draw(det), X0, X1, Y0, ear_size * SS, {"ears": ears_kind, "bg": fill, "inner_ear": inner + (255,)},
+             outer=None, inner=inner + (255,))
+        img.alpha_composite(det.resize(mask.size, Image.LANCZOS))
+    # lil doodled fur strokes in a corner
+    dd = ImageDraw.Draw(img)
+    if h > 60 and w > 120:
+        soft = tuple(int(a * 0.55 + b * 0.45) for a, b in zip(fill[:3], ink)) + (200,)
+        fx, fy = side + w - radius * 0.9, pad + h - 14
+        for k in range(2):
+            yy = fy - k * 8
+            dd.arc([fx - 7, yy - 5, fx + 7, yy + 5], 20 + k * 15, 150, fill=soft, width=2)
+    return img, (side, pad)
+
+
+def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tufts=True, seed=0):
+    """Paste a furry card onto the image behind draw `d` (the same image the box coords are in)."""
+    x0, y0, x1, y1 = [int(round(v)) for v in box]
+    w, h = max(8, x1 - x0), max(8, y1 - y0)
+    fill = tuple((fill or t["panel"])[:3])
+    kind = t.get("ears", "cat") if ears_on else "none"
+    es = int(ear_size or max(12, min(20, h * 0.13)))
+    img, (ox, oy) = fluff_shape(w, h, int(min(radius, h / 2)), fill, tuple(t["line"][:3]), tuple(t["inner_ear"][:3]),
+                                kind, es, tufts, seed or (w * 31 + h * 7))
+    _paste_clipped(d._image, img, x0 - ox, y0 - oy)
+
+
+def _paste_clipped(base, img, x, y):
+    cx, cy = max(0, -x), max(0, -y)
+    ex, ey = min(img.width, base.width - x), min(img.height, base.height - y)
+    if ex > cx and ey > cy:
+        base.alpha_composite(img.crop((cx, cy, ex, ey)), (x + cx, y + cy))
+
+
+def panel(d, box, radius, t, fill=None, ears_on=False):
+    """Inner panel: doodled furry card (ink outline + fur tufts)."""
+    fluff_card(d, box, t, radius, fill=fill, ears_on=ears_on)
 
 
 def switch(d, x, y, on, t, scale=1.0):
@@ -503,8 +576,8 @@ def dash_bg(key, w, h):
     img = furry_frame(key, w, h, (16, 36, w - 16, h - 18), 36, 36).copy()
     d = ImageDraw.Draw(img)
     # tiny doodles in the bottom corners
-    doodle_star(d, w - 60, h - 30, 8, t["warn"], t["line"])
-    d.text((44, h - 22), "mrrp~", font=font("title", 18), fill=t["sub"], anchor="ls")
+    doodle_star(d, w - 40, h - 22, 7, t["warn"], t["line"])
+    d.text((44, h - 16), "mrrp~", font=font("title", 18), fill=t["sub"], anchor="ls")
     return img
 
 
@@ -594,6 +667,107 @@ def layout_chips(chips, width, f_lab, f_val, gap=8):
     return rows
 
 
+# buttons u can put on ur wrist (tap them with ur other hand in VR, click them on desktop)
+WRIST_ACTIONS = {
+    "zoom": ("zoom", "Zoom lens"), "chatbox": ("chatbox", "Chatbox on/off"), "timer": ("timer", "5 min timer"),
+    "look": ("look", "AI Look"), "kitty": ("kitty", "Lil Kitty"), "gchat": ("global", "Global chat"),
+    "menu": ("menu", "Open menu"), "screen": ("screen", "Desktop in VR"), "pat": ("pat", "Pat Fluff"),
+}
+
+
+def action_on(state, cmd):
+    cfg, mods = state.cfg, state.cfg["modules"]
+    return {"zoom": bool(cfg.get("zoom", {}).get("enabled")), "chatbox": bool(mods.get("chatbox_status")),
+            "timer": bool(state.timer.get("running")), "kitty": bool(mods.get("wrist_kitty", True)),
+            "screen": bool(cfg.get("screen", {}).get("enabled")), "look": bool(getattr(state, "looking", False))}.get(cmd, False)
+
+
+def action_icon(d, kind, cx, cy, r, col, bg=None):
+    """Chunky lil icons for the wrist buttons + Home quick actions. r = rough radius."""
+    lw = max(2, int(r * 0.2))
+    bg = bg or (0, 0, 0)
+    if kind == "zoom":
+        rr = r * 0.55
+        d.ellipse([cx - rr - r * 0.15, cy - rr - r * 0.15, cx + rr - r * 0.15, cy + rr - r * 0.15], outline=col, width=lw)
+        d.line([(cx + r * 0.25, cy + r * 0.25), (cx + r * 0.85, cy + r * 0.85)], fill=col, width=lw + 2)
+        sparkle(d, cx - r * 0.15, cy - r * 0.15, r * 0.22, col)
+    elif kind == "chatbox":
+        d.rounded_rectangle([cx - r, cy - r * 0.75, cx + r, cy + r * 0.45], radius=r * 0.4, outline=col, width=lw)
+        d.polygon([(cx - r * 0.45, cy + r * 0.4), (cx - r * 0.05, cy + r * 0.4), (cx - r * 0.6, cy + r * 0.9)], fill=col)
+        for i in (-1, 0, 1):
+            dr = r * 0.13
+            d.ellipse([cx + i * r * 0.45 - dr, cy - r * 0.15 - dr, cx + i * r * 0.45 + dr, cy - r * 0.15 + dr], fill=col)
+    elif kind == "timer":
+        d.ellipse([cx - r * 0.82, cy - r * 0.62, cx + r * 0.82, cy + r * 1.0], outline=col, width=lw)
+        d.rounded_rectangle([cx - r * 0.22, cy - r * 1.0, cx + r * 0.22, cy - r * 0.72], radius=2, fill=col)
+        d.line([(cx, cy + r * 0.2), (cx, cy - r * 0.3)], fill=col, width=lw)
+        d.line([(cx, cy + r * 0.2), (cx + r * 0.35, cy + r * 0.2)], fill=col, width=lw)
+    elif kind == "look":
+        d.chord([cx - r, cy - r * 0.75, cx + r, cy + r * 0.75], 200, 340, outline=col, width=lw)
+        d.chord([cx - r, cy - r * 0.75, cx + r, cy + r * 0.75], 20, 160, outline=col, width=lw)
+        d.ellipse([cx - r * 0.33, cy - r * 0.33, cx + r * 0.33, cy + r * 0.33], fill=col)
+        sparkle(d, cx + r * 0.75, cy - r * 0.7, r * 0.25, col)
+    elif kind in ("kitty", "pat"):
+        d.polygon([(cx - r * 0.85, cy - r * 0.1), (cx - r * 0.75, cy - r * 0.95), (cx - r * 0.2, cy - r * 0.55)], fill=col)
+        d.polygon([(cx + r * 0.85, cy - r * 0.1), (cx + r * 0.75, cy - r * 0.95), (cx + r * 0.2, cy - r * 0.55)], fill=col)
+        d.ellipse([cx - r * 0.85, cy - r * 0.6, cx + r * 0.85, cy + r * 0.8], fill=col)
+        e = r * 0.12
+        for sx in (-1, 1):
+            d.ellipse([cx + sx * r * 0.35 - e, cy - e, cx + sx * r * 0.35 + e, cy + e], fill=bg)
+        d.polygon([(cx - r * 0.1, cy + r * 0.22), (cx + r * 0.1, cy + r * 0.22), (cx, cy + r * 0.34)], fill=bg)
+        if kind == "pat":
+            heart(d, cx + r * 0.8, cy - r * 0.85, r * 0.3, col)
+    elif kind == "global":
+        rr = r * 0.85
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=lw)
+        d.ellipse([cx - rr * 0.42, cy - rr, cx + rr * 0.42, cy + rr], outline=col, width=max(1, lw - 1))
+        d.line([(cx - rr, cy), (cx + rr, cy)], fill=col, width=max(1, lw - 1))
+        heart(d, cx + r * 0.75, cy - r * 0.8, r * 0.32, col)
+    elif kind == "menu":
+        paw(d, cx, cy + r * 0.15, r * 0.75, col)
+    elif kind == "screen":
+        d.rounded_rectangle([cx - r, cy - r * 0.75, cx + r, cy + r * 0.45], radius=4, outline=col, width=lw)
+        d.line([(cx, cy + r * 0.45), (cx, cy + r * 0.85)], fill=col, width=lw)
+        d.line([(cx - r * 0.5, cy + r * 0.85), (cx + r * 0.5, cy + r * 0.85)], fill=col, width=lw)
+    elif kind == "boost":
+        d.polygon([(cx + r * 0.2, cy - r), (cx - r * 0.6, cy + r * 0.15), (cx - r * 0.05, cy + r * 0.15), (cx - r * 0.3, cy + r),
+                   (cx + r * 0.6, cy - r * 0.2), (cx + r * 0.05, cy - r * 0.2)], fill=col)
+    elif kind == "talk":
+        d.rounded_rectangle([cx - r, cy - r * 0.75, cx + r, cy + r * 0.45], radius=r * 0.4, outline=col, width=lw)
+        d.polygon([(cx + r * 0.05, cy + r * 0.4), (cx + r * 0.45, cy + r * 0.4), (cx + r * 0.6, cy + r * 0.9)], fill=col)
+        paw(d, cx, cy - r * 0.15, r * 0.3, col)
+    else:
+        heart(d, cx, cy, r * 0.7, col)
+
+
+def wrist_button(d, box, kind, label, t, on=False, pressed=False, tint=None, badge=0, small=False):
+    """Lil furry button with ears: icon + tiny label. Lit up (primary) when that thing is on."""
+    x0, y0, x1, y1 = box
+    fill = t["primary"] if (on or pressed) else (tint or t["panel2"])
+    ink = t["on_primary"] if (on or pressed) else t["text"]
+    es = max(7, min(11, (x1 - x0) * 0.13))
+    fluff_card(d, [x0, y0 + es * 0.6, x1, y1], t, radius=min(20, (y1 - y0) * 0.34), fill=fill, ears_on=True,
+               ear_size=es, tufts=False)
+    y0 += es * 0.6
+    cx = (x0 + x1) / 2
+    ir = (y1 - y0) * (0.21 if label else 0.28)
+    iy = y0 + (y1 - y0) * (0.42 if label else 0.5)
+    action_icon(d, kind, cx, iy, ir, ink, bg=fill)
+    if label:
+        f = font("head", 13 if small else 14)
+        d.text((cx, y1 - (y1 - y0) * 0.17), ellipsize(label, f, x1 - x0 - 6), font=f, fill=ink, anchor="mm")
+    if on:
+        paw(d, x1 - 11, y0 + 11, 4.5, t["on_primary"])
+    if badge:
+        bx, by = x1 - 4, y0 - 2
+        d.ellipse([bx - 11, by - 11, bx + 11, by + 11], fill=t["bad"], outline=t["line"], width=3)
+        d.text((bx, by), str(min(badge, 9)) + ("+" if badge > 9 else ""), font=font("body", 12), fill=(255, 255, 255), anchor="mm")
+
+
+SHORT_LABEL = {"zoom": "zoom", "chatbox": "chatbox", "timer": "timer", "look": "AI look", "kitty": "kitty",
+               "gchat": "global", "menu": "menu", "screen": "screen", "pat": "pat"}
+
+
 def render_hud(state):
     """Wrist HUD. Returns an RGBA image."""
     cfg, s, t = state.cfg, state.stats, get_theme(state.cfg)
@@ -629,9 +803,17 @@ def render_hud(state):
     m = state.music or {}
     song = (f"{m['title']} - {m['artist']}" if m.get("artist") else m.get("title")) if m.get("title") \
         else state.extras.get("song")
-    want_ctrl = mods.get("music_controls") or mods.get("zoom_lens")
+    want_ctrl = mods.get("music_controls")
     if (mods.get("now_playing") and song) or want_ctrl:
         rows.append(("music", 52 if want_ctrl else 44))
+    gc = getattr(state, "gchat", None)
+    if gc is not None and mods.get("global_chat", True) and cfg.get("gchat", {}).get("hud", True):
+        recent = [mm for mm in gc.visible(2) if time.time() - mm["time"] < 90]
+        if recent:
+            rows.append(("gchat", 46 + 25 * len(recent), recent))
+    acts = [a for a in cfg.get("wrist_actions", []) if a in WRIST_ACTIONS][:6]
+    if mods.get("wrist_buttons", True) and acts:
+        rows.append(("buttons", 86, acts))
     if mods["last_ai_reply"] and state.last_reply():
         rows.append(("ai", 74))
     if not rows:
@@ -781,9 +963,7 @@ def render_hud(state):
                 btns = []
                 if mods.get("music_controls"):
                     btns += [("next", "next"), ("pause" if m.get("playing") else "play", "play_pause"), ("prev", "prev")]
-                if mods.get("zoom_lens"):
-                    btns.append(("zoom", "zoom"))
-                zoom_on = state.cfg.get("zoom", {}).get("enabled")
+                zoom_on = False
                 for i, (kind2, cmd) in enumerate(btns):
                     cx = R - 6 - br - i * (br * 2 + 8)
                     cyy = y + bh / 2
@@ -801,6 +981,33 @@ def render_hud(state):
                 k = min(1.0, max(0.0, (m.get("pos") or 0) / m["dur"]))
                 d.line([(x + 42, y + bh - 6), (x + 42 + (right - x - 54) * k, y + bh - 6)],
                        fill=t["primary"], width=3)
+        elif kind == "gchat":
+            bh = rh - 8
+            fluff_card(d, [x, y, R, y + bh], t, radius=18, tufts=False)
+            action_icon(d, "global", x + 22, y + 20, 10, t["primary"])
+            d.text((x + 40, y + 20), "global chat", font=font("body2", 13), fill=t["sub"], anchor="lm")
+            for i, mm in enumerate(row[2]):
+                ly = y + 42 + i * 25
+                nm = mm["name"] + ":"
+                fn = font("body", 15)
+                d.text((x + 16, ly), nm, font=fn, fill=t["primary"], anchor="lm")
+                d.text((x + 22 + fn.getlength(nm), ly), ellipsize(mm["text"], font("body2", 15), R - x - 40 - fn.getlength(nm)),
+                       font=font("body2", 15), fill=t["text"], anchor="lm")
+        elif kind == "buttons":
+            acts = row[2]
+            n = len(acts)
+            gap = 10
+            bw = (R - x - gap * (n - 1)) / n
+            pressed = state.hud_pressed if time.time() - state.hud_pressed_t < 0.35 else None
+            stripe_cols = t.get("stripe") or [t["primary"]]
+            unread = getattr(getattr(state, "gchat", None), "unread", 0)
+            for i, cmd in enumerate(acts):
+                bx = x + i * (bw + gap)
+                bb = [bx, y + 6, bx + bw, y + 74]
+                tint = mix(t["panel"], stripe_cols[i % len(stripe_cols)], 0.22)
+                wrist_button(d, bb, WRIST_ACTIONS[cmd][0], SHORT_LABEL.get(cmd, cmd), t, on=action_on(state, cmd),
+                             pressed=pressed == cmd, tint=tint, badge=unread if cmd == "gchat" else 0, small=n > 5)
+                state.hud_hits.append(([bb[0] - 3, bb[1] - 3, bb[2] + 3, bb[3] + 5], cmd))
         elif kind == "ai":
             panel(d, [x, y, R, y + 64], 16, t)
             paw(d, x + 22, y + 34, 9, t["primary"])
@@ -819,7 +1026,7 @@ def render_hud(state):
 
 
 # ============================================================= DASHBOARD ===
-DASH_W, DASH_H = 1024, 640
+DASH_W, DASH_H = 1024, 700
 LOGO_H, LOGO_POS = 92, (32, 50)
 
 
@@ -850,7 +1057,12 @@ def add_logo(base, frame_idx, slots=()):
         except Exception:
             pass
     return img
-TABS = ["Stats", "Boost", "Chat", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style", "Wrist", "<3"]
+TABS = ["Home", "Stats", "Boost", "Chat", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
+        "Wrist", "Settings", "<3"]
+
+
+def visible_tabs(cfg):
+    return [n for n in TABS if n != "Global" or cfg["modules"].get("global_chat", True)]
 
 MOD_CATS = ["Performance", "Wrist", "VRChat", "Counters", "Fun", "Comfy"]
 MOD_INFO = {
@@ -874,6 +1086,7 @@ MOD_INFO = {
         ("last_ai_reply", "AI reply on wrist", "Show Fluff's last message"),
         ("look_to_show", "Look to show", "HUD fades in when you look"),
         ("wrist_kitty", "Lil Kitty", "Pettable cat on ur other wrist"),
+        ("wrist_buttons", "Wrist buttons", "Zoom, chatbox, timer... tap to use"),
     ],
     "VRChat": [
         ("world_info", "World info", "World name, instance, players"),
@@ -903,6 +1116,7 @@ MOD_INFO = {
         ("weather", "Weather", "Temp + sky where you are"),
         ("discord_presence", "Discord status", "Shows the app on ur Discord profile"),
         ("zoom_lens", "Zoom lens", "Magnify what u see (Screen tab)"),
+        ("global_chat", "Global chat", "Chat w/ everyone on Fluff VR Stats"),
         ("song_toast", "Song pop-up", "Wrist pops up on a new song"),
         ("countdown", "Countdown", "Days until ur big day"),
         ("kaomoji", "Kaomoji", "Cute face at the end of ur chatbox"),
@@ -1024,31 +1238,408 @@ def render_dashboard(state):
     d.text((tx0 + 2, top + 72), "stats + mods + ur fluffy ai buddy", font=font("body2", 15),
            fill=t["sub"], anchor="ls")
 
-    # doodle icon tabs: the active one also shows its name
-    tx = DASH_W - 40
-    for name in reversed(TABS):
-        active = state.tab == name
-        label = "" if name == "<3" else name
-        w = (font("head", 17).getlength(label) + 52) if (active and label) else 40
-        box = [tx - w, top + 14, tx, top + 58]
-        pill(d, box, t["primary"] if active else t["panel2"])
-        col = t["on_primary"] if active else t["text"]
-        tab_icon(d, name, box[0] + 20, top + 36, col, t)
-        if active and label:
-            d.text((box[0] + 36, top + 36), label, font=font("head", 17), fill=col, anchor="lm")
-        hit.add(box, "tab", name)
-        tx -= w + 3
+    _header_status(d, hit, state, t, top)
+    _nav_dock(d, hit, state, t)
 
-    body = [40, top + 96, DASH_W - 40, DASH_H - 38]
+    body = [40, top + 96, DASH_W - 40, DASH_H - 98]
     state.anim_slots = []
-    {"Stats": _tab_stats, "Chat": _tab_chat,
+    {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings,
+     "Stats": _tab_stats, "Chat": _tab_chat,
      "Screen": _tab_screen, "Mods": _tab_mods, "Style": _tab_style,
      "Music": _tab_music, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
      "Boost": _tab_boost,
-     "Wrist": _tab_wrist, "<3": _tab_thanks}.get(state.tab, _tab_stats)(d, hit, body, state, t)
+     "Wrist": _tab_wrist, "<3": _tab_thanks}.get(state.tab, _tab_home)(d, hit, body, state, t)
     if state.errors and not state.errors_dismissed:
         _error_toast(d, hit, body, state, t)
     return img, hit
+
+
+TAB_LABEL = {"<3": "thanks", "Chatbox": "Chatbox"}
+
+
+def _nav_dock(d, hit, state, t):
+    """App-style nav bar along the bottom: every tab gets an icon + name, the open one is lit up."""
+    tabs = visible_tabs(state.cfg)
+    x0, x1 = 40, DASH_W - 40
+    y0, y1 = DASH_H - 90, DASH_H - 34
+    fluff_card(d, [x0, y0, x1, y1], t, radius=26, fill=mix(t["panel"], t["bg"][:3], 0.35), tufts=False)
+    n = len(tabs)
+    w = (x1 - x0 - 12) / n
+    unread = getattr(getattr(state, "gchat", None), "unread", 0)
+    for i, name in enumerate(tabs):
+        bx0 = x0 + 6 + i * w
+        box = [bx0 + 2, y0 + 5, bx0 + w - 2, y1 - 5]
+        active = state.tab == name
+        if active:
+            fluff_card(d, box, t, radius=18, fill=t["primary"], ears_on=True, ear_size=7, tufts=False)
+        col = t["on_primary"] if active else t["sub"]
+        cx = (box[0] + box[2]) / 2
+        tab_icon(d, name, cx, y0 + 20, col if active else t["text"], t)
+        f = font("body", 11)
+        d.text((cx, y1 - 13), ellipsize(TAB_LABEL.get(name, name).lower(), f, w - 6), font=f, fill=col, anchor="mm")
+        if name == "Global" and unread and not active:
+            d.ellipse([cx + 8, y0 + 4, cx + 22, y0 + 18], fill=t["bad"], outline=t["line"], width=2)
+        hit.add(box, "tab", name)
+
+
+def _greeting():
+    h = time.localtime().tm_hour
+    return ("good morning" if 5 <= h < 12 else "good afternoon" if h < 17 else
+            "good evening" if h < 22 else "hiii night owl")
+
+
+def _header_status(d, hit, state, t, top):
+    """Right side of the header: greeting + lil status pills (session, streak, chat, version)."""
+    cfg = state.cfg
+    name = (cfg.get("gchat", {}).get("name") or "").strip()
+    R = DASH_W - 44
+    greet = _greeting() + (f", {name}" if name else "") + " ~"
+    d.text((R, top + 24), greet, font=font("head", 22), fill=t["text"], anchor="rm")
+    pills = []
+    ss = state.extras.get("session_start")
+    if ss:
+        pills.append((f"in VR {fmt_dur(time.time() - ss)}" if not state.desktop else f"on {fmt_dur(time.time() - ss)}", None, None))
+    vd = cfg.get("vr_days") or {}
+    if cfg["modules"].get("vr_streak") and vd:
+        streak = state.extras.get("vr_streak") or 0
+        if streak:
+            pills.append((f"{streak} day streak", "warn", None))
+    gc = getattr(state, "gchat", None)
+    if gc is not None and cfg["modules"].get("global_chat", True):
+        lab = {"live": "chat live", "connecting": "chat…", "offline": "chat offline"}.get(gc.status, "chat")
+        if gc.unread:
+            lab = f"{gc.unread} new msg" + ("s" if gc.unread > 1 else "")
+        pills.append((lab, "good" if gc.status == "live" else "sub", ("tab", "Global")))
+    ver = getattr(state, "version", "")
+    if ver:
+        upd = state.extras.get("update_available")
+        pills.append((f"update {upd}!" if upd else ver, "primary" if upd else None, None))
+    f = font("body", 14)
+    x = R
+    for lab, ck, act in reversed(pills):
+        w = f.getlength(lab) + 26
+        box = [x - w, top + 46, x, top + 74]
+        pill(d, box, t["panel2"])
+        dot = t[ck] if ck and ck != "sub" else None
+        if dot:
+            d.ellipse([box[0] + 9, top + 56, box[0] + 17, top + 64], fill=dot)
+        d.text((box[0] + (21 if dot else 13), top + 60), lab, font=f, fill=t["text"], anchor="lm")
+        if act:
+            hit.add(box, *act)
+        x -= w + 6
+
+
+def _quick_actions(state):
+    acts = [("zoom", "zoom", "hud_cmd", "zoom"), ("chatbox", "chatbox", "hud_cmd", "chatbox"),
+            ("timer", "5m timer", "hud_cmd", "timer"), ("look", "AI look", "ai_look", None),
+            ("kitty", "kitty", "hud_cmd", "kitty"), ("talk", "talk", "type", None)]
+    if not state.desktop:
+        acts.insert(5, ("screen", "desktop", "hud_cmd", "screen"))
+    else:
+        acts.insert(5, ("boost", "boost", "tab", "Boost"))
+    return acts
+
+
+def _tab_home(d, hit, box, state, t):
+    x0, y0, x1, y1 = box
+    cfg, s, ex = state.cfg, state.stats, state.extras
+    gap = 16
+    rw = 330                                    # right column: global chat
+    lx1 = x1 - rw - gap
+    # --- stat tiles
+    tiles = []
+    fps = s.get("fps")
+    if not state.desktop and s.get("vr_ok", True) and fps is not None:
+        tiles.append(("FPS", f"{fps:.0f}", f"/{s['refresh']:.0f}" if s.get("refresh") else "", color_for_fps(fps, s.get("refresh"), t)))
+    else:
+        cpu = s.get("cpu_pct")
+        tiles.append(("CPU", "--" if cpu is None else f"{cpu:.0f}", "%", None))
+    today = ex.get("vr_today_s")
+    ss = ex.get("session_start")
+    tiles.append(("today" if today else "session", fmt_dur(today if today else (time.time() - ss if ss else 0)), "", None))
+    tiles.append(("headpats", str(ex.get("headpats", 0)), "", t["primary"]))
+    tiles.append(("boops", str(ex.get("boops", 0)), "", None))
+    tw = (lx1 - x0 - 12 * 3) / 4
+    for i, (lab, val, unit, col) in enumerate(tiles):
+        bx = x0 + i * (tw + 12)
+        panel(d, [bx, y0, bx + tw, y0 + 92], 20, t)
+        d.text((bx + 16, y0 + 14), lab, font=font("body2", 15), fill=t["sub"])
+        fv = font("title", 36 if len(val) < 6 else 28)
+        d.text((bx + 16, y0 + 78), val, font=fv, fill=col or t["text"], anchor="ls")
+        if unit:
+            d.text((bx + 20 + fv.getlength(val), y0 + 76), unit, font=font("head", 16), fill=t["sub"], anchor="ls")
+    # --- quick actions
+    qy = y0 + 108
+    panel(d, [x0, qy, lx1, qy + 150], 22, t, ears_on=True)
+    d.text((x0 + 20, qy + 14), "quick actions", font=font("head", 20), fill=t["text"])
+    d.text((lx1 - 20, qy + 18), "also on ur wrist ~ tap w/ ur other hand" if not state.desktop else "also on ur floating wrist menu",
+           font=font("body2", 13), fill=t["sub"], anchor="ra")
+    acts = _quick_actions(state)
+    n = len(acts)
+    bw = (lx1 - x0 - 40 - 10 * (n - 1)) / n
+    stripe_cols = t.get("stripe") or [t["primary"]]
+    pressed = state.hud_pressed if time.time() - state.hud_pressed_t < 0.35 else None
+    for i, (kind, lab, act, arg) in enumerate(acts):
+        bx = x0 + 20 + i * (bw + 10)
+        bb = [bx, qy + 46, bx + bw, qy + 132]
+        on = action_on(state, arg) if act == "hud_cmd" else False
+        wrist_button(d, bb, kind, lab, t, on=on, pressed=arg is not None and pressed == arg,
+                     tint=mix(t["panel2"], stripe_cols[i % len(stripe_cols)], 0.18))
+        if arg is None:
+            hit.add(bb, act)
+        else:
+            hit.add(bb, act, arg)
+    # --- now playing / kitty card
+    my = qy + 166
+    panel(d, [x0, my, lx1, y1], 22, t, ears_on=True)
+    m = state.music or {}
+    if m.get("title"):
+        art = m.get("art")
+        ah = y1 - my - 28
+        ax = x0 + 14
+        if art is not None:
+            try:
+                a = art.convert("RGBA").resize((int(ah), int(ah)))
+                mask = Image.new("L", a.size, 0)
+                ImageDraw.Draw(mask).rounded_rectangle([0, 0, a.width - 1, a.height - 1], radius=16, fill=255)
+                d._image.paste(a, (int(ax), int(my + 14)), mask)
+            except Exception:
+                art = None
+        tx = ax + ah + 18 if art is not None else x0 + 24
+        d.text((tx, my + 26), "now playing", font=font("body2", 14), fill=t["sub"])
+        d.text((tx, my + 48), ellipsize(m["title"], font("head", 24), lx1 - tx - 20), font=font("head", 24), fill=t["text"])
+        d.text((tx, my + 82), ellipsize(m.get("artist", ""), font("body2", 16), lx1 - tx - 20), font=font("body2", 16), fill=t["sub"])
+        cy = y1 - 36
+        for i, (k, cmd) in enumerate([("prev", "prev"), ("pause" if m.get("playing") else "play", "play_pause"), ("next", "next")]):
+            cx = tx + 22 + i * 54
+            pr = 20
+            fillc = t["primary"] if cmd == "play_pause" else t["panel2"]
+            d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=fillc, outline=t["line_soft"], width=2)
+            media_icon(d, k, cx, cy, pr * 0.6, t["on_primary"] if fillc == t["primary"] else t["text"])
+            hit.add([cx - pr, cy - pr, cx + pr, cy + pr], "music", cmd)
+    else:
+        k = cfg.get("kitty", {})
+        d.text((x0 + 24, my + 22), "nothing playing ~", font=font("head", 22), fill=t["text"])
+        tips = ["tip: tap the 🔍 on ur wrist to zoom in on far away stuff",
+                "tip: Mods > Counters can count ur headpats + boops",
+                "tip: global chat talks to everyone, even Quest + Discord",
+                "tip: Boost tab puts ur PC in VR mode for more fps",
+                f"tip: {k.get('name', 'Lil Kitty')} on ur other wrist wants pats"]
+        tip = tips[int(time.time() // 30) % len(tips)]
+        for i, ln in enumerate(wrap(tip, font("body2", 16), lx1 - x0 - 48)[:3]):
+            d.text((x0 + 24, my + 62 + i * 22), ln, font=font("body2", 16), fill=t["sub"])
+    # --- global chat preview
+    gx = lx1 + gap
+    _chat_card(d, hit, [gx, y0, x1, y1], state, t, compact=True)
+
+
+def _client_tag(c):
+    return {"quest": "quest", "discord": "discord", "desktop": "desktop", "phone": "phone"}.get(c, "")
+
+
+def _chat_card(d, hit, box, state, t, compact=False):
+    x0, y0, x1, y1 = box
+    gc = getattr(state, "gchat", None)
+    cfg = state.cfg
+    panel(d, box, 22, t, ears_on=True)
+    action_icon(d, "global", x0 + 30, y0 + 28, 12, t["primary"])
+    d.text((x0 + 50, y0 + 28), "global chat", font=font("head", 21), fill=t["text"], anchor="lm")
+    if not cfg["modules"].get("global_chat", True):
+        d.text((x0 + 24, y0 + 72), "global chat is off", font=font("body", 17), fill=t["sub"])
+        button(d, hit, [x0 + 24, y0 + 104, x1 - 24, y0 + 148], "turn it on", t, "toggle", "global_chat", primary=True, fsize=18)
+        return
+    st_txt = {"live": "live", "connecting": "connecting…", "offline": "offline, retrying"}.get(getattr(gc, "status", ""), "")
+    col = t["good"] if st_txt == "live" else t["warn"]
+    if st_txt:
+        f = font("body2", 13)
+        d.ellipse([x1 - 30 - f.getlength(st_txt), y0 + 23, x1 - 22 - f.getlength(st_txt), y0 + 31], fill=col)
+        d.text((x1 - 18, y0 + 28), st_txt, font=f, fill=t["sub"], anchor="rm")
+    if compact:
+        if gc is not None:
+            gc.unread = 0 if state.tab == "Global" else gc.unread
+        foot = 52
+        msgs = gc.visible() if gc is not None else []
+        ytop, ybot = y0 + 52, y1 - foot - 6
+        fb = font("body2", 15)
+        fn = font("body", 14)
+        lines = []
+        for mm in msgs:
+            wr = wrap(mm["text"], fb, x1 - x0 - 48)[:3]
+            lines.append((mm, wr))
+        y = ybot
+        for mm, wr in reversed(lines):
+            hgt = 20 + 20 * len(wr) + 8
+            if y - hgt < ytop:
+                break
+            y -= hgt
+            d.text((x0 + 22, y + 10), mm["name"], font=fn, fill=t["primary"] if not mm["mine"] else t["warn"], anchor="lm")
+            tag = _client_tag(mm.get("client"))
+            if tag:
+                d.text((x0 + 28 + fn.getlength(mm["name"]), y + 10), tag, font=font("body2", 11), fill=t["sub"], anchor="lm")
+            for i, ln in enumerate(wr):
+                d.text((x0 + 22, y + 30 + i * 20), ln, font=fb, fill=t["text"], anchor="lm")
+        if not msgs:
+            d.text(((x0 + x1) / 2, (ytop + ybot) / 2), "quiet in here… say hiii!", font=font("body2", 16), fill=t["sub"], anchor="mm")
+        bw2 = (x1 - x0 - 48 - 8) * 0.62
+        button(d, hit, [x0 + 24, y1 - foot, x0 + 24 + bw2, y1 - 14], "say something", t, "gchat_send", primary=True, fsize=17)
+        button(d, hit, [x0 + 32 + bw2, y1 - foot, x1 - 24, y1 - 14], "open", t, "tab", "Global", fsize=17)
+
+
+def _tab_global(d, hit, box, state, t):
+    x0, y0, x1, y1 = box
+    cfg = state.cfg
+    gc = getattr(state, "gchat", None)
+    if gc is not None:
+        gc.unread = 0
+    if not cfg["modules"].get("global_chat", True):
+        _chat_card(d, hit, [x0 + 200, y0 + 60, x1 - 200, y0 + 230], state, t)
+        return
+    sw = 250                                         # side panel: who am i + rules
+    cx1 = x1 - sw - 16
+    panel(d, [x0, y0, cx1, y1], 22, t, ears_on=True)
+    msgs = gc.visible() if gc is not None else []
+    fb, fn = font("body2", 16), font("body", 14)
+    bubble_w = (cx1 - x0) * 0.68
+    rows = []
+    for mm in msgs:
+        wr = wrap(mm["text"], fb, bubble_w - 32)[:5]
+        rows.append((mm, wr, 30 + 22 * len(wr) + 12))
+    scroll = getattr(state, "gchat_scroll", 0)
+    end = max(0, len(rows) - scroll)
+    y = y1 - 72
+    top_lim = y0 + 14
+    shown = 0
+    for mm, wr, hgt in reversed(rows[:end]):
+        if y - hgt < top_lim:
+            break
+        y -= hgt
+        shown += 1
+        w = max(fn.getlength(mm["name"]) + 60, max(fb.getlength(ln) for ln in wr) + 32)
+        w = min(bubble_w, w)
+        mine = mm["mine"]
+        bx0 = cx1 - 18 - w if mine else x0 + 18
+        bb = [bx0, y + 4, bx0 + w, y + hgt - 6]
+        d.rounded_rectangle(bb, radius=16, fill=mix(t["panel2"], t["primary"], 0.35) if mine else t["panel2"],
+                            outline=t["line"], width=3)
+        tx_ = bb[2] - 22 if mine else bb[0] + 22                  # lil speech tail
+        d.polygon([(tx_ - 7, bb[3] - 2), (tx_ + 7, bb[3] - 2), (tx_ + (8 if mine else -8), bb[3] + 8)],
+                  fill=t["line"])
+        d.text((bb[0] + 14, bb[1] + 15), mm["name"], font=fn, fill=t["warn"] if mine else t["primary"], anchor="lm")
+        tag = _client_tag(mm.get("client"))
+        tx = bb[0] + 20 + fn.getlength(mm["name"])
+        if tag:
+            d.text((tx, bb[1] + 15), tag, font=font("body2", 11), fill=t["sub"], anchor="lm")
+        ago = max(0, time.time() - mm["time"])
+        d.text((bb[2] - 12, bb[1] + 15), "now" if ago < 60 else f"{int(ago // 60)}m" if ago < 3600 else f"{int(ago // 3600)}h",
+               font=font("body2", 11), fill=t["sub"], anchor="rm")
+        for i, ln in enumerate(wr):
+            d.text((bb[0] + 14, bb[1] + 38 + i * 22), ln, font=fb, fill=t["text"], anchor="lm")
+        if not mine and mm.get("sid"):
+            mx = bb[2] + 16
+            if mx + 12 < cx1:
+                d.text((mx, (bb[1] + bb[3]) / 2), "mute", font=font("body2", 11), fill=t["sub"], anchor="lm")
+                hit.add([mx - 4, bb[1], mx + 34, bb[3]], "gchat_mute", mm["sid"])
+    if not msgs:
+        d.text(((x0 + cx1) / 2, (y0 + y1) / 2 - 20), "no messages yet ~ be the first to say hiii!", font=font("head", 20),
+               fill=t["sub"], anchor="mm")
+    # scroll + input bar
+    if end < len(rows) or shown < end:
+        button(d, hit, [cx1 - 104, y0 + 12, cx1 - 62, y0 + 46], "^", t, "gchat_scroll", 3, fsize=18)
+        button(d, hit, [cx1 - 56, y0 + 12, cx1 - 14, y0 + 46], "v", t, "gchat_scroll", -3, fsize=18)
+    ib = [x0 + 16, y1 - 58, cx1 - 16, y1 - 14]
+    pill(d, ib, t["panel2"])
+    d.text((ib[0] + 22, (ib[1] + ib[3]) / 2), "say something to everyone… (click to type)", font=font("body2", 16),
+           fill=t["sub"], anchor="lm")
+    bx = ib[2] - 4
+    d.ellipse([bx - 36, ib[1] + 4, bx, ib[3] - 4], fill=t["primary"])
+    paw(d, bx - 18, (ib[1] + ib[3]) / 2 + 2, 8, t["on_primary"])
+    hit.add(ib, "gchat_send")
+
+    # side panel
+    sx = cx1 + 16
+    panel(d, [sx, y0, x1, y1], 22, t, ears_on=True)
+    d.text((sx + 20, y0 + 18), "ur name", font=font("body2", 14), fill=t["sub"])
+    nm = cfg.get("gchat", {}).get("name") or "(pick one!)"
+    d.text((sx + 20, y0 + 38), ellipsize(nm, font("head", 24), x1 - sx - 40), font=font("head", 24), fill=t["text"])
+    button(d, hit, [sx + 20, y0 + 76, x1 - 20, y0 + 112], "change name", t, "mod_edit", "gchat_name", fsize=16)
+    on_hud = cfg.get("gchat", {}).get("hud", True)
+    d.text((sx + 20, y0 + 142), "new msgs on wrist", font=font("body", 15), fill=t["text"], anchor="lm")
+    switch(d, x1 - 70, y0 + 128, on_hud, t, scale=0.85)
+    hit.add([sx, y0 + 124, x1, y0 + 160], "set", "gchat.hud", not on_hud)
+    d.text((sx + 20, y0 + 186), "house rules", font=font("head", 19), fill=t["text"])
+    rules = ["be nice, no hate", "no links (anti-scam)", "never share personal info", "slow mode: 1 msg / 3s",
+             "mute anyone just for u"]
+    for i, r in enumerate(rules):
+        ry = y0 + 220 + i * 24
+        paw(d, sx + 28, ry + 1, 5, t["primary"])
+        d.text((sx + 42, ry), r, font=font("body2", 14), fill=t["sub"], anchor="lm")
+    d.text((sx + 20, y1 - 46), "also in our Discord #global-chat", font=font("body2", 13), fill=t["sub"], anchor="lm")
+    muted = len(cfg.get("gchat", {}).get("muted", []))
+    if muted:
+        d.text((sx + 20, y1 - 22), f"{muted} muted · unmute in Settings", font=font("body2", 13), fill=t["sub"], anchor="lm")
+
+
+def _setting_row(d, hit, box, label, value, t, action, *args, toggle=None, sub=None):
+    x0, y0, x1, y1 = box
+    d.rounded_rectangle(box, radius=16, fill=t["panel2"] if False else t["panel"], outline=t["line_soft"], width=2)
+    cy = (y0 + y1) / 2
+    d.text((x0 + 16, cy - (8 if sub else 0)), label, font=font("body", 16), fill=t["text"], anchor="lm")
+    if sub:
+        d.text((x0 + 16, cy + 11), sub, font=font("body2", 12), fill=t["sub"], anchor="lm")
+    if toggle is not None:
+        switch(d, x1 - 62, cy - 13, toggle, t, scale=0.85)
+    else:
+        f = font("head", 16)
+        w = f.getlength(value) + 28
+        pill(d, [x1 - 12 - w, cy - 15, x1 - 12, cy + 15], t["primary"] if action else t["panel2"])
+        d.text((x1 - 12 - w / 2, cy), value, font=f, fill=t["on_primary"] if action else t["sub"], anchor="mm")
+    if action:
+        hit.add(box, action, *args)
+
+
+def _tab_settings(d, hit, box, state, t):
+    x0, y0, x1, y1 = box
+    cfg = state.cfg
+    g = cfg.get("gchat", {})
+    ai = cfg.get("ai", {})
+    ai_ok = bool(ai.get("api_key")) or ai.get("provider") == "ollama"
+    rows_l = [
+        ("Start in", {"ask": "ask me", "vr": "VR", "desktop": "desktop"}.get(cfg.get("launch_mode", "ask"), "ask me"),
+         ("set", "launch_mode", "__cycle__", ["ask", "vr", "desktop"]), None, "VR or desktop when u open the app"),
+        ("Auto updates", None, ("set", "auto_update", not cfg.get("auto_update", True)), cfg.get("auto_update", True),
+         "new versions install by themselves"),
+        ("Wrist hand", cfg["wrist"]["hand"], ("hand", "right" if cfg["wrist"]["hand"] == "left" else "left"), None, None),
+        ("Menu cursor", cfg.get("cursor", "paw"), ("set", "cursor", "__cycle__", ["paw", "heart", "star"]), None, None),
+        ("Wrist refresh", f"{cfg.get('hud_refresh_hz', 2)}x / sec", ("set", "hud_refresh_hz", "__cycle__", [1, 2, 4]), None,
+         "lower = a tiny bit more fps"),
+        ("Startup sound", None, ("set", "startup_sound", not cfg.get("startup_sound", True)), cfg.get("startup_sound", True), None),
+        ("Intro animation", None, ("set", "intro", not cfg.get("intro", True)), cfg.get("intro", True), None),
+        ("Animated logo", None, ("set", "animate_logo", not cfg.get("animate_logo", True)), cfg.get("animate_logo", True), None),
+    ]
+    rows_r = [
+        ("Global chat name", g.get("name") or "pick one", ("mod_edit", "gchat_name"), None, None),
+        ("Global chat", None, ("toggle", "global_chat"), cfg["modules"].get("global_chat", True), "chat w/ every Fluff user"),
+        ("Muted in chat", f"{len(g.get('muted', []))} · unmute all" if g.get("muted") else "nobody",
+         ("gchat_unmute_all",) if g.get("muted") else (None,), None, None),
+        ("Weather units", "°" + cfg.get("weather_units", "F"), ("set", "weather_units", "__cycle__", ["F", "C"]), None, None),
+        ("Clock", "24h" if cfg["chatbox"].get("time_24h") else "12h", ("cb_set", "time_24h", not cfg["chatbox"].get("time_24h")), None, None),
+        ("AI buddy", "key set ✓" if ai_ok else "no key yet", (None,), None,
+         "run setup_ai.bat to add/change ur key" if not ai_ok else f"{ai.get('provider', '')} · {ai.get('model', '')}"[:40]),
+        ("VRChat OSC", f"send {cfg.get('osc_port', 9000)} · listen {cfg.get('osc_listen_port', 9001)}", (None,), None, None),
+        ("Version", getattr(state, "version", "") or "dev", ("open_link", "https://github.com/wolfiecodesowo/fluff-vr-stats/releases"),
+         None, "click to see what's new"),
+    ]
+    gap = 16
+    cw = (x1 - x0 - gap) / 2
+    rh, rg = 48, 8
+    for col, rows in enumerate((rows_l, rows_r)):
+        cx = x0 + col * (cw + gap)
+        for i, (lab, val, act, tog, sub) in enumerate(rows):
+            ry = y0 + i * (rh + rg)
+            if ry + rh > y1:
+                break
+            a = act[0] if act and act[0] else None
+            _setting_row(d, hit, [cx, ry, cx + cw, ry + rh], lab, val, t, a, *(act[1:] if a else ()), toggle=tog, sub=sub)
 
 
 def tab_icon(d, name, cx, cy, col, t):
@@ -1101,6 +1692,17 @@ def tab_icon(d, name, cx, cy, col, t):
         d.ellipse([cx - 11, cy - 11, cx + 11, cy + 11], outline=col, width=lw)
         d.ellipse([cx - 5, cy - 11, cx + 5, cy + 11], outline=col, width=2)
         d.line([(cx - 11, cy), (cx + 11, cy)], fill=col, width=2)
+    elif name == "Home":     # lil house w/ a heart door
+        d.polygon([(cx - 12, cy - 1), (cx, cy - 12), (cx + 12, cy - 1)], fill=col)
+        d.rounded_rectangle([cx - 9, cy - 3, cx + 9, cy + 11], radius=3, fill=col)
+        heart(d, cx, cy + 4, 4, t["primary"] if col == t["on_primary"] else t["panel2"])
+    elif name == "Global":
+        action_icon(d, "global", cx, cy, 12, col)
+    elif name == "Settings":  # cog
+        for i in range(8):
+            a = i * math.pi / 4
+            d.line([(cx + math.cos(a) * 7, cy + math.sin(a) * 7), (cx + math.cos(a) * 12, cy + math.sin(a) * 12)], fill=col, width=4)
+        d.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], outline=col, width=4)
     elif name == "<3":
         doodle_heart(d, cx, cy + 1, 9, col if col != t["text"] else t["primary"], t["line"])
 
@@ -1885,23 +2487,41 @@ def _tab_style(d, hit, box, state, t):
 def _tab_wrist(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     w = state.cfg["wrist"]
-    panel(d, [x0, y0, x0 + 420, y1], 22, t)
-    d.text((x0 + 24, y0 + 22), "Which wrist?", font=font("head", 22), fill=t["text"])
-    button(d, hit, [x0 + 24, y0 + 62, x0 + 194, y0 + 112], "Left", t, "hand", "left",
-           active=w["hand"] == "left")
-    button(d, hit, [x0 + 206, y0 + 62, x0 + 396, y0 + 112], "Right", t, "hand", "right",
-           active=w["hand"] == "right")
-    d.text((x0 + 24, y0 + 140), "Size", font=font("head", 22), fill=t["text"])
-    d.text((x0 + 396, y0 + 140), f"{w['width_m'] * 100:.0f} cm", font=font("head", 20),
-           fill=t["sub"], anchor="ra")
-    button(d, hit, [x0 + 24, y0 + 176, x0 + 194, y0 + 226], "smaller", t, "size", -0.01)
-    button(d, hit, [x0 + 206, y0 + 176, x0 + 396, y0 + 226], "bigger", t, "size", 0.01)
-    d.text((x0 + 24, y0 + 254), "Opacity", font=font("head", 22), fill=t["text"])
-    d.text((x0 + 396, y0 + 254), f"{w['opacity'] * 100:.0f}%", font=font("head", 20),
-           fill=t["sub"], anchor="ra")
-    button(d, hit, [x0 + 24, y0 + 290, x0 + 194, y0 + 340], "fainter", t, "opacity", -0.1)
-    button(d, hit, [x0 + 206, y0 + 290, x0 + 396, y0 + 340], "solider", t, "opacity", 0.1)
-    button(d, hit, [x0 + 24, y1 - 74, x0 + 396, y1 - 24], "Reset position", t, "reset_wrist")
+    lw = 420
+    panel(d, [x0, y0, x0 + lw, y1], 22, t, ears_on=True)
+    R = x0 + lw - 20
+    rows = [("Wrist", w["hand"], ("hand", "left"), ("hand", "right"), "left", "right"),
+            ("Size", f"{w['width_m'] * 100:.0f} cm", ("size", -0.01), ("size", 0.01), "-", "+"),
+            ("Opacity", f"{w['opacity'] * 100:.0f}%", ("opacity", -0.1), ("opacity", 0.1), "-", "+")]
+    for i, (lab, val, a1, a2, l1, l2) in enumerate(rows):
+        ry = y0 + 16 + i * 52
+        d.text((x0 + 22, ry + 22), lab, font=font("head", 20), fill=t["text"], anchor="lm")
+        if lab != "Wrist":
+            d.text((x0 + 130, ry + 22), val, font=font("body2", 16), fill=t["sub"], anchor="lm")
+        bw = 74 if lab == "Wrist" else 52
+        button(d, hit, [R - 2 * bw - 8, ry, R - bw - 8, ry + 44], l1, t, *a1, fsize=17, active=lab == "Wrist" and w["hand"] == "left")
+        button(d, hit, [R - bw, ry, R, ry + 44], l2, t, *a2, fsize=17, active=lab == "Wrist" and w["hand"] == "right")
+    # wrist buttons picker
+    by = y0 + 178
+    d.text((x0 + 22, by), "wrist buttons", font=font("head", 20), fill=t["text"])
+    acts = state.cfg.get("wrist_actions", [])
+    d.text((R, by + 4), f"{len(acts)}/6 · tap to add/remove", font=font("body2", 13), fill=t["sub"], anchor="ra")
+    keys = list(WRIST_ACTIONS)
+    cols = 3
+    cw = (lw - 40 - 8 * (cols - 1)) / cols
+    for i, k in enumerate(keys):
+        cx = x0 + 20 + (i % cols) * (cw + 8)
+        cy = by + 34 + (i // cols) * 54
+        on = k in acts
+        bb = [cx, cy, cx + cw, cy + 46]
+        d.rounded_rectangle(bb, radius=16, fill=t["primary"] if on else t["panel2"], outline=t["line_soft"], width=2)
+        ink = t["on_primary"] if on else t["text"]
+        action_icon(d, WRIST_ACTIONS[k][0], cx + 22, cy + 23, 11, ink, bg=t["primary"] if on else t["panel2"])
+        d.text((cx + 40, cy + 23), ellipsize(SHORT_LABEL.get(k, k), font("body", 14), cw - 46), font=font("body", 14), fill=ink, anchor="lm")
+        if on:
+            d.text((cx + cw - 10, cy + 10), str(acts.index(k) + 1), font=font("body", 11), fill=ink, anchor="rm")
+        hit.add(bb, "wrist_action", k)
+    button(d, hit, [x0 + 20, y1 - 52, R, y1 - 12], "Reset position", t, "reset_wrist", fsize=17)
 
     px = x0 + 440
     panel(d, [px, y0, x1, y1], 22, t)
@@ -1941,20 +2561,20 @@ def _tab_screen(d, hit, box, state, t):
     panel(d, [zx, y0, x1, y0 + top_h], 22, t)
     d.text((zx + 24, y0 + 14), "Zoom lens", font=font("title", 26), fill=t["text"])
     gest = z.get("mode", "gesture") == "gesture"
-    mw = 128
-    button(d, hit, [x1 - 24 - 2 * mw - 6, y0 + 12, x1 - 24 - mw - 6, y0 + 46], "hold to eye", t,
-           "zoom_set", "mode", "gesture", active=gest, fsize=15)
-    button(d, hit, [x1 - 24 - mw, y0 + 12, x1 - 24, y0 + 46],
-           ("on" if z.get("enabled") and not gest else "tap on/off"), t,
-           "zoom_toggle", active=not gest and bool(z.get("enabled")), fsize=15)
+    on = bool(z.get("enabled"))
+    button(d, hit, [x1 - 24 - 150, y0 + 12, x1 - 24, y0 + 46], "ZOOM ON" if on else "zoom on/off", t,
+           "zoom_toggle", active=on, fsize=15)
     lv = [2, 3, 4, 6]
-    bw = (x1 - zx - 48 - 8 * (len(lv) - 1)) / len(lv)
+    bw = (x1 - zx - 48 - 8 * (len(lv) - 1) - 140) / len(lv)
     for i, v in enumerate(lv):
         bx = zx + 24 + i * (bw + 8)
         button(d, hit, [bx, y0 + 56, bx + bw, y0 + 92], f"{v}x", t, "zoom_set", "level", v,
                active=z.get("level", 3) == v, fsize=17)
-    d.text(((zx + x1) / 2, y0 + 106), "in game: hold a controller up to ur eye like a telescope" if gest
-           else "in game: tap the 🔍 on ur wrist", font=font("body2", 14), fill=t["sub"], anchor="mm")
+    button(d, hit, [x1 - 24 - 132, y0 + 56, x1 - 24, y0 + 92], "telescope ✓" if gest else "telescope", t,
+           "zoom_set", "mode", "toggle" if gest else "gesture", active=gest, fsize=15)
+    tip = ("VR: tap 🔍 on ur wrist" + (" or hold a controller to ur eye" if gest else "")
+           if not getattr(state, "desktop", False) else "desktop: F10 or the 🔍 on ur floating wrist menu")
+    d.text(((zx + x1) / 2, y0 + 106), tip, font=font("body2", 14), fill=t["sub"], anchor="mm")
 
     ly = y0 + top_h + 14
     # left: where + which monitor

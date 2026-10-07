@@ -52,6 +52,17 @@ class Settings(ctx: Context) {
     var remoteIp: String get() = p.getString("remote_ip", "")!!; set(v) = p.edit().putString("remote_ip", v).apply()
     var remoteCode: String get() = p.getString("remote_code", "")!!; set(v) = p.edit().putString("remote_code", v).apply()
 
+    // global chat + lil kitty
+    var gchatName: String get() = p.getString("gc_name", "")!!; set(v) = p.edit().putString("gc_name", v).apply()
+    var gchatOn: Boolean get() = p.getBoolean("gc_on", true); set(v) = p.edit().putBoolean("gc_on", v).apply()
+    var gchatNotify: Boolean get() = p.getBoolean("gc_notify", false); set(v) = p.edit().putBoolean("gc_notify", v).apply()
+    val gchatSid: String get() = p.getString("gc_sid", null) ?: (1..10).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }
+        .joinToString("").also { p.edit().putString("gc_sid", it).apply() }
+    var gchatMuted: Set<String> get() = p.getStringSet("gc_muted", emptySet())!!.toSet(); set(v) = p.edit().putStringSet("gc_muted", v).apply()
+    var kittyPats: Int get() = p.getInt("kitty_pats", 0); set(v) = p.edit().putInt("kitty_pats", v).apply()
+    var ears: String get() = p.getString("ears", "cat")!!; set(v) = p.edit().putString("ears", v).apply()
+    var kittyName: String get() = p.getString("kitty_name", "Mochi")!!; set(v) = p.edit().putString("kitty_name", v).apply()
+
     fun line(key: String): Boolean = p.getBoolean("line_$key", key in DEFAULT_ON)
     fun setLine(key: String, on: Boolean) = p.edit().putBoolean("line_$key", on).apply()
 
