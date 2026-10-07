@@ -290,6 +290,8 @@ class Kitty:
             a = int(255 * (1 - k))
             _heart(d, x, y - k * 80, 12 + 6 * k, fill=(255, 150, 190, a), outline=(255, 90, 150, a), width=3)
         self._ui(d, img, now, hits, ink, accent, ink)
+        # artist credit (used with permission)
+        d.text((S - 22, 70), "art: anon artist <3", font=_font(11), fill=(150, 140, 160), anchor="ra")
         return img
 
     def _ui(self, d, img, now, hits, ink, accent, txt):

@@ -1581,7 +1581,7 @@ def _tab_thanks(d, hit, box, state, t):
         credit.append(f"made by {cfg['made_by']}")
     if cfg.get("support_link"):
         credit.append(f"support me: {cfg['support_link']}")
-    credit.append("sticker art by the original artists (signatures kept) <3")
+    credit.append("sticker art by the original artists (signatures kept) · kitty art by a lovely anonymous artist <3")
     d.text((x1 - 24, y0 + 322), "  ·  ".join(credit[:2]), font=font("body2", 14), fill=t["sub"], anchor="ra")
     if len(credit) > 2:
         d.text((x1 - 24, y0 + 342), credit[2], font=font("body2", 14), fill=t["sub"], anchor="ra")

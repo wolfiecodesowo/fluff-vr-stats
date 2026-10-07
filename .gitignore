@@ -19,5 +19,3 @@ __pycache__/
 trailer*.mp4
 !docs/trailer.mp4
 
-# ur own kitty picture (stays on ur PC, not uploaded)
-assets/kitty/custom/

@@ -149,6 +149,7 @@ PRs welcome!! Please keep it cute :3
 ## 💖 Credits
 - Made by **[wolfiecodesowo](https://github.com/wolfiecodesowo)** with love for the fluffy community.
 - Sticker art © the original artists. It isn't covered by the code license; see [ASSETS.md](ASSETS.md).
+- 🐱 **Lil Kitty art** by a lovely anonymous artist, used with their permission. Thank u so much!! 💖 (not covered by the code license)
 - Fonts: Fredoka, Nunito, Gochi Hand, Lilita One (SIL OFL) and DejaVu Sans.
 
 **License:** code is [MIT](LICENSE).
