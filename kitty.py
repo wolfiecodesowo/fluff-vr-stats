@@ -27,7 +27,7 @@ HUNGER_HOURS = 4.0               # full -> starving in this long
 TAIL_PIVOT = (224, 248)
 
 DEFAULT = {"name": "Mochi", "trust": 0, "unlocked": False, "pats": 0, "boops": 0, "fed": 0,
-           "last_fed": 0.0, "color": "white"}
+           "last_fed": 0.0, "color": "white", "style": "custom"}
 
 COLORS = {   # fur tint for the white line art
     "white": (255, 255, 255),
@@ -67,6 +67,38 @@ def _font(size):
         return ImageFont.truetype("arial.ttf", size)
     except OSError:
         return ImageFont.load_default()
+
+
+CUSTOM = os.path.join(ART, "custom")
+
+
+@lru_cache(maxsize=4)
+def custom_frames():
+    """ur own kitty: every frame_XX.png in assets/kitty/custom (an animated GIF there works too)."""
+    if not os.path.isdir(CUSTOM):
+        return ()
+    names = sorted(n for n in os.listdir(CUSTOM) if n.lower().startswith("frame_") and n.lower().endswith(".png"))
+    frames = []
+    for n in names:
+        try:
+            frames.append(Image.open(os.path.join(CUSTOM, n)).convert("RGBA"))
+        except Exception:
+            pass
+    if not frames:
+        for n in sorted(os.listdir(CUSTOM)):
+            if n.lower().endswith((".gif", ".png", ".webp")):
+                try:
+                    from PIL import ImageSequence
+                    frames = [f.convert("RGBA") for f in ImageSequence.Iterator(Image.open(os.path.join(CUSTOM, n)))]
+                    break
+                except Exception:
+                    pass
+    return tuple(frames)
+
+
+@lru_cache(maxsize=8)
+def _fit(i, w, h):
+    return custom_frames()[i].resize((w, h), Image.LANCZOS)
 
 
 @lru_cache(maxsize=64)
@@ -207,6 +239,100 @@ class Kitty:
     def render(self, theme=None, now=None):
         now = time.time() if now is None else now
         self.changed = False
+        if custom_frames() and self.k.get("style", "custom") == "custom":
+            return self.render_custom(theme, now)
+        return self.render_lineart(theme, now)
+
+    def render_custom(self, theme, now):
+        """ur own kitty picture (animated), on a soft white card"""
+        S = SIZE
+        frames = custom_frames()
+        face = self.face(now)
+        img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        ink = (58, 52, 66)
+        accent = tuple(theme["primary"][:3]) if theme else (255, 143, 199)
+        paper = (254, 252, 254)
+        d.rounded_rectangle([6, 6, S - 6, S - 6], 46, fill=paper + (255,), outline=accent + (255,), width=5)
+        # pick the frame: wags faster when happy, slow + still-ish when sleepy
+        speed = {"happy": 0.06, "love": 0.05, "eat": 0.07, "grumpy": 0.04, "sleepy": 0.35}.get(face, 0.1)
+        i = 0 if face == "blink" else int(now / speed) % len(frames)
+        fw, fh = frames[0].size
+        box_h = 286
+        sc = box_h / fh
+        w, h = int(fw * sc), box_h
+        # lil squish when patted / booped
+        squish = 0.0
+        if self.mood in ("happy", "shy", "love", "boop") and self.mood_until - now > 0:
+            squish = max(0.0, math.sin((now % 0.5) / 0.5 * math.pi)) * 0.04
+        hh = int(h * (1 - squish))
+        pic = _fit(i, w, h) if not squish else _fit(i, w, h).resize((w, hh), Image.LANCZOS)
+        ox, oy = (S - w) // 2, 48 + (h - hh)
+        img.alpha_composite(pic, (ox, oy))
+        d = ImageDraw.Draw(img)
+        X = lambda x: ox + x * sc
+        Y = lambda y: 48 + y * sc
+        hits = [((X(110 - 26), Y(70), X(110 + 26), Y(100)), "boop"),
+                ((X(40), Y(10), X(180), Y(108)), "pat"),
+                ((X(75), Y(100), X(150), Y(290)), "pat"),
+                ((X(0), Y(150), X(75), Y(290)), "tail"),
+                ((X(150), Y(150), X(fw), Y(290)), "tail")]
+        if face == "eat":
+            d.ellipse([150, 330, 250, 356], fill=(170, 210, 255), outline=ink, width=3)
+            d.ellipse([176, 322, 214, 338], fill=(255, 180, 130), outline=ink, width=2)
+        if face == "sleepy":
+            f = _font(28)
+            for k in range(3):
+                ph = (now * 0.5 + k / 3) % 1
+                d.text((270 + ph * 34, 100 - ph * 60), "z", font=f, fill=ink + (int(255 * (1 - ph)),))
+        for (x, y, t0) in self.hearts:
+            k = (now - t0) / 1.4
+            a = int(255 * (1 - k))
+            _heart(d, x, y - k * 80, 12 + 6 * k, fill=(255, 150, 190, a), outline=(255, 90, 150, a), width=3)
+        self._ui(d, img, now, hits, ink, accent, ink)
+        return img
+
+    def _ui(self, d, img, now, hits, ink, accent, txt):
+        """name, tummy / trust bar, feed button, speech bubble (shared by both kitty styles)"""
+        S = SIZE
+        d.text((24, 18), self.k["name"], font=_font(22), fill=txt)
+        if self.k["unlocked"]:
+            hg = self.hunger(now)
+            bw = 110
+            d.rounded_rectangle([S - 24 - bw, 22, S - 24, 40], 9, fill=(60, 48, 72))
+            fill = (1 - hg) * (bw - 4)
+            col = (123, 224, 181) if hg < 0.5 else (255, 200, 90) if hg < 0.75 else (255, 110, 120)
+            if fill > 2:
+                d.rounded_rectangle([S - 22 - bw, 24, S - 22 - bw + fill, 38], 7, fill=col)
+            d.text((S - 24 - bw, 46), "tummy", font=_font(14), fill=txt, anchor="lt")
+            fb = (S - 118, S - 62, S - 22, S - 20)
+            d.rounded_rectangle(fb, 20, fill=accent, outline=ink, width=2)
+            d.text(((fb[0] + fb[2]) / 2, (fb[1] + fb[3]) / 2), "feed", font=_font(22), fill=(30, 20, 40), anchor="mm")
+            hits.insert(0, (fb, "feed"))
+        else:
+            lx, ly = S - 54, 42
+            d.rounded_rectangle([lx - 16, ly - 4, lx + 16, ly + 22], 5, fill=(255, 210, 90), outline=ink, width=2)
+            d.arc([lx - 11, ly - 20, lx + 11, ly + 4], 180, 360, fill=ink, width=4)
+            tr = self.k["trust"]
+            d.text((S / 2, S - 44), f"pat me to make friends! {tr}/{TRUST_NEEDED}", font=_font(17), fill=txt, anchor="mm")
+            bw2 = S - 80
+            d.rounded_rectangle([40, S - 30, 40 + bw2, S - 17], 7, fill=(60, 48, 72))
+            if tr:
+                d.rounded_rectangle([42, S - 28, 42 + (bw2 - 4) * tr / TRUST_NEEDED, S - 19], 5, fill=accent)
+        if now < self.say_until and self.say:
+            fs = 20
+            while fs > 12 and d.textlength(self.say, font=_font(fs)) > 140:
+                fs -= 1
+            f3 = _font(fs)
+            w = d.textlength(self.say, font=f3) + 24
+            bx, by = 16, 184
+            bub = (255, 236, 246, 250)
+            d.rounded_rectangle([bx, by, bx + w, by + 36], 16, fill=bub, outline=ink, width=2)
+            d.text((bx + w / 2, by + 18), self.say, font=f3, fill=ink, anchor="mm")
+        self.hits = hits
+
+    def render_lineart(self, theme=None, now=None):
+        now = time.time() if now is None else now
         S = SIZE
         img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
