@@ -687,6 +687,46 @@ async def setup_cmd(inter: discord.Interaction):
         view=ConfirmSetup(inter.user.id), ephemeral=True)
 
 
+def is_info_post(m, key):
+    """only the bot's own info posts for this channel (never release posts, welcomes or anything else)"""
+    if m.author != bot.user:
+        return False
+    titles = {spec.get("title") for spec in C.POSTS.get(key, []) if spec.get("title")}
+    texts = {spec.get("content") for spec in C.POSTS.get(key, []) if spec.get("content")}
+    if m.embeds:
+        return any(e.title in titles for e in m.embeds)
+    return bool(m.content) and m.content in texts
+
+
+def fetch_all_releases():
+    try:
+        req = urllib.request.Request(REPO_API.replace("/latest", "?per_page=50"),
+                                     headers={"User-Agent": "FluffBot", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rels = json.loads(r.read().decode("utf-8"))
+        rels = [x for x in rels if not x.get("draft") and not x.get("prerelease")]
+        return sorted(rels, key=lambda x: x.get("published_at") or x.get("created_at") or "")
+    except Exception:
+        return []
+
+
+@bot.tree.command(name="repost-updates", description="(staff) post every Fluff VR Stats update again, oldest to newest")
+@app_commands.describe(ping_latest="ping 📢 Update Pings on the newest one")
+@staff_only()
+async def repost_updates_cmd(inter: discord.Interaction, ping_latest: bool = False):
+    await inter.response.send_message("grabbing every release from GitHub… 🐾", ephemeral=True)
+    rels = await asyncio.to_thread(fetch_all_releases)
+    if not rels:
+        return await inter.followup.send("couldn't reach GitHub, try again in a minute :<", ephemeral=True)
+    for i, rel in enumerate(rels):
+        await bot.post_release(rel, ping=ping_latest and i == len(rels) - 1)
+        await asyncio.sleep(1.5)                       # be gentle with Discord's rate limits
+    CFG["last_release"] = rels[-1].get("tag_name")
+    save_cfg(CFG)
+    await inter.followup.send(f"done!! re-posted {len(rels)} updates ({rels[0].get('tag_name')} → {rels[-1].get('tag_name')}) 💜",
+                              ephemeral=True)
+
+
 @bot.tree.command(name="refresh-info", description="(staff) re-post the info channels from content.py")
 @staff_only()
 async def refresh_cmd(inter: discord.Interaction):
@@ -695,7 +735,7 @@ async def refresh_cmd(inter: discord.Interaction):
     for key, cid in CFG["channels"].items():
         c = inter.guild.get_channel(cid)
         if c and key in C.POSTS and isinstance(c, discord.TextChannel):
-            await c.purge(limit=50, check=lambda m: m.author == bot.user)
+            await c.purge(limit=50, check=lambda m: is_info_post(m, key))
             chans[key] = c
     await post_info(chans)
 

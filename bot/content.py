@@ -415,6 +415,7 @@ POSTS = {
            "`/purge` delete the last N messages\n"
            "`/slowmode` set slowmode in this channel\n"
            "`/refresh-info` re-post all the info channels from bot/content.py\n"
+           "`/repost-updates` post every app update again, oldest to newest (if the channels got wiped)\n"
            "`/stats` server + In VR counts\n"
            "`/poll` post a poll in 📊・polls (answers split with |)\n"
            "`/warn` `/warnings` `/timeout` moderation (all logged)\n"
