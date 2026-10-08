@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.1: GPU fix + intro crash fix
+- 🖥️ **Fixed the GPU texture error that forced slow "backup mode"** on some cards (incl. GTX 1650): we now clear a stray OpenGL error left over from startup that newer PyOpenGL was blaming on us, and pass texture IDs as plain ints. If GPU textures were failing for u, the menu + wrist HUD should be a lot smoother now
+- 🩹 **Fixed a crash during the intro** ('App' object has no attribute 't') that could break the startup animation
+
+## v0.4.0: plays nice with other apps + a big speed-up
+- 🔌 **No more "port is busy"**: we now use OSCQuery, so VRChat finds us on whatever free port the system hands out. Nothing to set up, nothing to edit in config.json
+- 🤝 **Other OSC apps work alongside us**: MagicChatbox, VRCOSC and friends keep getting their OSC, because we pass it straight through to them
+- 🗨️ **No more chatbox fighting**: if another app is writing the VRChat chatbox, Fluff quietly stands back instead of flickering over it. Pick yield / own / merge in Settings → OSC
+- ⚡ **The menu and wrist HUD draw 3-6x faster**: the menu went from ~52ms a frame to ~15ms, the wrist HUD from ~35ms to ~9ms. Everything looks exactly the same, it just doesn't stutter any more
+- ⚙️ Classic fixed ports are still there if u want them (Settings → OSC → Classic), and we fall back to them automatically if ur network blocks mDNS
+
 ## Quest Edition v0.7.0: auto-updates
 - 🔄 the Quest / phone app updates itself now: it downloads new versions in the background and Android asks u to tap **Update** (apps aren't allowed to install silently). ur settings stay
 - ✅ it double checks the download is really Fluff VR Stats + newer before installing

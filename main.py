@@ -45,6 +45,7 @@ def _pause():
 
 
 try:
+    import numpy as np
     import openvr
     import psutil
     from PIL import Image, ImageDraw
@@ -130,6 +131,10 @@ DEFAULT_CFG = {
     "ping_host": "1.1.1.1",
     "osc_port": 9000,
     "osc_listen_port": 9001,
+    # OSCQuery lets VRChat find us on a port the OS picks, so nothing can be
+    # "already in use". "classic" pins the two ports above like we used to.
+    "osc": {"mode": "auto",            # auto | classic
+            "router": {"enabled": False, "forward_to": [], "chatbox": "yield"}},
     "animate_logo": True,
     "intro": True,
     "startup_sound": True,
@@ -279,10 +284,23 @@ def wrist_transform(w):
 
 
 def push_image(overlay, handle, img, state_key, cache):
-    """Upload a PIL RGBA image. Falls back to a temp PNG if raw upload is refused."""
+    """Upload a PIL RGBA image. Falls back to a temp PNG if raw upload is refused.
+
+    img.tobytes() builds a fresh multi-MB bytes object and from_buffer_copy then
+    copies it a second time: ~4ms a frame on the dashboard, every frame. numpy
+    gives us one contiguous buffer we can point at, so we copy once instead of
+    twice. `arr` has to stay referenced until setOverlayRaw returns.
+    """
     w, h = img.size
-    data = img.tobytes()
-    buf = (ctypes.c_char * len(data)).from_buffer_copy(data)
+    try:
+        if img.mode != "RGBA":                     # asarray would give 3 channels
+            img = img.convert("RGBA")
+        arr = np.ascontiguousarray(np.asarray(img))   # crops/views aren't contiguous
+        buf = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_char))
+    except Exception:
+        data = img.tobytes()
+        arr = None
+        buf = (ctypes.c_char * len(data)).from_buffer_copy(data)
     try:
         overlay.setOverlayRaw(handle, buf, w, h, 4)
     except Exception:
@@ -415,6 +433,9 @@ class App:
         self.ov = openvr.IVROverlay()
         self._last_err = {}
         self.vr_errors = 0
+        # timers live here so events that arrive during the intro (before run())
+        # don't hit a missing self.t; run() resets them each reconnect
+        self.t = {"hud": 0, "stats": 0, "dash": 0, "save": 0, "logo": 0}
         # flicker-free GPU textures (falls back to raw uploads if OpenGL can't start)
         self.gl = None
         self.gl_error = None
@@ -1778,6 +1799,10 @@ class App:
             if now - self.last_chatbox >= max(2, float(cb.get("interval_s", 3))):
                 self.last_chatbox = now
                 text = chatbox.compose(self.cfg, st.stats, st.extras, st.music, now)
+                router = getattr(self.extras, "router", None)
+                if text and router is not None:
+                    # another app driving the chatbox? yield instead of fighting it
+                    text = router.compose(text)
                 if text and (text != self.last_chatbox_text or now - self.last_chatbox_sent > 20):
                     self.last_chatbox_text, self.last_chatbox_sent = text, now
                     osc.chatbox(text, self.cfg.get("osc_port", 9000))

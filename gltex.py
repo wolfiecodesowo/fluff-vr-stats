@@ -33,6 +33,13 @@ class GLUploader:
         self.flip = flip
         self.tex = {}     # overlay handle -> [texture id, w, h]
         self.info = GL.glGetString(GL.GL_RENDERER)
+        # Drain any error left in the queue by context/window creation. Without
+        # this, PyOpenGL's per-call check blames the leftover on the first real
+        # GL call (seen as GL_INVALID_VALUE at glBindTexture on some drivers,
+        # e.g. GTX 1650 + newest PyOpenGL), and the whole GPU path gets disabled.
+        for _ in range(16):
+            if GL.glGetError() == GL.GL_NO_ERROR:
+                break
 
     def push(self, overlay, handle, img, data=None, size=None):
         """img: PIL RGBA image (or pass raw RGBA `data` + `size`)."""
@@ -47,14 +54,14 @@ class GLUploader:
         pixels = img.tobytes()
         ent = self.tex.get(handle)
         if ent is None:
-            tid = GL.glGenTextures(1)
+            tid = int(GL.glGenTextures(1))   # newest PyOpenGL hands back np.uint32
             GL.glBindTexture(GL.GL_TEXTURE_2D, tid)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
             ent = self.tex[handle] = [tid, 0, 0]
-        tid = ent[0]
+        tid = int(ent[0])
         GL.glBindTexture(GL.GL_TEXTURE_2D, tid)
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         if (ent[1], ent[2]) != (w, h):     # size changed -> reallocate once
