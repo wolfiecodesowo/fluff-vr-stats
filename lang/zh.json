@@ -720,5 +720,11 @@
  "be in VR at 3am": "凌晨 3 点在 VR 里",
  "12h clock": "12 小时制",
  "date needs to look like 2026-12-25": "日期要写成 2026-12-25 这样",
- "\"Kitsu joined\" on ur wrist": "手腕显示“Kitsu 加入了”"
+ "\"Kitsu joined\" on ur wrist": "手腕显示“Kitsu 加入了”",
+ "time to update!": "该更新啦！",
+ "update now": "立即更新",
+ "takes ~10 seconds, ur settings stay": "大约 10 秒，设置都会保留",
+ "updating… the app restarts in a sec :3": "正在更新… 马上重启 :3",
+ "what's new": "新内容",
+ "versions before v0.4.1 don't work any more ~ update to keep using Fluff VR Stats. it's still free, u just need ur free key from our Discord (/key)": "v0.4.1 之前的版本已经不能用啦 ~ 更新后才能继续使用 Fluff VR Stats。依然免费，只需在我们的 Discord 领取免费密钥（/key）"
 }

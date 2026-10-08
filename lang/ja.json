@@ -720,5 +720,11 @@
  "be in VR at 3am": "深夜3時にVRにいる",
  "12h clock": "12時間表示",
  "date needs to look like 2026-12-25": "日付は 2026-12-25 みたいに書いてね",
- "\"Kitsu joined\" on ur wrist": "手首に「Kitsuが参加」"
+ "\"Kitsu joined\" on ur wrist": "手首に「Kitsuが参加」",
+ "time to update!": "アップデートの時間！",
+ "update now": "今すぐアップデート",
+ "takes ~10 seconds, ur settings stay": "10秒くらいで終わるよ、設定はそのまま",
+ "updating… the app restarts in a sec :3": "アップデート中… すぐに再起動するよ :3",
+ "what's new": "新しいこと",
+ "versions before v0.4.1 don't work any more ~ update to keep using Fluff VR Stats. it's still free, u just need ur free key from our Discord (/key)": "v0.4.1より前のバージョンはもう使えないよ ~ Fluff VR Statsを使い続けるにはアップデートしてね。ずっと無料だよ、Discordで無料キー（/key）をもらうだけ"
 }

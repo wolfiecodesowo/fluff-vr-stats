@@ -1,0 +1,7 @@
+{
+  "min": "v0.4.1",
+  "after": 1792044000,
+  "after_readable": "2026-10-15 00:00 Mountain time",
+  "msg": "versions before v0.4.1 don't work any more ~ update to keep using Fluff VR Stats. it's still free, u just need ur free key from our Discord (/key)",
+  "_note": "apps older than 'min' show an 'update now' card after 'after'. only kicks in once that release exists."
+}

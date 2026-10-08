@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1: keys on + old versions retire
+- 🔑 **keys are required now:** get ur free key with `/key` in our Discord and put it in once. still 100% free
+- ⏳ **Oct 15, 2026:** PC versions before v0.4.1 can't use global chat any more and get told to update. the Quest Edition isn't affected yet
+- ⬆️ **update reminder:** if ur version is too old, the app shows a "time to update" card with an **update now** button (even with auto updates off)
+- 🌍 fixed: words inside translated text sometimes got translated twice and overlapped (Japanese / Chinese / Korean)
+- 🔤 fixed: Japanese + Chinese punctuation and arrows showed as boxes
+
 ## v0.4.0: the big safety + fun update
 **🔐 security (the biggest fix yet)**
 - 🔐 **global chat is locked down:** the app sends to an inbox, Fluff Bot checks ur key + the rules (filter, slow mode, bans) and posts it **signed**. the app only shows signed messages, so nobody can skip the rules by posting to the relay directly. old v0.3 apps still work and get filtered too

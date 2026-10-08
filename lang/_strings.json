@@ -391,7 +391,7 @@
  "global chat",
  "goal",
  "golden crown",
- "good morning",
+ "good afternoon",
  "grab ur free app key: type /key in our Discord, then tap here",
  "hand",
  "hang out with the Fluff community :3",
@@ -626,6 +626,7 @@
  "undo",
  "undo all",
  "up",
+ "updating… the app restarts in a sec :3",
  "ur Discord name",
  "ur Discord status won't say which world u're in",
  "ur Fluff Wrapped card is saved in the wrapped folder ~ post it!!",
@@ -657,7 +658,7 @@
  "waved!",
  "wearing",
  "what leaves ur PC: global chat msgs + ur chat name (to ntfy.sh + our Discord) · Fluff Friends: ur chat name, only to Fluff users in ur instance · app key: key, chat name, app version, badge names (to Fluff Bot) · Discord status: fps, song, world if u allow it (to ur own Discord app) · update check: asks GitHub for the newest version. that's it. no tracking, no ads, nothing about ur PC or VRChat account.",
- "what's new ✨",
+ "what's new",
  "why a key? it's still 100% free. the key links the app to the Fluff Discord, lets Fluff Bot keep global chat safe (bans + reports actually work), and gives beta testers their role. it's checked once, then works offline.",
  "witch hat",
  "world",
@@ -669,5 +670,9 @@
  "yes!! 🧪",
  "zoom",
  "zoom off",
- "zoom on/off"
+ "zoom on/off",
+ "time to update!",
+ "update now",
+ "takes ~10 seconds, ur settings stay",
+ "versions before v0.4.1 don't work any more ~ update to keep using Fluff VR Stats. it's still free, u just need ur free key from our Discord (/key)"
 ]

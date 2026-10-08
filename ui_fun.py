@@ -460,6 +460,10 @@ def home_news(state, t):
 def overlay_card(d, hit, state, t, box):
     """what's new / checklist / key lock: drawn on top of the body. Returns True if it drew something."""
     acc = state.access
+    if getattr(state, "update_required", None):
+        hit.add(list(box), "noop")
+        _must_update(d, hit, state, t, box)
+        return True
     if (acc is not None and acc.locked()) or state.whatsnew or (state.checklist and state.tab == "Home"):
         hit.add(list(box), "noop")              # the card blocks clicks to the tab behind it
     if acc is not None and acc.locked():
@@ -481,6 +485,18 @@ def _card(d, t, box, w, h, hit=None):
     d.rounded_rectangle([x0, y0, x1, y1], radius=24, fill=t["bg"][:3] + (200,))
     fluff_card(d, b, t, radius=28, ears_on=True, ear_size=34, glow=True)
     return b
+
+
+def _must_update(d, hit, state, t, box):
+    b = _card(d, t, box, 640, 340)
+    tag, msg = state.update_required
+    cx = (b[0] + b[2]) / 2
+    d.text((cx, b[1] + 50), "time to update!", font=font("title", 36), fill=t["text"], anchor="mm")
+    for i, ln in enumerate(wrap(tr(msg), font("body2", 17), b[2] - b[0] - 80)[:4]):
+        rich_text(d, (b[0] + 40, b[1] + 92 + i * 26), ln, 17, t["sub"], kind="body2")
+    rich_text(d, (cx, b[3] - 152), f"{getattr(state, 'version', '')}  →  {tag}", 22, t["primary"], kind="head", center=True)
+    button(d, hit, [cx - 150, b[3] - 110, cx + 150, b[3] - 62], "update now", t, "update_now", primary=True, fsize=20)
+    d.text((cx, b[3] - 34), "takes ~10 seconds, ur settings stay", font=font("body2", 14), fill=t["sub"], anchor="mm")
 
 
 def _lock(d, hit, state, t, box):

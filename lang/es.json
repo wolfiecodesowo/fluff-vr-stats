@@ -720,5 +720,11 @@
  "be in VR at 3am": "estar en VR a las 3am",
  "12h clock": "reloj de 12h",
  "date needs to look like 2026-12-25": "la fecha debe verse así: 2026-12-25",
- "\"Kitsu joined\" on ur wrist": "\"Kitsu entró\" en tu muñeca"
+ "\"Kitsu joined\" on ur wrist": "\"Kitsu entró\" en tu muñeca",
+ "time to update!": "¡hora de actualizar!",
+ "update now": "actualizar ahora",
+ "takes ~10 seconds, ur settings stay": "tarda ~10 segundos, tus ajustes se quedan",
+ "updating… the app restarts in a sec :3": "actualizando… la app se reinicia en un seg :3",
+ "what's new": "novedades",
+ "versions before v0.4.1 don't work any more ~ update to keep using Fluff VR Stats. it's still free, u just need ur free key from our Discord (/key)": "las versiones anteriores a v0.4.1 ya no funcionan ~ actualiza para seguir usando Fluff VR Stats. sigue siendo gratis, solo necesitas tu clave gratis de nuestro Discord (/key)"
 }

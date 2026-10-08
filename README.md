@@ -17,6 +17,11 @@
 
 ---
 
+> ### 🔑 Heads up: keys are now required, and old versions stop working Oct 15
+> Fluff VR Stats is still **100% free**. U just need a free key: join our Discord, type `/key`, and put it in the app once.
+> Starting **October 15, 2026**, PC versions before **v0.4.1** lose global chat + online features and the app asks u to update (the Quest Edition isn't affected yet).
+> The app updates itself when u restart it, so most people only need to grab their key :3
+
 > ### ✨ New in v0.4: the big safety + fun update
 > 🔐 **way safer:** global chat now goes through Fluff Bot (bans + reports actually work, nobody can skip the rules), and **every update is signed + checked** before it installs · 🔑 **free app key** from our Discord (`/key`) links you up + gets you **🧪 Beta Tester** · 🎁 **Fluff Wrapped** monthly recap cards · 🏅 **37 badges** · 🎩 **kitty closet** · 🎃 **spooky season** event · 🎨 **theme codes** · 👋 **Fluff Friends** · 🎪 **community nights** · 🌍 **12 languages** · 🛟 safe mode, copy logs, profiles, backups, left-handed mode, colorblind-safe colors, reduced motion. Full list in the [changelog](CHANGELOG.md).
 

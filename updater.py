@@ -88,6 +88,26 @@ def _skip(rel):
 
 
 MANIFEST_NAME = "fluff-manifest.json"
+# the oldest version that still works online. Lives on the website so it can change without a release.
+MIN_URL = "https://wolfiecodesowo.github.io/fluff-vr-stats/min_version.json"
+
+
+def required_update(timeout=5, rel=None):
+    """(min_tag, message) if this version is too old to keep using, else None.
+    Only kicks in after the cutoff date AND once a release that new actually exists."""
+    try:
+        req = urllib.request.Request(MIN_URL, headers={"User-Agent": UA["User-Agent"]})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            info = json.loads(r.read().decode("utf-8"))
+        need = str(info.get("min") or "")
+        if not need or time.time() < float(info.get("after", 0)) or parse(local_version()) >= parse(need):
+            return None
+        rel = rel or latest_release(timeout=timeout)
+        if parse(rel.get("tag_name") or "v0") < parse(need):
+            return None                    # nothing new enough to update to yet: don't lock anyone out
+        return need, str(info.get("msg") or "this version is too old ~ update to keep using Fluff VR Stats")
+    except Exception:
+        return None
 
 
 class UpdateRefused(Exception):
@@ -260,8 +280,10 @@ class _Window:
 def check_and_update(cfg=None, restart=True, log=None):
     """Call at startup. Returns the new tag if it updated (and restarts the app when restart=True)."""
     cfg = cfg or {}
-    if cfg.get("auto_update", True) is False or os.path.isdir(os.path.join(HERE, ".git")):
-        return None                       # turned off, or it's a developer's git checkout
+    if os.path.isdir(os.path.join(HERE, ".git")):
+        return None                       # a developer's git checkout
+    if cfg.get("auto_update", True) is False and not required_update():
+        return None                       # turned off (but a required update still installs)
     try:
         rel = latest_release()
     except Exception as e:                # offline / GitHub down -> just start normally
@@ -316,6 +338,21 @@ def check_and_update(cfg=None, restart=True, log=None):
             os._exit(0)
         os.execv(sys.executable, args)
     return tag
+
+
+def required_in_background(on_required):
+    """While the app runs: tells it if this version got too old (it shows an 'update now' card)."""
+    def run():
+        got = required_update(timeout=10)
+        if got:
+            on_required(*got)
+    threading.Thread(target=run, daemon=True, name="update-required").start()
+
+
+def update_now():
+    """the 'update now' button: install the newest release and restart, even with auto updates off"""
+    threading.Thread(target=lambda: check_and_update({"auto_update": True}, restart=True), daemon=True,
+                     name="update-now").start()
 
 
 def check_in_background(on_found):

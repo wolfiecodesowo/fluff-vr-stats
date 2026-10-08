@@ -57,7 +57,7 @@ _TTC_INDEX = {("ja", "NotoSansCJK-Bold.ttc"): 0, ("ja", "NotoSansCJK-Regular.ttc
               ("ko", "NotoSansCJK-Bold.ttc"): 1, ("ko", "NotoSansCJK-Regular.ttc"): 1,
               ("zh", "NotoSansCJK-Bold.ttc"): 2, ("zh", "NotoSansCJK-Regular.ttc"): 2}
 
-_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]")
+_CJK = re.compile(r"[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]")
 _HANGUL = re.compile(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]")
 _CYR = re.compile(r"[\u0400-\u04ff]")
 _KANA = re.compile(r"[\u3040-\u30ff]")
@@ -223,6 +223,11 @@ class LDraw(_PILDraw.ImageDraw):
                     except Exception:
                         pass
                 font = f2
+        return super().text(xy, text, fill, font, anchor, *args, **kwargs)
+
+
+    def raw_text(self, xy, text, fill=None, font=None, anchor=None, *args, **kwargs):
+        """draw exactly this text (no translating, no font swap)"""
         return super().text(xy, text, fill, font, anchor, *args, **kwargs)
 
 

@@ -602,6 +602,7 @@ class State:
         self.cevents = None
         self.whatsnew = None          # (title, bullets) shown once after an update
         self.checklist = None         # first-run checklist card
+        self.update_required = None   # (min tag, message): this version is too old, must update
         self.confirm = None           # (action, until) for "tap again to confirm"
         self.app_usage = {}
         self.safe_mode = False
@@ -751,6 +752,12 @@ class App:
                 self.state.dash_dirty = True
                 self.show_alert(f"update {tag} is out!! restart the app to get it :3", secs=12)
             updater.check_in_background(_found)
+
+            def _required(tag, msg):
+                self.state.update_required = (tag, msg)
+                self.state.dash_dirty = self.state.hud_dirty = True
+                self.show_alert(f"this version is too old ~ update to {tag} (open the menu)", "warn", 15)
+            updater.required_in_background(_required)
         except Exception:
             pass
         self.last_motion = 0
@@ -1568,6 +1575,10 @@ class App:
                 f.check_badges()
                 st.dirty_cfg = True
                 self.show_alert("👋 " + lang.tr("waved!"), secs=3)
+        elif action == "update_now":
+            import updater
+            self.show_alert("updating… the app restarts in a sec :3", secs=20)
+            updater.update_now()
         elif action == "key_enter":
             self.open_keyboard(lang.tr("Ur app key from the Fluff Discord (/key)"), "", ("cfg", "app_key"))
         elif action == "key_forget":

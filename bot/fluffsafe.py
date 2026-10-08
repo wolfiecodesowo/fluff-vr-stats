@@ -34,6 +34,11 @@ DATA = os.path.join(HERE, "bot_data.json")
 KEY_FILE = os.path.join(HERE, "bot_key.pem")
 CODE_CHARS = N.CODE_CHARS
 MSG_SLOW_S = 3.0
+# after this, PC apps older than v0.4 can't send in global chat any more (they get a "please update" notice).
+# The Quest Edition still uses the old room, so it's not cut off. Change it in bot_config.json -> "old_cutoff" (unix time) if u need to.
+OLD_CUTOFF = 1792044000          # Oct 15 2026, 00:00 Mountain time
+OLD_NOTICE = ("this version of Fluff VR Stats is too old and doesn't get global chat any more ~ restart the app "
+              "to update (it updates itself), then get ur free key with /key in our Discord :3")
 
 try:
     import fun as F              # badge names + theme codes (needs Pillow)
@@ -239,7 +244,7 @@ def install(bot, env):
         if len(state["recent"]) > 400:
             for k in list(state["recent"])[:100]:
                 state["recent"].pop(k, None)
-        if to_v1:       # old apps (before v0.4) still read the v1 room
+        if to_v1:       # Quest Edition + old apps still read the v1 room
             await ntfy_post(G.TOPIC, {"v": 1, "n": name, "m": text, "s": sid, "c": client, "r": 1})
         if to_discord:
             c = bot.ch("gchat")
@@ -276,9 +281,19 @@ def install(bot, env):
                    f"msg id `{p.get('id')}` · `/chatban` to ban, `/chatdelete` to remove it")
             await bot.modlog(txt, 0xFF6B6B)
 
+    def old_cut():
+        return time.time() >= float(CFG.get("old_cutoff", OLD_CUTOFF))
+
     async def on_v1(p, ev):
-        """messages from old (v0.3) apps in the v1 room -> filtered + signed into the v2 room"""
+        """messages from old (v0.3) apps in the v1 room -> filtered + signed into the v2 room
+        (until the cutoff; after it they just get told to update)"""
         if p.get("r") or p.get("c") == "discord" or "m" not in p:
+            return
+        if old_cut() and str(p.get("c", "pc")) not in ("quest", "phone"):    # Quest Edition isn't cut off
+            now = time.time()
+            if now - state.get("old_notice", 0) > 600:     # at most one notice every 10 min
+                state["old_notice"] = now
+                await ntfy_post(G.TOPIC, {"v": 1, "n": "Fluff Bot", "m": OLD_NOTICE, "s": "fluffbot", "c": "sys", "r": 1})
             return
         sid = str(p.get("s", ""))[:16]
         if sid in D["bans"]["sids"]:

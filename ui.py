@@ -81,7 +81,7 @@ def _runs(text, size, kind):
     for ch in text:
         f, emo = _font_for(ch, size, kind)
         if f is not None and not emo and (ord(ch) >= 0x0400 and ord(ch) < 0x0530 or ord(ch) >= 0x1100) \
-                and ch not in "…–—‘’“”•€":
+                and ch not in "…–—‘’“”•€" and lang._script_of(ch):
             f = lang.font_for_text(ch, font(kind, size))
         if f is None:
             continue
@@ -107,10 +107,11 @@ def rich_text(d, xy, text, size, fill, kind="body", center=False):
     asc = base.getmetrics()[0]
     for t_, f, emo in runs:
         dy = asc - f.getmetrics()[0] if not emo else 2
+        raw = getattr(d, "raw_text", d.text)       # pieces are already translated: draw them as-is
         try:
-            d.text((x, y + dy), t_, font=f, fill=fill, embedded_color=emo)
+            raw((x, y + dy), t_, font=f, fill=fill, embedded_color=emo)
         except Exception:
-            d.text((x, y + dy), t_, font=f, fill=fill)
+            raw((x, y + dy), t_, font=f, fill=fill)
         x += f.getlength(t_)
 
 
