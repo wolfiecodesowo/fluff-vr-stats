@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1: GPU fix + intro crash fix
+- 🖥️ **Fixed the GPU texture error that forced slow "backup mode"** on some cards (incl. GTX 1650): we now clear a stray OpenGL error left over from startup that newer PyOpenGL was blaming on us, and pass texture IDs as plain ints. If GPU textures were failing for u, the menu + wrist HUD should be a lot smoother now
+- 🩹 **Fixed a crash during the intro** ('App' object has no attribute 't') that could break the startup animation
+
 ## v0.4.0: plays nice with other apps + a big speed-up
 - 🔌 **No more "port is busy"**: we now use OSCQuery, so VRChat finds us on whatever free port the system hands out. Nothing to set up, nothing to edit in config.json
 - 🤝 **Other OSC apps work alongside us**: MagicChatbox, VRCOSC and friends keep getting their OSC, because we pass it straight through to them

@@ -433,6 +433,9 @@ class App:
         self.ov = openvr.IVROverlay()
         self._last_err = {}
         self.vr_errors = 0
+        # timers live here so events that arrive during the intro (before run())
+        # don't hit a missing self.t; run() resets them each reconnect
+        self.t = {"hud": 0, "stats": 0, "dash": 0, "save": 0, "logo": 0}
         # flicker-free GPU textures (falls back to raw uploads if OpenGL can't start)
         self.gl = None
         self.gl_error = None
