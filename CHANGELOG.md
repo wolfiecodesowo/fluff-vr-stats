@@ -6,12 +6,19 @@
 - 🚩 long-press a message → **mute or report** (reports go straight to staff)
 - ⬆️ too-old versions get a "time to update" screen. **Nov 1, 2026:** Quest versions before v0.8.0 lose global chat (v0.6 and older don't update themselves, grab the new one from the website)
 
-## v0.4.1: keys on + old versions retire
+## v0.4.1: keys on, plays nice with other apps + a big speed-up
 - 🔑 **keys are required now:** get ur free key with `/key` in our Discord and put it in once. still 100% free
 - ⏳ **Oct 15, 2026:** PC versions before v0.4.1 can't use global chat any more and get told to update. the Quest Edition isn't affected yet
 - ⬆️ **update reminder:** if ur version is too old, the app shows a "time to update" card with an **update now** button (even with auto updates off)
 - 🌍 fixed: words inside translated text sometimes got translated twice and overlapped (Japanese / Chinese / Korean)
 - 🔤 fixed: Japanese + Chinese punctuation and arrows showed as boxes
+- 🔌 **No more "port is busy"**: we now use OSCQuery, so VRChat finds us on whatever free port the system hands out. Nothing to set up, nothing to edit in config.json
+- 🤝 **Other OSC apps work alongside us**: MagicChatbox, VRCOSC and friends keep getting their OSC, because we pass it straight through to them
+- 🗨️ **No more chatbox fighting**: if another app is writing the VRChat chatbox, Fluff quietly stands back instead of flickering over it. Pick yield / own / merge in Settings → OSC
+- ⚡ **The menu and wrist HUD draw 3-6x faster**: the menu went from ~52ms a frame to ~15ms, the wrist HUD from ~35ms to ~9ms. Everything looks exactly the same, it just doesn't stutter any more
+- ⚙️ Classic fixed ports are still there if u want them (Settings → OSC → Classic), and we fall back to them automatically if ur network blocks mDNS
+- 🖥️ **Fixed the GPU texture error that forced slow "backup mode"** on some cards (incl. GTX 1650): we now clear a stray OpenGL error left over from startup that newer PyOpenGL was blaming on us, and pass texture IDs as plain ints. If GPU textures were failing for u, the menu + wrist HUD should be a lot smoother now
+- 🩹 **Fixed a crash during the intro** ('App' object has no attribute 't') that could break the startup animation
 - 🤖 **Fluff Bot key gate:** new people only see 🔑・get-your-key until they grab their key (one button or `/key`). the key opens the server AND the app. owner: `/gate on`
 
 ## v0.4.0: the big safety + fun update

@@ -168,6 +168,12 @@ class Extras:
         self.running = True
         self._pat_on = False
         self._last_pat = 0
+        self._oscq = None           # OSCQuery service, once the OSC loop starts one
+        try:
+            from oscrouter import Router
+            self.router = Router((cfg.get("osc") or {}).get("router") or {})
+        except Exception:
+            self.router = None
         for fn in (self._music_loop, self._ping_loop, self._weather_loop, self._osc_loop):
             threading.Thread(target=self._guard, args=(fn,), daemon=True, name=fn.__name__).start()
 
@@ -183,6 +189,7 @@ class Extras:
 
     def stop(self):
         self.running = False
+        self._stop_oscquery()       # un-advertise, or we linger in VRChat's list
 
     def on(self, key):
         return self.cfg["modules"].get(key, False)
@@ -196,6 +203,10 @@ class Extras:
         d = dict(self.data)
         d["talk_s"] = self.talk_seconds()
         d.update(self.notes)
+        if self.router is not None:
+            note = self.router.status_note()
+            if note:
+                d["note_osc_router"] = note
         return d
 
     # ---- VRChat parameters -> headpats, boops, yap meter, jumps, height
@@ -366,6 +377,54 @@ class Extras:
                 last = 0
             time.sleep(2)
 
+    # ------------------------------------------------------------- OSC in ---
+    def _osc_classic(self, port):
+        """The old way: pin one fixed port and hope nothing else wants it."""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.bind(("127.0.0.1", port))
+            s.settimeout(1.0)
+            return s, (f"Listening to VRChat OSC on port {port}. "
+                       "Turn on OSC in VRChat's Action Menu.")
+        except OSError:
+            try:
+                s.close()
+            except Exception:
+                pass
+            return None, (f"Port {port} is busy (another OSC app?). Switch OSC mode to "
+                          "Auto in Settings, or close the other app.")
+
+    def _open_osc_socket(self, port):
+        """OSCQuery first (any free port, VRChat finds us), classic as a fallback."""
+        osc_cfg = self.cfg.get("osc") or {}
+        # If someone deliberately changed the classic ports, respect that choice.
+        pinned = (self.cfg.get("osc_listen_port", 9001) != 9001
+                  or self.cfg.get("osc_port", 9000) != 9000)
+        if str(osc_cfg.get("mode", "auto")).lower() == "classic" or pinned:
+            return self._osc_classic(port)
+        try:
+            from oscquery import OSCQueryService
+        except Exception:
+            return self._osc_classic(port)
+        self._stop_oscquery()
+        svc = OSCQueryService()
+        sock, note = svc.start()
+        if sock is None:                       # no zeroconf / mDNS blocked
+            svc.stop()
+            s, cnote = self._osc_classic(port)
+            return s, (cnote if s is None else f"{note} Using port {port} instead.")
+        self._oscq = svc
+        return sock, note + ". Turn on OSC in VRChat's Action Menu."
+
+    def _stop_oscquery(self):
+        svc = getattr(self, "_oscq", None)
+        if svc is not None:
+            try:
+                svc.stop()
+            except Exception:
+                pass
+            self._oscq = None
+
     def _osc_loop(self):
         port = self.cfg.get("osc_listen_port", 9001)
         sock = None
@@ -377,25 +436,19 @@ class Extras:
                     sock.close()
                     sock = None
                     self._set("muted", None)
+                self._stop_oscquery()
                 self.notes.pop("note_vrchat", None)
                 time.sleep(1)
                 continue
             if sock is None:
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.bind(("127.0.0.1", port))
-                    sock.settimeout(1.0)
-                    self.notes["note_vrchat"] = (f"Listening to VRChat OSC on port {port}. "
-                                                 "Turn on OSC in VRChat's Action Menu.")
-                except OSError:
-                    if sock:
-                        sock.close()
-                    sock = None
-                    self.notes["note_vrchat"] = (f"Port {port} is busy (another OSC app?). "
-                                                 "Close it or change osc_listen_port.")
+                sock, note = self._open_osc_socket(port)
+                if sock is None:
+                    self.notes["note_vrchat"] = note
                     self.changed = True
                     time.sleep(5)
                     continue
+                self.notes["note_vrchat"] = note
+                self.changed = True
             try:
                 data, _ = sock.recvfrom(4096)
             except socket.timeout:
@@ -405,7 +458,11 @@ class Extras:
                 continue
             if not self.running:
                 break
+            if self.router is not None:
+                self.router.forward(data)          # keep other OSC apps alive
             for addr, args in parse_osc(data):
+                if self.router is not None:
+                    self.router.observe(addr, args)    # spot foreign chatbox writes
                 if not args:
                     continue
                 av = getattr(self, "avatar", None)

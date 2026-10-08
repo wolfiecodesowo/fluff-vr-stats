@@ -120,7 +120,7 @@ We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's
 **Something not working?** → **[Troubleshooting + FAQ](https://wolfiecodesowo.github.io/fluff-vr-stats/faq.html)** (overlay not showing, OSC, apps that conflict, low FPS). Settings → backup + help → **Copy logs** puts your log on the clipboard for a `/ticket`.
 
 **VRChat features** (chatbox, avatar toggles, mute, headpats) need OSC: in VRChat, go to Action Menu → Options → OSC → **Enabled**.
-- Close MagicChatbox while using the chatbox tab, or they'll fight over the chatbox.
+- Running another OSC app (MagicChatbox, VRCOSC...)? They just work alongside us now: we find a free port automatically and step back from the chatbox while they're using it.
 
 ## 💜 Discord
 - **Discord status:** while the app runs, your Discord profile shows *"Fluff VR Stats :3 · 90 fps in The Black Cat"* with Download / Join buttons. Just keep the Discord app open. Toggle it in Mods → Fun.
