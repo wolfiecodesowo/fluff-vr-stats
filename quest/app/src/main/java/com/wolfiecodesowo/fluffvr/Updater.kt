@@ -25,6 +25,9 @@ object Updater {
     @Volatile var latestName: String? = null
     @Volatile var latestCode = 0L
     @Volatile var apkUrl = ""
+    @Volatile var minCode = 0L             // versions older than this must update (after minAfter)
+    @Volatile var minAfter = 0L            // unix seconds
+    @Volatile var minMsg = ""
     @Volatile var state = "idle"          // idle / checking / downloading / ready / installing / failed / need_permission
     @Volatile var progress = 0             // 0-100 while downloading
     @Volatile var error = ""
@@ -47,6 +50,9 @@ object Updater {
                 latestCode = j.optLong("versionCode")
                 latestName = j.optString("versionName", "new")
                 apkUrl = j.optString("apk", PAGE + "FluffVRStats-Quest.apk")
+                minCode = j.optLong("minCode", 0L)
+                minAfter = j.optLong("minAfter", 0L)
+                minMsg = j.optString("minMsg", "")
                 state = "idle"
                 if (latestCode > myCode(app)) { changed(); if (autoDownload) download(app) } else latestName = null
             } catch (e: Exception) { state = "idle" }
@@ -55,6 +61,10 @@ object Updater {
     }
 
     fun hasUpdate(ctx: Context) = latestName != null && latestCode > myCode(ctx)
+
+    /** this version is too old to keep using (only once a new enough version actually exists) */
+    fun mustUpdate(ctx: Context) = minCode > myCode(ctx) && latestCode >= minCode &&
+        System.currentTimeMillis() / 1000 >= minAfter
 
     fun download(ctx: Context) {
         if (state == "downloading" || state == "ready") return

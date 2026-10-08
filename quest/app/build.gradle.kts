@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Fluff Bot's PUBLIC key from the repo's trust.json (made by tools/make_keys.py). Empty = keys + safe chat off.
+val fluffBotKey: String = run {
+    val f = rootProject.file("../trust.json")
+    if (!f.exists()) "" else ((groovy.json.JsonSlurper().parse(f) as Map<*, *>)["bot"] as? String) ?: ""
+}
+
 android {
     namespace = "com.wolfiecodesowo.fluffvr"
     compileSdk = 34
@@ -10,9 +16,11 @@ android {
         applicationId = "com.wolfiecodesowo.fluffvr"
         minSdk = 29
         targetSdk = 32          // Quest-friendly, no extra foreground-service paperwork
-        versionCode = 12
-        versionName = "0.7.0-quest"
+        versionCode = 13
+        versionName = "0.8.0-quest"
+        buildConfigField("String", "FLUFF_BOT_KEY", "\"$fluffBotKey\"")
     }
+    buildFeatures { buildConfig = true }
     buildTypes {
         release {
             isMinifyEnabled = false

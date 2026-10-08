@@ -9,10 +9,18 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Global chat: one room shared by everyone on Fluff VR Stats (PC, desktop, Quest, phone) + the Discord #global-chat.
  * Same relay + rules as the PC app (gchat.py): ntfy.sh topic, no links, 200 chars, slow mode, local mute.
+ *
+ * v2 (once this build has Fluff Bot's key, see Trust.kt): messages go to an inbox with ur app key, Fluff Bot
+ * checks the rules + bans and re-posts them SIGNED into the room. Only signed messages show up here.
+ * v1 (no key in the build): the old shared topic, like before.
  */
 object GlobalChat {
     const val BASE = "https://ntfy.sh"
     const val TOPIC = "fluffvrstats-global-chat-v1"
+    const val ROOM2 = "fluffvrstats-room-v2"
+    const val INBOX2 = "fluffvrstats-inbox-v2"
+    val v2: Boolean get() = Trust.on
+    private val banned = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     const val MAX_LEN = 200
     const val SLOW_MS = 3000L
 
@@ -60,7 +68,8 @@ object GlobalChat {
                 val t0 = System.currentTimeMillis()
                 var conn: HttpURLConnection? = null
                 try {
-                    conn = (URL("$BASE/$TOPIC/json?since=$since").openConnection() as HttpURLConnection).apply {
+                    val room = if (v2) ROOM2 else TOPIC
+                    conn = (URL("$BASE/$room/json?since=$since").openConnection() as HttpURLConnection).apply {
                         readTimeout = 75_000; connectTimeout = 10_000; setRequestProperty("User-Agent", "FluffVRStats-quest")
                     }
                     conn.inputStream.bufferedReader().use { r ->
@@ -68,7 +77,7 @@ object GlobalChat {
                         while (running && Settings(app).gchatOn) {
                             val line = r.readLine() ?: break
                             try { JSONObject(line).let { if (it.optString("event") == "message" && it.has("id")) lastId = it.getString("id") } } catch (_: Exception) {}
-                            parse(line, s)?.let { add(it, s) }
+                            if (v2) parse2(line, s) else parse(line, s)?.let { add(it, s) }
                         }
                     }
                 } catch (_: Exception) {
@@ -93,9 +102,29 @@ object GlobalChat {
         }
     } catch (_: Exception) { null }
 
+    /** v2 room: only lines Fluff Bot signed. Handles msg / ban / del. */
+    private fun parse2(line: String, s: Settings) {
+        try {
+            val ev = JSONObject(line)
+            if (ev.optString("event") != "message") return
+            val m = JSONObject(ev.optString("message"))
+            if (!Trust.verifyPayload(m)) return
+            when (m.optString("t")) {
+                "ban" -> { val sid = m.optString("s").take(16); banned.add(sid); msgs.removeAll { it.sid == sid }; version++ }
+                "del" -> { val id = m.optString("id"); msgs.removeAll { it.id == id }; version++ }
+                "msg" -> {
+                    val sid = m.optString("s").take(16)
+                    add(Msg(m.optString("id").ifEmpty { ev.optString("id") }, cleanName(m.optString("n")).ifEmpty { "fluff" },
+                        m.optString("m").take(MAX_LEN), m.optLong("ts", ev.optLong("time")) * 1000, sid,
+                        m.optString("c", "pc").take(8), sid == s.gchatSid), s)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun add(m: Msg, s: Settings) {
         synchronized(seen) { if (!seen.add(m.id)) return }
-        if (m.sid in s.gchatMuted) return
+        if (m.sid in s.gchatMuted || m.sid in banned) return
         msgs.add(m)
         while (msgs.size > 80) msgs.removeAt(0)
         if (!m.mine) unread++
@@ -110,18 +139,34 @@ object GlobalChat {
         version++
     }
 
+    /** sends a message to staff's #mod-log (v2 only). null = sent, otherwise why not */
+    fun report(ctx: Context, m: Msg, why: String = "reported from the Quest app"): String? {
+        if (!v2) return "reporting needs the new chat ~ ask staff in the Discord"
+        val tok = AppKey.token(ctx) ?: return "u need ur app key to report ~ /key in the Discord"
+        val sid = Settings(ctx).gchatSid
+        Thread {
+            try { AppKey.post(INBOX2, JSONObject().put("v", 2).put("t", "report").put("id", m.id).put("why", why.take(120)).put("tok", tok).put("s", sid)) }
+            catch (_: Exception) {}
+        }.start()
+        return null
+    }
+
     /** null = sent, otherwise why not */
-    fun send(s: Settings, raw: String, client: String): String? {
+    fun send(s: Settings, raw: String, client: String, tok: String? = null): String? {
         if (!s.gchatOn) return "global chat is off"
         val (text, why) = clean(raw)
         if (text == null) return why
         val now = System.currentTimeMillis()
         if (now - lastSent < SLOW_MS) return "slow mode ~ wait a sec :3"
+        if (v2 && tok == null) return "global chat needs ur free app key ~ type /key in the Fluff Discord :3"
         lastSent = now
-        val body = JSONObject().put("v", 1).put("n", name(s)).put("m", text).put("s", s.gchatSid).put("c", client).toString()
+        val topic = if (v2) INBOX2 else TOPIC
+        val o = JSONObject().put("v", if (v2) 2 else 1).put("n", name(s)).put("m", text).put("s", s.gchatSid).put("c", client)
+        if (v2) o.put("t", "msg").put("tok", tok)
+        val body = o.toString()
         Thread {
             try {
-                (URL("$BASE/$TOPIC").openConnection() as HttpURLConnection).apply {
+                (URL("$BASE/$topic").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"; doOutput = true; connectTimeout = 10_000
                     setRequestProperty("User-Agent", "FluffVRStats-quest"); setRequestProperty("Content-Type", "text/plain; charset=utf-8")
                     outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }

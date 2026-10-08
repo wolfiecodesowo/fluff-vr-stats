@@ -197,8 +197,10 @@ POSTS = {
     "download": [
         _e("💾 download Fluff VR Stats",
            f"**[⬇️ get the latest version here]({RELEASES})**\n\n"
-           "on the release page, download **Source code (zip)** and unzip it anywhere "
-           "(like your Desktop).\n\n"
+           "on the release page, download **FluffVRStats-Setup.exe** and run it (easiest), or grab "
+           "**Source code (zip)** and unzip it anywhere.\n\n"
+           "🔑 **u need ur free key:** type `/key` (same key as the one that opened this server). "
+           "put it in the app once: Settings → App key.\n\n"
            "**what you need**\n"
            "• Windows 10/11\n• SteamVR (any headset: Quest Link/Air Link/Virtual Desktop, Index, Vive...)\n"
            "• Python 3.10+ (free, the install guide shows u how)\n\n"

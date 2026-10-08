@@ -35,8 +35,9 @@ KEY_FILE = os.path.join(HERE, "bot_key.pem")
 CODE_CHARS = N.CODE_CHARS
 MSG_SLOW_S = 3.0
 # after this, PC apps older than v0.4 can't send in global chat any more (they get a "please update" notice).
-# The Quest Edition still uses the old room, so it's not cut off. Change it in bot_config.json -> "old_cutoff" (unix time) if u need to.
-OLD_CUTOFF = 1792044000          # Oct 15 2026, 00:00 Mountain time
+# The Quest Edition gets until QUEST_CUTOFF (old Quest versions before v0.7 have to update by hand). Change it in bot_config.json -> "old_cutoff" (unix time) if u need to.
+OLD_CUTOFF = 1792044000          # Oct 15 2026, 00:00 Mountain time (PC)
+QUEST_CUTOFF = 1793512800        # Nov 1 2026, 00:00 Mountain time (Quest Edition before v0.8.0)
 OLD_NOTICE = ("this version of Fluff VR Stats is too old and doesn't get global chat any more ~ restart the app "
               "to update (it updates itself), then get ur free key with /key in our Discord :3")
 
@@ -130,6 +131,9 @@ def install(bot, env):
     async def signed(topic, payload):
         if PK is None:
             return False
+        # whole numbers only: floats print differently in Python vs Kotlin, so the Quest app couldn't
+        # rebuild the exact signed bytes
+        payload = {k: (int(v) if isinstance(v, float) else v) for k, v in payload.items()}
         return await ntfy_post(topic, trust.sign_payload(PK, payload))
 
     async def listen(topic, handler, since="1m"):
@@ -281,7 +285,9 @@ def install(bot, env):
                    f"msg id `{p.get('id')}` · `/chatban` to ban, `/chatdelete` to remove it")
             await bot.modlog(txt, 0xFF6B6B)
 
-    def old_cut():
+    def old_cut(client="pc"):
+        if client in ("quest", "phone"):
+            return time.time() >= float(CFG.get("quest_cutoff", QUEST_CUTOFF))
         return time.time() >= float(CFG.get("old_cutoff", OLD_CUTOFF))
 
     async def on_v1(p, ev):
@@ -289,7 +295,7 @@ def install(bot, env):
         (until the cutoff; after it they just get told to update)"""
         if p.get("r") or p.get("c") == "discord" or "m" not in p:
             return
-        if old_cut() and str(p.get("c", "pc")) not in ("quest", "phone"):    # Quest Edition isn't cut off
+        if old_cut(str(p.get("c", "pc"))):
             now = time.time()
             if now - state.get("old_notice", 0) > 600:     # at most one notice every 10 min
                 state["old_notice"] = now
@@ -336,6 +342,7 @@ def install(bot, env):
 
     async def start():
         await bot.wait_until_ready()
+        bot.add_view(GateView())
         g = bot.guild()
         if g and not bot.role("badges"):
             try:
@@ -365,11 +372,26 @@ def install(bot, env):
     # -------------------------------------------------------------- commands ---
     tree = bot.tree
 
-    @tree.command(name="key", description="get ur free Fluff VR Stats app key")
-    async def key_cmd(inter: discord.Interaction):
-        if not keys_on():
-            return await inter.response.send_message("app keys aren't switched on yet ~ u don't need one rn :3",
-                                                     ephemeral=True)
+    # ---------------------------------------------------------- key gate ---
+    # New people only see 🔑・get-your-key until they grab their key (button or /key).
+    # Getting a key opens the rest of the server AND is what they put in the app.
+    def gate_on():
+        return bool(CFG.get("gate"))
+
+    async def unlock(user):
+        """gives the 🐾 Fluff role (= sees the whole server)"""
+        g = bot.guild()
+        m = g.get_member(user.id) if g else None
+        r = bot.role("member")
+        if m and r and r not in m.roles:
+            try:
+                await m.add_roles(r, reason="got their app key")
+                return True
+            except discord.HTTPException:
+                pass
+        return False
+
+    async def give_key(inter: discord.Interaction):
         uid = str(inter.user.id)
         if uid in D["bans"]["uids"]:
             return await inter.response.send_message("ur key was turned off by staff. open a /ticket if u think "
@@ -383,17 +405,123 @@ def install(bot, env):
             save_data(D)
         else:
             key = "-".join(key[i:i + 4] for i in range(0, 12, 4))
+        opened = await unlock(inter.user)
+        app_note = ("put it in the app: **Settings → App key** (or the popup the first time u open it). "
+                    "it works on up to 5 installs (PC, Quest, phone...), links the app to this server, gives u "
+                    "**🧪 Beta Tester** and unlocks global chat + Fluff Friends." if keys_on() else
+                    "the app doesn't ask for it yet, keep it for when it does (it'll ask soon!).")
         e = discord.Embed(title="🔑 ur Fluff VR Stats key", color=C.PINK,
-                          description=f"# `{key}`\n\nput it in the app: **Settings → App key** "
-                                      "(or the popup the first time u open it).\n\n"
-                                      "it's free, it's urs, it works on up to 5 installs. it links the app to this "
-                                      "server, gives u **🧪 Beta Tester**, and unlocks global chat + Fluff Friends.\n"
-                                      "-# don't share it ~ if it leaks, `/resetkey` makes a new one")
+                          description=f"# `{key}`\n\n" + ("🎉 **u're in! the rest of the server is open now.**\n\n" if opened else "")
+                          + app_note + "\n-# it's free + it's urs. don't share it ~ if it leaks, `/resetkey` makes a new one")
         await inter.response.send_message(embed=e, ephemeral=True)
         try:
             await inter.user.send(embed=e)
         except discord.HTTPException:
             pass
+        if opened:
+            main = bot.ch("main")
+            if main:
+                try:
+                    await main.send(f"welcome in {inter.user.mention}!! 🐾 grab the client in "
+                                    f"{bot.ch('download').mention if bot.ch('download') else '#download'} :3",
+                                    allowed_mentions=discord.AllowedMentions(users=True))
+                except discord.HTTPException:
+                    pass
+
+    class GateView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=None)
+
+        @discord.ui.button(label="🔑 get my key + join the server", style=discord.ButtonStyle.success,
+                           custom_id="fluff:gate_key")
+        async def get(self, inter: discord.Interaction, _):
+            await give_key(inter)
+
+    GATE_POST = ("# 🔑 welcome to Fluff VR Stats!!\n"
+                 "to see the rest of the server, grab ur **free key**: tap the button below or type `/key`.\n\n"
+                 "the same key unlocks the app (PC + Quest), so u're all set in one step :3\n"
+                 "-# it's 100% free. it just keeps the server + global chat safe from bots and trolls")
+
+    async def apply_gate(guild, on=True):
+        """on: everyone only sees 🔑・get-your-key, the 🐾 Fluff role sees the rest.
+        off: back to everyone seeing everything. Never touches staff-only channels."""
+        everyone, member_r = guild.default_role, bot.role("member")
+        if member_r is None:
+            raise RuntimeError("no 🐾 Fluff role ~ run /setup first")
+        gate = bot.ch("gate")
+        if on and gate is None:
+            cat = await guild.create_category("🔑 START", position=0, reason="key gate")
+            gate = await guild.create_text_channel("🔑・get-your-key", category=cat, reason="key gate", overwrites={
+                everyone: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False,
+                                                      use_application_commands=True, read_message_history=True),
+                member_r: discord.PermissionOverwrite(view_channel=False),
+                guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, embed_links=True)})
+            for key in ("owner", "staff"):
+                r = bot.role(key)
+                if r:
+                    await gate.set_permissions(r, view_channel=True, send_messages=True)
+            CFG.setdefault("channels", {})["gate"] = gate.id
+            await gate.send(GATE_POST, view=GateView())
+        changed = 0
+        for ch in guild.channels:
+            if gate and (ch.id == gate.id or ch.id == gate.category_id):
+                continue
+            ow = ch.overwrites
+            ev = ow.get(everyone, discord.PermissionOverwrite())
+            if on:
+                if ev.view_channel is False and member_r not in ow:
+                    continue                                    # hidden (staff-only) already
+                mem = ow.get(member_r) or discord.PermissionOverwrite(**{k: v for k, v in ev if v is not None})
+                mem.view_channel = True
+                ev.view_channel = False
+                ow[member_r], ow[everyone] = mem, ev
+            else:
+                mem = ow.get(member_r)
+                if mem is None or mem.view_channel is not True:
+                    continue
+                ev.view_channel = True
+                ow[everyone] = ev
+            try:
+                await ch.edit(overwrites=ow, reason="key gate " + ("on" if on else "off"))
+                changed += 1
+            except discord.HTTPException as e:
+                log.info("gate: couldn't edit %s: %s", ch, e)
+        CFG["gate"] = on
+        env["save_cfg"](CFG)
+        return changed
+
+    bot.apply_gate = apply_gate
+
+    @tree.command(name="gate", description="(owner) new people must get a key before they see the server")
+    @app_commands.describe(on="on = key needed to see the server, off = everyone sees everything",
+                           let_current_in="give the 🐾 Fluff role to everyone already here (so nobody gets locked out)")
+    async def gate_cmd(inter: discord.Interaction, on: bool, let_current_in: bool = True):
+        if inter.user.id != inter.guild.owner_id:
+            return await inter.response.send_message("only the server owner can do this", ephemeral=True)
+        await inter.response.send_message("🔧 working on it… (editing every channel takes a minute)", ephemeral=True)
+        given = 0
+        if on and let_current_in:
+            r = bot.role("member")
+            for m in inter.guild.members:
+                if not m.bot and r and r not in m.roles:
+                    try:
+                        await m.add_roles(r, reason="was here before the key gate")
+                        given += 1
+                    except discord.HTTPException:
+                        pass
+        try:
+            n = await apply_gate(inter.guild, on)
+        except Exception as e:
+            return await inter.followup.send(f"gate hit a snag: {e}", ephemeral=True)
+        gate = bot.ch("gate")
+        await inter.followup.send(
+            (f"🔑 key gate **on**! new people only see {gate.mention if gate else '#get-your-key'} until they grab "
+             f"their key. updated {n} channels" + (f", let {given} current members in" if given else "") + ".")
+            if on else f"key gate **off**, everyone sees everything again ({n} channels).", ephemeral=True)
+
+    @tree.command(name="key", description="get ur free Fluff VR Stats key (opens the server + unlocks the app)")
+    async def key_cmd(inter: discord.Interaction):
+        await give_key(inter)
 
     @tree.command(name="resetkey", description="make a new app key (ur old one stops working)")
     async def resetkey_cmd(inter: discord.Interaction):

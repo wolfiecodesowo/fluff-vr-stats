@@ -285,6 +285,14 @@ class FluffBot(discord.Client):
 
     async def on_member_join(self, m):
         role = self.role("member")
+        if CFG.get("gate"):              # key gate: they get 🐾 Fluff when they grab their key (fluffsafe.py)
+            role = None
+            gate = self.ch("gate")
+            try:
+                await m.send(f"hiii welcome to Fluff VR Stats!! 🐾 grab ur free key in "
+                             f"{gate.mention if gate else '#get-your-key'} to see the rest of the server :3")
+            except discord.HTTPException:
+                pass
         if role:
             try:
                 await m.add_roles(role, reason="new fluff")
@@ -767,6 +775,9 @@ class ConfirmSetup(discord.ui.View):
             log.info(text)
         try:
             url = await build_server(inter.guild, status)
+            if getattr(bot, "apply_gate", None) and CFG.get("gate", True):
+                await status("🔑 setting up the key gate…")
+                await bot.apply_gate(inter.guild, True)
             try:
                 await user.send(f"✨ Fluff VR Stats server is built!! invite link: {url}")
             except discord.HTTPException:

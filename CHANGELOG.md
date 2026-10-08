@@ -1,11 +1,18 @@
 # Changelog
 
+## Quest Edition v0.8.0: keys + safe chat
+- 🔑 **app key** on Quest too: same free key as PC (`/key`), works on up to 5 devices. put it in Settings or the popup
+- 🔐 **safe global chat:** messages go through Fluff Bot and only signed ones show up, same as PC
+- 🚩 long-press a message → **mute or report** (reports go straight to staff)
+- ⬆️ too-old versions get a "time to update" screen. **Nov 1, 2026:** Quest versions before v0.8.0 lose global chat (v0.6 and older don't update themselves, grab the new one from the website)
+
 ## v0.4.1: keys on + old versions retire
 - 🔑 **keys are required now:** get ur free key with `/key` in our Discord and put it in once. still 100% free
 - ⏳ **Oct 15, 2026:** PC versions before v0.4.1 can't use global chat any more and get told to update. the Quest Edition isn't affected yet
 - ⬆️ **update reminder:** if ur version is too old, the app shows a "time to update" card with an **update now** button (even with auto updates off)
 - 🌍 fixed: words inside translated text sometimes got translated twice and overlapped (Japanese / Chinese / Korean)
 - 🔤 fixed: Japanese + Chinese punctuation and arrows showed as boxes
+- 🤖 **Fluff Bot key gate:** new people only see 🔑・get-your-key until they grab their key (one button or `/key`). the key opens the server AND the app. owner: `/gate on`
 
 ## v0.4.0: the big safety + fun update
 **🔐 security (the biggest fix yet)**

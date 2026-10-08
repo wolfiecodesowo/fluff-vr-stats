@@ -72,6 +72,8 @@ class MainActivity : Activity() {
         window.statusBarColor = BG
         window.navigationBarColor = BG
         GlobalChat.start(this)
+        AppKey.onChange = { ui.post { build() } }
+        AppKey.heartbeat(this, client)
         build()
         ui.post(refresher)
         ui.post(kittyAnim)
@@ -94,7 +96,7 @@ class MainActivity : Activity() {
         Updater.onChange = {
             ui.post {
                 val sig = Updater.state + Updater.latestName
-                if (sig != updSig) { updSig = sig; if (tab in listOf("Home", "Settings")) build() }
+                if (sig != updSig) { updSig = sig; if (tab in listOf("Home", "Settings") || Updater.mustUpdate(this)) build() }
                 if (Updater.state == "ready" && s.autoUpdate && !autoPrompted) { autoPrompted = true; Updater.install(this) }
             }
         }
@@ -251,6 +253,8 @@ class MainActivity : Activity() {
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(body)
         root.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        if (Updater.mustUpdate(this)) { buildMustUpdate(); setContentView(root); return }
+        if (AppKey.locked(this)) { buildKey(true); setContentView(root); return }
         when (tab) {
             "Home" -> buildHome()
             "Chatbox" -> buildChatbox()
@@ -405,7 +409,12 @@ class MainActivity : Activity() {
             b.addView(text(m.name + tag, 12f, if (m.mine) Color.rgb(255, 222, 130) else PINK, fHead))
             b.addView(text(m.text, 15f, TEXT))
             if (!m.mine) b.setOnLongClickListener {
-                GlobalChat.mute(s, m.sid); android.widget.Toast.makeText(this, "muted ${m.name} (just for u)", android.widget.Toast.LENGTH_SHORT).show(); true
+                val opts = if (GlobalChat.v2) arrayOf("mute ${m.name} (just for u)", "report to staff 🚩") else arrayOf("mute ${m.name} (just for u)")
+                android.app.AlertDialog.Builder(this).setTitle(m.name).setItems(opts) { _, which ->
+                    val msg = if (which == 0) { GlobalChat.mute(s, m.sid); "muted ${m.name} (just for u)" }
+                              else GlobalChat.report(this, m) ?: "sent to staff, thank u 💜"
+                    android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }.show(); true
             }
             list.addView(b, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
                 bottomMargin = dp(6); gravity = if (m.mine) Gravity.END else Gravity.START
@@ -416,7 +425,11 @@ class MainActivity : Activity() {
 
     private fun buildGlobal() {
         val me = card(body, "🌐 global chat")
-        me.addView(text("talk to everyone on Fluff VR Stats: PC, desktop, Quest + our Discord's #global-chat. be nice, no links, never share personal info. long-press a message to mute someone.", 13f, SUB))
+        me.addView(text("talk to everyone on Fluff VR Stats: PC, desktop, Quest + our Discord's #global-chat. be nice, no links, never share personal info. long-press a message to mute or report someone.", 13f, SUB))
+        if (GlobalChat.v2 && !AppKey.linked(this)) {
+            me.addView(text("🔑 chatting needs ur free app key ~ get it with /key in our Discord, then put it in below", 14f, PINK, fHead).apply { setPadding(0, dp(8), 0, 0) })
+            buildKey(false)
+        }
         if (!s.gchatOn) {
             me.addView(button("turn global chat on", true) { s.gchatOn = true; build() }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
             return
@@ -435,7 +448,7 @@ class MainActivity : Activity() {
         say.addView(msg)
         val r = row(say); r.setPadding(0, dp(8), 0, 0)
         chip(r, "send 🐾", true) {
-            val why = GlobalChat.send(s, msg.text.toString(), client)
+            val why = GlobalChat.send(s, msg.text.toString(), client, AppKey.token(this))
             if (why != null) android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_SHORT).show() else msg.setText("")
         }
     }
@@ -906,6 +919,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildSettings() {
+        if (Trust.on) buildKey(false)
         val c = card(body, "where to send (OSC)")
         c.addView(text("on the Quest itself, keep 127.0.0.1. running this on ur phone instead? put ur Quest's Wi-Fi IP here.", 14f, SUB))
         val host = edit(s.host, "127.0.0.1")
@@ -954,6 +968,42 @@ class MainActivity : Activity() {
 
         buildPerf()
         buildThanks()
+    }
+
+    /** the 🔑 app key card. [gate] = full "one lil thing first!" screen (app is locked until there's a key) */
+    private fun buildKey(gate: Boolean) {
+        val c = card(body, if (gate) "one lil thing first! 🔑" else "🔑 app key")
+        if (AppKey.linked(this)) {
+            c.addView(text("key ok ✓ linked to ${AppKey.who(this).ifEmpty { "ur Discord" }} · 🧪 Beta Tester", 15f, TEXT, fHead))
+            val r = row(c); r.setPadding(0, dp(8), 0, 0)
+            chip(r, "remove key from this device", false) { AppKey.forget(this) }
+            return
+        }
+        c.addView(text(if (gate) "Fluff VR Stats is free forever ~ u just need a free key from our Discord. join, type /key, and put it here. " +
+            "same key as on PC (it works on up to 5 devices). it also gets u the 🧪 Beta Tester role!"
+            else "get ur free key with /key in our Discord. it unlocks global chat + gets u the 🧪 Beta Tester role" +
+            (if (AppKey.graceLeftMs(this) > 0) " (the app works without one for ${AppKey.graceLeftMs(this) / 3600000 + 1}h more)" else ""), 14f, SUB))
+        val k = edit("", "ur key, like ABCD-EFGH-JKMN")
+        c.addView(k, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
+        val r = row(c); r.setPadding(0, dp(8), 0, 0)
+        chip(r, "1. open the Discord", false) { open("https://wolfiecodesowo.github.io/fluff-vr-stats/#community") }
+        chip(r, "2. check my key", true) {
+            val why = AppKey.start(this, k.text.toString(), client)
+            if (why != null) AppKey.status = why
+        }
+        if (AppKey.status.isNotEmpty()) c.addView(text(AppKey.status, 14f, if ("ok" in AppKey.status) PINK else SUB).apply { setPadding(0, dp(6), 0, 0) })
+    }
+
+    /** this version got too old (version.json minCode after its date): only an update button */
+    private fun buildMustUpdate() {
+        val c = card(body, "time to update! ✨")
+        c.addView(text(Updater.minMsg.ifEmpty { "this version is too old ~ update to keep using Fluff VR Stats. ur settings stay :3" }, 15f, SUB))
+        c.addView(text("v${myVersion()}  →  v${Updater.latestName ?: "new"}", 16f, PINK, fHead).apply { setPadding(0, dp(8), 0, 0) })
+        updateBanner()
+        if (!Updater.hasUpdate(this)) {
+            val r = row(c); r.setPadding(0, dp(8), 0, 0)
+            chip(r, "download page", true) { open(Updater.PAGE) }
+        }
     }
 
     private fun buildThanks() {
