@@ -28,7 +28,7 @@ ROLES = [
     {"key": "member", "name": "🐾 Fluff", "color": 0xFFC6E4, "hoist": False, "perms": None},
 ]
 # self-assign buttons in #get-roles
-SELF_ROLES = ["pings", "beta", "vrchat", "artist", "bumper"]
+SELF_ROLES = ["pings", "vrchat", "artist", "bumper"]   # 🧪 Beta Tester is earned: /key + activate the app
 
 # Channel layout. access:
 #   "read"  = everyone can read, only Owner/Staff/bot can post
@@ -401,6 +401,10 @@ POSTS = {
            "**handy bot commands**\n"
            "`/announce` post a pretty announcement (optional ping)\n"
            "`/release` post the latest GitHub release to announcements + changelog\n"
+           "`/testers` who's actually beta testing (version, PC/desktop, last seen)\n"
+           "`/chatban` · `/chatunban` · `/chatdelete` global chat moderation (instant, app + Discord). "
+           "reports from the app land in 🧾・mod-log\n"
+           "`/event create` schedule a community night (shows up in everyone's app)\n"
            "`/feature` feature a message in 📸・featured-setups\n"
            "`/purge` delete the last N messages\n"
            "`/slowmode` set slowmode in this channel\n"
@@ -429,6 +433,9 @@ POSTS.update({
                                    "`/bug` report a bug", False),
             ("🥽 VR", "`/invr` who's using Fluff VR Stats right now\n`/stats` server stats\n"
                      "`/vrtip` a random VR tip\n`/randomtheme` pick a theme for you", False),
+            ("🔑 ur app key", "`/key` get ur free key (unlocks the app + 🧪 Beta Tester)\n"
+                             "`/resetkey` new key if urs leaked · `/badges` see app badges", False),
+            ("🎪 community", "`/event list` upcoming community nights\n`/sharetheme` post ur theme code in #theme-share", False),
             ("🐾 fun", "`/headpat` `/boop` `/hug` `/fluffrate` `/8ball` `/coinflip` `/pet`", False),
             ("🔔 grow the server", "`/bump` (the DISBOARD one) every 2h · `/bumpstatus` next bump\n"
                                   "`/bumpers` leaderboard · `/bumpremind` get pinged · `/invite` share us", False),

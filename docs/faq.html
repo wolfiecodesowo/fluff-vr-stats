@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluff VR Stats Help</title>
+<meta name="description" content="A cute, furry, open source overlay for SteamVR + VRChat: wrist stats, global chat, music controls, chatbox stats, avatar toggles and FPS boost.">
+<meta property="og:title" content="Fluff VR Stats :3">
+<meta property="og:description" content="a cute furry overlay for SteamVR + VRChat">
+<meta property="og:image" content="images/banner.png">
+<link rel="icon" href="images/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #22162e; --bg2: #2e1f3e; --panel: #382650; --panel2: #483262;
+    --ink: #180e22; --text: #fff5fc; --sub: #d8c0e8;
+    --pink: #ff96ca; --yellow: #ffe246; --cyan: #78e6fa; --mint: #96ecb0;
+    --r: 26px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Nunito", system-ui, sans-serif; font-weight: 600; line-height: 1.55;
+    background-image: radial-gradient(circle at 15% 10%, #ff8cc833 0, transparent 40%),
+                      radial-gradient(circle at 85% 30%, #8cc8ff26 0, transparent 40%);
+  }
+  .stripe { height: 12px; background: linear-gradient(90deg, #ff8caa 0 16.6%, #ffba82 0 33.3%, #ffea8c 0 50%,
+            #96e6aa 0 66.6%, #8cc8ff 0 83.3%, #c4a0ff 0); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+  h1, h2, h3 { font-family: "Lilita One", sans-serif; font-weight: 400; letter-spacing: .5px; margin: 0; }
+  .hand { font-family: "Gochi Hand", cursive; }
+  .ink { -webkit-text-stroke: 0; text-shadow: 3px 3px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink); }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 30px; align-items: center; padding: 56px 0 30px; }
+  .hero h1 { font-size: clamp(48px, 8vw, 96px); line-height: .95; }
+  .hero h1 .c3 { color: var(--pink); }
+  .hero .tag { font-size: clamp(22px, 3vw, 30px); color: var(--sub); margin: 14px 0 26px; }
+  .sticker { width: min(300px, 70%); transform: rotate(-5deg); filter: drop-shadow(10px 10px 0 var(--ink)); animation: bob 3s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: rotate(-2deg) translateY(-8px); } }
+  .btns { display: flex; flex-wrap: wrap; gap: 14px; }
+  .btn { font-family: "Lilita One", sans-serif; font-size: 22px; text-decoration: none; color: var(--ink);
+         background: var(--pink); padding: 14px 28px; border-radius: 999px; border: 4px solid var(--ink);
+         box-shadow: 6px 6px 0 var(--ink); transition: transform .12s, box-shadow .12s; display: inline-block; }
+  .btn:hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
+  .btn:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
+  .btn.alt { background: var(--yellow); }
+  .btn.ghost { background: var(--panel2); color: var(--text); }
+  .note { font-size: 15px; color: var(--sub); margin-top: 14px; }
+  .comm-card { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between;
+               background: var(--panel); border: 4px solid var(--ink); border-radius: var(--r); padding: 26px 28px;
+               box-shadow: 8px 8px 0 var(--ink); }
+  .comm-card > div { flex: 1 1 320px; }
+  .comm-big { font-family: "Lilita One", sans-serif; font-size: 28px; margin: 0 0 6px; }
+  .comm-live { color: var(--mint); font-weight: 800; }
+  .hud { width: 100%; max-width: 380px; transform: rotate(4deg); filter: drop-shadow(10px 10px 0 var(--ink)); justify-self: center; }
+
+  /* trailer */
+  .trailer { display: grid; grid-template-columns: 340px 1fr; gap: 34px; align-items: center; margin: 40px 0; }
+  video { width: 100%; border-radius: var(--r); border: 5px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); background: #000; }
+  .sec-title { font-size: clamp(34px, 5vw, 52px); margin-bottom: 10px; }
+  .sec-title .hl { color: var(--yellow); }
+
+  /* cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin: 22px 0 10px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: var(--r); padding: 20px 22px;
+          box-shadow: 7px 7px 0 var(--ink); position: relative; }
+  .card h3 { font-size: 24px; margin-bottom: 4px; }
+  .card p { margin: 0; color: var(--sub); font-size: 16px; }
+  .card .ico { font-size: 30px; display: block; margin-bottom: 6px; }
+  .card:nth-child(3n+1) h3 { color: var(--pink); } .card:nth-child(3n+2) h3 { color: var(--cyan); } .card:nth-child(3n) h3 { color: var(--mint); }
+
+  /* screenshots */
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin: 22px 0; }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; display: block; border-radius: 18px; border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink); background: var(--bg2); }
+  .shots figcaption { font-family: "Gochi Hand", cursive; font-size: 22px; color: var(--sub); margin-top: 8px; text-align: center; }
+
+  /* steps */
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 22px 0; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; background: var(--panel); border: 4px solid var(--ink); border-radius: 20px;
+                padding: 16px 20px 16px 74px; position: relative; box-shadow: 6px 6px 0 var(--ink); }
+  ol.steps li::before { content: counter(s); position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+                        width: 40px; height: 40px; border-radius: 50%; background: var(--pink); color: var(--ink);
+                        font-family: "Lilita One"; font-size: 22px; display: grid; place-items: center; border: 3px solid var(--ink); }
+  code { background: var(--ink); color: var(--yellow); padding: 2px 8px; border-radius: 8px; font-size: .95em; }
+  a { color: var(--pink); }
+
+  .faq details { background: var(--panel); border: 4px solid var(--ink); border-radius: 20px; padding: 14px 20px; margin: 12px 0; box-shadow: 6px 6px 0 var(--ink); }
+  .faq summary { font-family: "Lilita One"; font-size: 21px; cursor: pointer; }
+  .faq p { color: var(--sub); margin: 10px 0 2px; }
+
+  footer { text-align: center; padding: 40px 0 60px; color: var(--sub); }
+  footer .err { width: 90px; transform: rotate(-6deg); }
+  section { padding: 30px 0; }
+
+  @media (max-width: 800px) {
+    .hero, .trailer { grid-template-columns: 1fr; }
+    .hero { text-align: center; padding-top: 34px; }
+    .btns { justify-content: center; }
+    .hud { max-width: 300px; }
+    .trailer video { max-width: 340px; justify-self: center; }
+  }
+</style>
+</head>
+<body>
+<div class="stripe"></div><div class="wrap"><header class="hero" style="grid-template-columns:1fr"><div><h1 class="ink">help <span class="c3">+</span> FAQ</h1><p class="tag hand">fixes for the stuff that trips people up :3</p><div class="btns"><a class="btn ghost" href="./">← back home</a><a class="btn js-discord" href="./#community">💜 ask in the Discord</a></div></div></header><section class="faq"><details open><summary>The wrist HUD / menu doesn't show up</summary><ul><li>Start SteamVR <b>first</b>, then the app (or turn on Settings → Start with SteamVR).</li><li>Only one copy can run. If it says it's already running, close the other one (check the tray / Task Manager for python).</li><li>Look at your wrist: with <i>Look to show</i> on, the HUD fades in only when you look at it. Turn it off in Mods → Wrist to always show it.</li><li>The menu lives in the SteamVR dashboard: press the menu button and look for the Fluff VR Stats tab at the bottom.</li><li>Wrong wrist? Settings → comfy + access → Left-handed mode, or Wrist → Placement to nudge it.</li><li>Still nothing? It may have started in <b>safe mode</b> (all mods off after 2 crashes). Settings → backup + help → Safe mode → mods back on.</li></ul></details>
+<details open><summary>Chatbox, avatar toggles or headpats don't work (OSC)</summary><ul><li>In VRChat: Action Menu → Options → OSC → <b>Enabled</b>.</li><li>Switch avatars once (or Options → OSC → Reset Config) so VRChat lists your avatar's toggles.</li><li>Headpats: Mods → Counters → <b>Learn my headpat</b>, then get a pat within 25 seconds.</li><li>Another OSC app on port 9001? Close it or change <code>osc_listen_port</code> in config.json.</li></ul></details>
+<details open><summary>Apps that fight with Fluff VR Stats</summary><ul><li><b>MagicChatbox</b>: you both write the VRChat chatbox. Close it, or turn off Chatbox stats here.</li><li><b>XSOverlay / OVR Toolkit</b>: both are fine together, but wrist menus can overlap. Move one of them (Wrist → Placement).</li><li>The Settings → Setup checklist tells you if any of these are running.</li></ul></details>
+<details open><summary>App key questions</summary><ul><li>Get it: join the Discord, type <code>/key</code>. Fluff Bot shows it (and DMs it to you).</li><li>Enter it: Settings → app key → enter, or the popup the first time.</li><li>Lost or leaked it? <code>/resetkey</code> makes a new one; the old one stops working.</li><li>One key works on up to 5 installs (PC, laptop, Quest, phone...).</li><li>Fluff Bot offline? The app keeps working, try your key later.</li></ul></details>
+<details open><summary>Global chat</summary><ul><li>No links, no personal info, slow mode is 1 message every 3 seconds.</li><li>Someone being mean? Tap <b>mute</b> next to their message (just for you), or <b>report</b> to send it to staff.</li><li>Staff bans work instantly everywhere, no update needed.</li></ul></details>
+<details open><summary>Low FPS</summary><ul><li>Open the <b>Boost</b> tab and tap boost all (everything is undoable).</li><li>Settings → Profile → <b>Performance</b> turns off everything that isn't a stat.</li><li>Wrist refresh 1x / sec saves a tiny bit more.</li><li>The Stats tab shows how much CPU + RAM Fluff VR Stats itself uses (it should be tiny).</li></ul></details>
+<details open><summary>Updates</summary><ul><li>Updates install by themselves when you start the app. Every update is signed: if the files don't match the signature, it doesn't install.</li><li>Turn auto updates off in Settings → general.</li><li>Your settings, key, kitty and badges are never touched. Old files are backed up in <code>.update_backup/</code>.</li></ul></details>
+<details open><summary>Send us your logs</summary><ul><li>Settings → backup + help → <b>Copy logs</b>. That copies the last part of <code>logs/fluffvr.log</code>.</li><li>Open a <code>/ticket</code> in the Discord and paste it with a screenshot.</li></ul></details>
+</section><footer><p class="hand" style="font-size:24px">still stuck? we got u, ask in the Discord &lt;3</p></footer></div>
+<script>
+  // join button: uses the server's invite from Discord's public widget (Server Settings → Widget)
+  const GUILD = "1557135963510280202";
+  const FALLBACK_INVITE = "";          // paste a permanent invite here if the widget is off
+  fetch(`https://discord.com/api/guilds/${GUILD}/widget.json`).then(r => r.ok ? r.json() : null).then(w => {
+    const link = (w && w.instant_invite) || FALLBACK_INVITE;
+    if (link) document.querySelectorAll(".js-discord").forEach(a => { a.href = link; a.target = "_blank"; a.rel = "noopener"; });
+    const live = document.getElementById("discordLive");
+    if (w && live) live.textContent = `🟢 ${w.presence_count} fluffs online right now`;
+    else if (live) live.textContent = "";
+  }).catch(() => {
+    if (FALLBACK_INVITE) document.querySelectorAll(".js-discord").forEach(a => { a.href = FALLBACK_INVITE; });
+    const live = document.getElementById("discordLive"); if (live) live.textContent = "";
+  });
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@ import time
 from functools import lru_cache
 
 from PIL import Image, ImageDraw
+from lang import ImageDraw  # translates drawn text (Settings -> Language)
 
 import ui
 

@@ -91,6 +91,7 @@ class DesktopApp(core.App):
         self.desktop = True
         self.state.desktop = True
         self.gchat.client = "desktop"
+        self.access.client = self.friends.client = "desktop"
         self.raise_window = False
 
     # pictures go to the window instead of SteamVR

@@ -1,0 +1,67 @@
+# When a release is published: sign it (so the auto-updater accepts it) and attach the Windows installer.
+# One-time setup (repo Settings -> Secrets and variables -> Actions):
+#   RELEASE_KEY      = the whole text of keys/release_key.pem (made by tools/make_keys.py)   [needed for signing]
+#   SIGNPATH_*       = optional, for a code-signed .exe (SignPath gives free signing to open source projects)
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "release tag to build (e.g. v0.4.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: sign the release (fluff-manifest.json)
+        shell: pwsh
+        env:
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+        run: |
+          if (-not $env:RELEASE_KEY) { Write-Host "no RELEASE_KEY secret, skipping signing (sign it from ur PC with tools/sign_release.py)"; exit 0 }
+          python -m pip install cryptography
+          $keyfile = Join-Path $env:RUNNER_TEMP "release_key.pem"
+          Set-Content -Path $keyfile -Value $env:RELEASE_KEY -NoNewline
+          $env:RELEASE_KEY_FILE = $keyfile
+          python tools/sign_release.py $env:TAG --upload
+          Remove-Item $keyfile
+
+      - name: install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: build the installer
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
+
+      # - name: code-sign the .exe (SignPath, free for open source) - fill in once ur project is approved
+      #   uses: signpath/github-action-submit-signing-request@v1
+      #   with: { api-token: "${{ secrets.SIGNPATH_API_TOKEN }}", organization-id: "...", project-slug: "fluff-vr-stats",
+      #           signing-policy-slug: "release-signing", artifact-configuration-slug: "installer",
+      #           github-artifact-id: "...", wait-for-completion: true, output-artifact-directory: dist }
+
+      - name: attach installer + checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\FluffVRStats-Setup-*.exe | Select-Object -First 1
+          (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $exe.Name | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
+          gh release upload $env:TAG $exe.FullName dist\SHA256SUMS.txt --clobber

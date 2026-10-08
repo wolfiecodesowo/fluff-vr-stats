@@ -121,7 +121,7 @@
         <a class="btn alt js-discord" href="#community">💜 Join the Discord</a>
         <a class="btn ghost" href="https://github.com/wolfiecodesowo/fluff-vr-stats">★ GitHub</a>
       </div>
-      <p class="note">Windows · SteamVR · open source (MIT) · no mods or injection, safe with EAC</p>
+      <p class="note">Windows · SteamVR · open source (MIT) · no mods or injection, safe with EAC · signed updates · 12 languages</p>
     </div>
     <img class="hud" src="images/wrist_hud.png" alt="the wrist HUD showing FPS, battery, music and a little pet">
   </header>
@@ -150,6 +150,21 @@
     </div>
   </section>
 
+  <section id="new">
+    <h2 class="sec-title ink">new in <span class="hl">v0.4</span></h2>
+    <div class="grid">
+      <div class="card"><span class="ico">🎁</span><h3>Fluff Wrapped</h3><p>Your month in VR as one cute card: hours, headpats, worlds, top song. Saves as a picture, post it anywhere.</p></div>
+      <div class="card"><span class="ico">🏅</span><h3>37 badges</h3><p>Pat Magnet, Night Owl, World Hopper, Candy Hoarder... they pop up on your wrist and sync to the Discord.</p></div>
+      <div class="card"><span class="ico">🎩</span><h3>Kitty closet</h3><p>Hats + collars for Lil Kitty: crowns, halos, headphones, a witch hat. Unlock them with badges.</p></div>
+      <div class="card"><span class="ico">🎃</span><h3>Spooky season</h3><p>October event: pat your kitty for candy, collect 31 for a pumpkin hat that's yours forever.</p></div>
+      <div class="card"><span class="ico">🎨</span><h3>Theme codes</h3><p>Share your exact look as a short <code>FLUFF-</code> code, paste anyone else's. <code>/sharetheme</code> in the Discord.</p></div>
+      <div class="card"><span class="ico">👋</span><h3>Fluff Friends</h3><p>See other Fluff users in the same instance as you, and wave at them. It pops up on their wrist.</p></div>
+      <div class="card"><span class="ico">🎪</span><h3>Community nights</h3><p>Hangouts planned in the Discord show up on your Home tab. Be there for the badge!</p></div>
+      <div class="card"><span class="ico">🌍</span><h3>12 languages</h3><p>日本語, 한국어, 简体中文, Español, Português, Français, Deutsch, Italiano, Polski, Русский, Українська.</p></div>
+      <div class="card"><span class="ico">🔐</span><h3>Way safer</h3><p>Global chat goes through Fluff Bot now (bans + reports really work), and updates are signed + checked before they install.</p></div>
+    </div>
+  </section>
+
   <section>
     <h2 class="sec-title ink">peek at the <span class="hl">menu</span></h2>
     <div class="shots">
@@ -171,6 +186,8 @@
       <li>Double-click <code>run.bat</code>, put your headset on, and look at your wrist :3</li>
     </ol>
     <p class="note">In VRChat, turn on OSC (Action Menu → Options → OSC → Enabled) for the chatbox, avatar toggles and headpats.</p>
+    <p class="note">🔑 <b>Free app key:</b> join our <a class="js-discord" href="#community">Discord</a>, type <code>/key</code>, and put it in the app once (Settings → App key). Still 100% free: it links you to the community, keeps global chat safe and gets you the 🧪 Beta Tester role.</p>
+    <p class="note">Stuck? <a href="faq.html">Troubleshooting + FAQ</a></p>
   </section>
 
   <section id="community" class="community">
@@ -190,7 +207,9 @@
     <details><summary>Is it safe with VRChat / EAC?</summary><p>Yes. It's a separate SteamVR overlay app. It never touches VRChat's files or memory and talks to VRChat only through official OSC.</p></details>
     <details><summary>Does it lower my FPS?</summary><p>Barely. The wrist HUD redraws twice a second, the menu only redraws while it's open, and it runs at low CPU priority. The Boost tab can raise your FPS.</p></details>
     <details><summary>Where did the AI buddy go?</summary><p>We took it out in v0.3.0. Lately there's been a lot of hate and drama around AI and a lot of people aren't vibing with it, so the app is 100% AI-free for now. Not because we hate AI, we just want everyone to feel comfy. It might come back as an optional mod once things calm down :3</p></details>
-    <details><summary>What does it send online?</summary><p>Only global chat messages (if you leave that mod on), plus weather/ping if you turn them on. World and player info is read from VRChat's own log file on your PC.</p></details>
+    <details><summary>What leaves my PC?</summary><p><b>Global chat</b>: your messages + chat name (via ntfy.sh and Fluff Bot). <b>Fluff Friends</b>: your chat name, only to Fluff users in the same instance. <b>App key</b>: your key, chat name, app version and badge names (to Fluff Bot). <b>Discord status</b>: fps, song, and your world only if you allow it (to your own Discord app; world is hidden by default). <b>Update check</b>: asks GitHub for the newest version. Weather/ping only if you turn them on. That's all: no tracking, no ads, nothing about your PC or VRChat account. World and player info is read from VRChat's own log file on your PC.</p></details>
+    <details><summary>Why do I need a key if it's free?</summary><p>It stays free forever. The key links the app to the Fluff Discord so Fluff Bot can keep global chat safe (bans and reports actually work), so beta testers get their role, and so your badges show up in the Discord. It's checked once, then works offline. If Fluff Bot is ever down, the app keeps working.</p></details>
+    <details><summary>Something's broken!</summary><p>Check the <a href="faq.html">troubleshooting page</a>. Still stuck? Settings → backup + help → <b>Copy logs</b>, then paste them in a <code>/ticket</code> in the Discord.</p></details>
     <details><summary>Can I make my own themes / mods?</summary><p>Yes! It's open source. Add a theme with one line in <code>themes.py</code>, and pull requests are welcome.</p></details>
   </section>
 

@@ -14,6 +14,7 @@ import random
 from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFilter
+from lang import ImageDraw  # translates drawn text (Settings -> Language)
 
 import ui
 from logo import sticker_frames

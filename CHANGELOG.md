@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.4.0: the big safety + fun update
+**🔐 security (the biggest fix yet)**
+- 🔐 **global chat is locked down:** the app sends to an inbox, Fluff Bot checks ur key + the rules (filter, slow mode, bans) and posts it **signed**. the app only shows signed messages, so nobody can skip the rules by posting to the relay directly. old v0.3 apps still work and get filtered too
+- 🚩 **report button** on every chat message → straight to staff in #mod-log. staff bans + deletes work instantly everywhere, no app update needed
+- ✍️ **signed updates:** every release has a signed list of every file's SHA-256. the updater checks the signature + every file before it swaps anything, and refuses if one byte is off
+- 🔑 **free app key** from our Discord (`/key`): put it in once, it links u up, keeps chat safe, syncs ur badges + gives u **🧪 Beta Tester**. still 100% free. checked once, works offline after. if Fluff Bot is down u still get in
+- 🗝️ only public keys live in the repo (`trust.json`). private keys + tokens are git-ignored
+- 🛟 **safe mode:** crashes on launch twice → starts with every mod off, one tap to turn them back on
+- 📋 **copy logs** button for support tickets
+- 🙈 **hide world on Discord** (on by default now), and a clear "what leaves ur PC" list in Settings → privacy, the README + the site
+
+**🎁 fun stuff (new Fun tab)**
+- 🎁 **Fluff Wrapped:** ur month in VR as one cute card (hours, headpats, boops, km walked, worlds, people met, kitty pats, top world, top song). saves as a picture, post it anywhere
+- 🏅 **37 badges** (Pat Magnet, Night Owl, World Hopper, Kitty Whisperer, Beta Tester...). they pop up on ur wrist and sync to the Discord (`/badges`)
+- 🎩 **kitty closet:** hats + collars for Lil Kitty (bow, flower crown, headphones, golden crown, halo, witch hat, bandana, bowtie...), unlocked by badges + seasons. she wears them on ur wrist too
+- 🎃 **seasons:** spooky season (Oct: witch hat, pumpkin cursor, pat ur kitty for candy, 31 candy = pumpkin hat forever), snowy season, valentines, pride. turn off in Fun → kitty closet
+- 🎨 **theme codes:** ur whole look as a `FLUFF-` code. copy urs, paste anyone's. `/sharetheme` posts it in #theme-share
+- 👋 **Fluff Friends:** see other Fluff users in ur instance + wave at them (pops up on their wrist)
+- 🎪 **community nights:** events planned in the Discord show up on ur Home tab. be there for a badge
+
+**🌍 12 languages** · Settings → Language: English, 日本語, 한국어, 简体中文, Español, Português, Français, Deutsch, Italiano, Polski, Русский, Українська. first launch picks ur Windows language. chat in any language shows up right too
+
+**🧸 comfy + quality of life**
+- ✅ **setup checklist** on first launch: VRChat OSC on?, apps that fight us (MagicChatbox, XSOverlay, OVR Toolkit), which wrist, key, chat name, language
+- ✨ **what's new** popup after every update
+- 🖐️ left-handed mode, menu + wrist size, **reduced motion**, **colorblind-safe** fps colors (+ a word, not just red vs green)
+- 🎚️ **profiles:** Performance / Comfy / Full fluff / ur own picks
+- 💾 export + import settings, reset to defaults (keeps ur key, kitty + badges)
+- 📊 the Stats tab shows how much CPU + RAM Fluff VR Stats itself uses
+- 🥽 shows up in SteamVR's startup apps + Settings → **Start with SteamVR**
+- 📦 **Windows installer** (`FluffVRStats-Setup.exe`) with its own Python + an uninstaller, built for every release
+- ❓ new [troubleshooting + FAQ page](https://wolfiecodesowo.github.io/fluff-vr-stats/faq.html)
+
+**🤖 Fluff Bot:** `/key`, `/resetkey`, `/testers` (who's really beta testing + their version), `/badges`, `/chatban`, `/chatunban`, `/chatdelete`, `/event create|cancel|list`, `/sharetheme`, `/emotes` (13 new Fluff emotes + stickers). 🧪 Beta Tester is earned now (activate the app), not a self-role
+
 ## Quest Edition v0.7.0: auto-updates
 - 🔄 the Quest / phone app updates itself now: it downloads new versions in the background and Android asks u to tap **Update** (apps aren't allowed to install silently). ur settings stay
 - ✅ it double checks the download is really Fluff VR Stats + newer before installing

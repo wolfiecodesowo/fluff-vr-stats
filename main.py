@@ -55,7 +55,10 @@ except ImportError as _e:
     sys.exit(1)
 
 import chatbox
+import fluffnet
+import fun as fun_mod
 import intro
+import lang
 import osc
 import ui
 from extras import Extras
@@ -98,8 +101,14 @@ DEFAULT_CFG = {
         "wrist_kitty": True, "global_chat": True, "wrist_buttons": True,
         "pat_combo": True, "vibe_meter": False, "daily_goal": False, "world_timer": False, "met_today": False,
         "lucky_paw": False, "night_dim": False, "hot_gpu_alert": True, "ram_alert": True, "hourly_chime": False,
-        "fps_drop_log": False, "battery_eta": False,
+        "fps_drop_log": False, "battery_eta": False, "fluff_friends": True,
     },
+    "language": "auto",                # Settings -> Language (auto = ur Windows language)
+    "a11y": {"reduced_motion": False, "colorblind": False},
+    "start_with_steamvr": False,
+    "last_seen_version": "",
+    "checklist_done": False,
+    "safe_mode": False,
     "vr_goal_min": 60,
     "wrist_actions": ["zoom", "chatbox", "timer", "kitty", "gchat", "pat"],
     "gchat": {"name": "", "muted": [], "hud": True},
@@ -109,7 +118,8 @@ DEFAULT_CFG = {
     "bedtime": "01:00",
     "vr_days": {},
     "zoom": {"enabled": False, "mode": "gesture", "level": 3, "size_m": 0.24, "distance_m": 0.55, "fps": 30, "crosshair": True},
-    "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True},
+    "discord": {"app_id": "1557140907994910760", "guild_id": "1557135963510280202", "invite": "", "show_song": True,
+                "hide_world": True},
     "wrist": {"hand": "left", "width_m": 0.13, "opacity": 0.95,
               "offset": [0.0, 0.02, 0.13], "rotation_deg": [-60.0, 0.0, 0.0]},
     "screen": {"enabled": False, "monitor": 1, "fps": 15, "max_width": 1280, "width_m": 1.4,
@@ -235,7 +245,207 @@ def load_cfg():
         cfg["chatbox"]["statuses"] = list(chatbox.DEFAULT["statuses"])
     if cfg["style"].get("ears") not in ui.EAR_STYLES:
         cfg["style"]["ears"] = "cat"
+    if cfg.get("language") not in lang.CODES:
+        cfg["language"] = detect_language()
+    lang.set_lang(cfg["language"])
+    ui.COLORBLIND = bool(cfg.get("a11y", {}).get("colorblind"))
     return cfg
+
+
+def detect_language():
+    """first launch: use the same language as Windows (falls back to English)"""
+    code = ""
+    try:
+        if sys.platform == "win32":
+            import locale
+            lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            code = (locale.windows_locale.get(lid) or "")[:2]
+        else:
+            import locale
+            code = (locale.getlocale()[0] or "")[:2]
+    except Exception:
+        code = ""
+    return code.lower() if code.lower() in lang.CODES else "en"
+
+
+# ---- safe mode: if the app crashes on launch twice in a row, start with every mod off
+LAUNCH_FILE = os.path.join(HERE, "logs", "launch_state.json")
+
+
+def launch_begin(cfg):
+    """call at startup. Returns True if we're in safe mode this time."""
+    try:
+        with open(LAUNCH_FILE, encoding="utf-8") as f:
+            stt = json.load(f)
+    except (OSError, ValueError):
+        stt = {}
+    fails = int(stt.get("starting", 0))
+    stt["starting"] = fails + 1
+    try:
+        with open(LAUNCH_FILE, "w", encoding="utf-8") as f:
+            json.dump(stt, f)
+    except OSError:
+        pass
+    if fails >= 2 and not cfg.get("safe_mode"):
+        cfg["safe_mode_backup"] = dict(cfg["modules"])
+        for k in cfg["modules"]:
+            cfg["modules"][k] = False
+        cfg["safe_mode"] = True
+        save_cfg(cfg)
+        log.warning("crashed on launch %d times -> safe mode (all mods off)", fails)
+        return True
+    return bool(cfg.get("safe_mode"))
+
+
+def launch_ok():
+    """the app has been running fine for a bit: reset the crash counter"""
+    try:
+        with open(LAUNCH_FILE, "w", encoding="utf-8") as f:
+            json.dump({"starting": 0, "ok_at": time.time()}, f)
+    except OSError:
+        pass
+
+
+def leave_safe_mode(cfg):
+    back = cfg.pop("safe_mode_backup", None)
+    if isinstance(back, dict):
+        cfg["modules"].update({k: v for k, v in back.items() if k in cfg["modules"]})
+    cfg["safe_mode"] = False
+
+
+# ---- profiles: one tap to switch between a light setup and the full fluffy one
+PROFILES = {
+    "performance": {"label": "Performance", "on": ["fps", "frametime_graph", "gpu_cpu_ms", "reprojection", "pc_usage",
+                                                   "low_fps_alert", "battery_alert", "hot_gpu_alert", "ram_alert", "clock",
+                                                   "batteries", "look_to_show"], "hz": 1},
+    "comfy": {"label": "Comfy", "on": ["fps", "clock", "batteries", "now_playing", "music_controls", "look_to_show",
+                                       "wrist_pet", "wrist_kitty", "break_reminder", "hydration_reminder", "eye_break",
+                                       "posture_reminder", "bedtime_alert", "night_dim", "battery_alert", "low_fps_alert"],
+              "hz": 2},
+    "full": {"label": "Full fluff", "on": "__all__", "hz": 2},
+}
+
+
+def apply_profile(cfg, key):
+    p = PROFILES.get(key)
+    if key == "custom":
+        back = cfg.get("profile_custom")
+        if isinstance(back, dict):
+            cfg["modules"].update({k: v for k, v in back.items() if k in cfg["modules"]})
+        cfg["profile"] = "custom"
+        return True
+    if not p:
+        return False
+    if cfg.get("profile", "custom") == "custom":
+        cfg["profile_custom"] = dict(cfg["modules"])        # remember ur own picks
+    on = set(cfg["modules"]) if p["on"] == "__all__" else set(p["on"])
+    if p["on"] == "__all__":
+        on -= {"theme_shuffle", "gpu_temp", "ping", "weather"}     # these need setup / change ur look
+    for k in cfg["modules"]:
+        cfg["modules"][k] = k in on
+    cfg["hud_refresh_hz"] = p["hz"]
+    cfg["profile"] = key
+    return True
+
+
+# ---- export / import / reset settings
+EXPORT_DIR = os.path.join(HERE, "exports")
+PRIVATE_KEYS = ("access", "gchat", "link")       # never exported (ur key + chat id stay on this PC)
+
+
+def export_cfg(cfg):
+    os.makedirs(EXPORT_DIR, exist_ok=True)
+    out = {k: v for k, v in cfg.items() if k not in PRIVATE_KEYS and not k.startswith("_")}
+    path = os.path.join(EXPORT_DIR, time.strftime("fluff-settings-%Y%m%d-%H%M%S.json"))
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=2)
+    return path
+
+
+def latest_export():
+    try:
+        files = sorted(f for f in os.listdir(EXPORT_DIR) if f.endswith(".json"))
+        return os.path.join(EXPORT_DIR, files[-1]) if files else None
+    except OSError:
+        return None
+
+
+def import_cfg(cfg, path):
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or "modules" not in data:
+        raise ValueError("that file isn't Fluff VR Stats settings")
+    for k, v in data.items():
+        if k in PRIVATE_KEYS or k.startswith("_"):
+            continue
+        cfg[k] = v
+    _merge(cfg, DEFAULT_CFG)
+    return cfg
+
+
+def reset_cfg(cfg):
+    """back to defaults, but keep ur key, chat name, kitty + badges (u'd be sad to lose those)"""
+    export_cfg(cfg)                                   # backup first, just in case
+    keep = {k: cfg.get(k) for k in ("access", "gchat", "kitty", "fun", "headpats_total", "boops_total",
+                                     "jumps_total", "walked_total_m", "vr_days", "language", "first_run") if k in cfg}
+    cfg.clear()
+    cfg.update(json.loads(json.dumps(DEFAULT_CFG)))
+    cfg.update({k: v for k, v in keep.items() if v is not None})
+    cfg["checklist_done"] = True
+    return cfg
+
+
+def copy_to_clipboard(text):
+    if sys.platform != "win32":
+        return False
+    try:
+        import subprocess
+        subprocess.run(["clip"], input=text.encode("utf-16le"), check=True, timeout=5,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return True
+    except Exception:
+        return False
+
+
+def recent_logs(n=300):
+    try:
+        with open(LOG_PATH, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()[-n:]
+    except OSError:
+        lines = ["(no log yet)\n"]
+    head = f"Fluff VR Stats {_version()} · {sys.platform} · python {sys.version.split()[0]}\n"
+    return head + "".join(lines)
+
+
+def conflicting_apps():
+    """apps that fight with us over the chatbox / wrist"""
+    names = {"magicchatbox.exe": "MagicChatbox", "xsoverlay.exe": "XSOverlay", "ovr toolkit.exe": "OVR Toolkit",
+             "ovrtoolkit.exe": "OVR Toolkit", "vrchatosctools.exe": "OSC Tools"}
+    found = set()
+    try:
+        for pr in psutil.process_iter(["name"]):
+            nm = (pr.info.get("name") or "").lower()
+            if nm in names:
+                found.add(names[nm])
+    except Exception:
+        pass
+    return sorted(found)
+
+
+def whats_new(version):
+    """the top section of CHANGELOG.md (for the 'what's new' card after an update)"""
+    try:
+        with open(os.path.join(HERE, "CHANGELOG.md"), encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return "", []
+    parts = text.split("\n## ")
+    if len(parts) < 2:
+        return "", []
+    sec = parts[1].split("\n")
+    title = sec[0].strip()
+    bullets = [ln.strip()[2:].replace("**", "") for ln in sec[1:] if ln.strip().startswith("- ")]
+    return title, bullets
 
 
 def save_cfg(cfg):
@@ -385,6 +595,16 @@ class State:
         self.desktop = False
         self.version = _version()
         self.dev_msg = ""
+        self.fun_page = "badges"
+        self.fun = None
+        self.access = None
+        self.friends = None
+        self.cevents = None
+        self.whatsnew = None          # (title, bullets) shown once after an update
+        self.checklist = None         # first-run checklist card
+        self.confirm = None           # (action, until) for "tap again to confirm"
+        self.app_usage = {}
+        self.safe_mode = False
 
 
 def _version():
@@ -499,8 +719,31 @@ class App:
         self.last_prio = 0
         self.avatar = Avatar()
         self.extras.avatar = self.avatar
-        self.gchat = GlobalChat(self.cfg, client="pc", on_message=self.on_gchat)
+        self.access = fluffnet.Access(self.cfg, self.state.version, client="pc", on_linked=self.on_linked)
+        self.gchat = GlobalChat(self.cfg, client="pc", on_message=self.on_gchat, access=self.access)
         self.state.gchat = self.gchat
+        self.fun = fun_mod.Fun(self.cfg)
+        self.friends = fluffnet.Friends(self.cfg, client="pc", on_wave=self.on_wave, access=self.access)
+        self.cevents = fluffnet.Events()
+        st0 = self.state
+        st0.fun, st0.access, st0.friends, st0.cevents = self.fun, self.access, self.friends, self.cevents
+        st0.safe_mode = bool(self.cfg.get("safe_mode"))
+        self.last_fun = 0
+        self.started_at = time.time()
+        self.launch_marked = False
+        self.my_proc = psutil.Process()
+        try:
+            self.my_proc.cpu_percent(None)
+        except Exception:
+            pass
+        self.last_usage = 0
+        ver = self.state.version
+        if self.cfg.get("last_seen_version") and self.cfg["last_seen_version"] != ver:
+            st0.whatsnew = whats_new(ver)
+        self.cfg["last_seen_version"] = ver
+        if not self.cfg.get("checklist_done"):
+            st0.checklist = True
+        self.safe("SteamVR startup list", self.register_manifest)
         try:                   # a new version came out while u were playing -> tell u (installs next launch)
             import updater
             def _found(tag):
@@ -625,7 +868,8 @@ class App:
                 self.ov.destroyOverlay(self.kitty_ov)
             except Exception:
                 pass
-        for part in (getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None), getattr(self, "gchat", None),
+        for part in (getattr(self, "friends", None), getattr(self, "cevents", None),
+                     getattr(self, "extras", None), getattr(self, "mirror", None), getattr(self, "discord", None), getattr(self, "zoom", None), getattr(self, "gchat", None),
                      getattr(self, "music", None), getattr(self, "vrclog", None)):
             try:
                 part.stop()
@@ -815,6 +1059,107 @@ class App:
         else:
             self.show_alert("zoom off", secs=2)
 
+    def on_linked(self, who, beta):
+        self.fun.flag("linked")
+        self.show_alert(f"🧪 {lang.tr('key ok!! linked to')} {who} ~ {lang.tr('u got the Beta Tester badge')} <3", secs=10)
+        self.state.dirty_cfg = self.state.dash_dirty = True
+
+    def on_wave(self, name, sid):
+        self.show_alert(f"👋 {name} {lang.tr('waved at u!')}", secs=6)
+        self.state.dash_dirty = True
+
+    def register_manifest(self):
+        """shows us in SteamVR's 'startup overlay apps' list (Settings -> Startup / Shutdown)"""
+        if type(self.ov).__name__ == "NullOverlay" or not hasattr(openvr, "VRApplications"):
+            return                                   # desktop mode: no SteamVR
+        apps = openvr.VRApplications()
+        path = os.path.join(HERE, "fluffvr_stats.vrmanifest")
+        pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(pyw):
+            pyw = sys.executable
+        man = {"source": "builtin", "applications": [{
+            "app_key": "fluffvr.stats", "launch_type": "binary", "binary_path_windows": pyw,
+            "arguments": f'"{os.path.join(HERE, "main.py")}" --vr', "working_directory": HERE,
+            "is_dashboard_overlay": True,
+            "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute furry wrist HUD for VRChat"}}}]}
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(man, f, indent=2)
+        apps.addApplicationManifest(path, False)
+        if not self.cfg.get("_autolaunch_synced"):        # people who used autostart_with_steamvr.py before
+            self.cfg["_autolaunch_synced"] = True
+            try:
+                if apps.getApplicationAutoLaunch("fluffvr.stats"):
+                    self.cfg["start_with_steamvr"] = True
+            except Exception:
+                pass
+        apps.setApplicationAutoLaunch("fluffvr.stats", bool(self.cfg.get("start_with_steamvr")))
+
+    def tick_fun(self, now):
+        """badges, Wrapped stats, seasons, kitty outfit, Fluff Friends, events, app key, safe-mode timer"""
+        st = self.state
+        if now - self.last_fun < 1.0:
+            return
+        self.last_fun = now
+        if not self.launch_marked and now - self.started_at > 60:
+            self.launch_marked = True
+            launch_ok()
+        w = st.world or {}
+        before = self.cfg.get("kitty", {}).get("pats", 0)
+        for msg in self.fun.tick(st, self.cfg.get("kitty", {}), st.music, w, st.desktop, now):
+            self.show_alert(msg, secs=8)
+            st.dash_dirty = True
+        # Halloween: kitty pats can drop candy
+        kp = self.cfg.get("kitty", {}).get("pats", 0)
+        if kp > self.__dict__.setdefault("_kp", kp):
+            got = self.fun.on_kitty_pat()
+            if got:
+                self.show_alert(got, secs=4)
+        self._kp = kp
+        earned = self.fun.pop_earned()
+        if earned:
+            st.dirty_cfg = st.dash_dirty = True
+            self.access.sync_badges(list(self.fun.f["badges"]))
+        outfit = self.fun.closet()
+        if outfit != self.kitty.outfit:
+            self.kitty.outfit = outfit
+            self.kitty.changed = True
+        # same-instance friends
+        if w.get("found") and w.get("world_id"):
+            self.friends.set_instance(w.get("world_id"), w.get("instance", ""))
+        else:
+            self.friends.set_instance(None, None)
+        self.friends.tick()
+        if self.friends.changed:
+            self.friends.changed = False
+            st.dash_dirty = True
+        if self.cevents.changed:
+            self.cevents.changed = False
+            st.dash_dirty = True
+        if self.cevents.live(now):
+            self.fun.flag("event_joined")
+        # overlay's own cost (Stats tab)
+        if now - self.last_usage > 3:
+            self.last_usage = now
+            try:
+                with self.my_proc.oneshot():
+                    st.app_usage = {"cpu": self.my_proc.cpu_percent(None) / max(1, psutil.cpu_count() or 1),
+                                    "ram_mb": self.my_proc.memory_info().rss / 1048576,
+                                    "threads": self.my_proc.num_threads()}
+            except Exception:
+                pass
+        if st.checklist and now - self.__dict__.get("_conf_t", 0) > 10:
+            self._conf_t = now
+            st.conflicts = conflicting_apps()
+            st.dash_dirty = True
+        if st.tab == "Fun" and getattr(st, "fun_page", "") == "closet" and now - self.__dict__.get("_kimg_t", 0) > 2:
+            self._kimg_t = now
+            st.kitty_img = self.kitty.render(ui.get_theme(self.cfg), now)
+            self.kitty.changed = True
+            st.dash_dirty = True
+        if st.confirm and now > st.confirm[1]:
+            st.confirm = None
+            st.dash_dirty = True
+
     def on_gchat(self, msg):
         st = self.state
         st.dash_dirty = True
@@ -930,6 +1275,9 @@ class App:
     # ---- actions from dashboard clicks
     def do(self, action, args):
         st, cfg = self.state, self.cfg
+        if self.do_more(action, args):
+            st.dash_dirty = True
+            return
         if action == "tab":
             st.tab = args[0]
             st.chat_scroll = st.gchat_scroll = 0
@@ -1152,6 +1500,177 @@ class App:
             self.show_alert("opened on ur desktop :3", secs=4)
         st.dash_dirty = True
 
+    def confirmed(self, action):
+        """'tap again to confirm' for things that can't be undone easily"""
+        st = self.state
+        if st.confirm and st.confirm[0] == action and time.time() < st.confirm[1]:
+            st.confirm = None
+            return True
+        st.confirm = (action, time.time() + 5)
+        self.show_alert(lang.tr("tap again to confirm"), "warn", 5)
+        return False
+
+    def do_more(self, action, args):
+        """v0.4 actions: Fun tab, app key, language, privacy, comfy settings, profiles, backups, logs"""
+        st, cfg, f = self.state, self.cfg, self.fun
+        a0 = args[0] if args else None
+        if action == "noop":
+            return True
+        if action == "set_page":
+            st.set_page = a0
+        elif action == "tab_fun":
+            st.tab, st.fun_page = "Fun", a0 or "badges"
+            if st.fun_page == "badges":
+                f.f["seen_badges"] = list(f.f["badges"])
+        elif action == "fun_page":
+            st.fun_page = a0
+            if a0 == "badges":
+                f.f["seen_badges"] = list(f.f["badges"])
+                st.dirty_cfg = True
+        elif action == "wrapped":
+            path = fun_mod.save_wrapped(f, cfg, cfg.get("gchat", {}).get("name", ""), a0)
+            st.dirty_cfg = True
+            try:
+                if sys.platform == "win32":
+                    os.startfile(path)
+            except Exception:
+                pass
+            self.show_alert(lang.tr("ur Fluff Wrapped card is saved in the wrapped folder ~ post it!!"), secs=8)
+        elif action == "wear":
+            slot, item = args[0], args[1]
+            if f.unlocked(item, slot):
+                f.f["closet"][slot] = item
+                f.f["closet"]["picked"] = True
+                st.dirty_cfg = True
+            else:
+                self.show_alert(lang.tr("still locked ~ check how to get it below"), "warn", 4)
+        elif action == "season":
+            f.f["season"] = "off" if f.f.get("season") != "off" else "auto"
+            st.dirty_cfg = True
+        elif action == "season_theme":
+            s = f.season()
+            if s:
+                cfg["theme"] = fun_mod.SEASONS[s]["theme"]
+                cfg["cursor"] = fun_mod.SEASONS[s].get("cursor", cfg.get("cursor", "paw"))
+                st.dirty_cfg = st.hud_dirty = True
+                self.safe("icon", self.refresh_icon)
+        elif action == "theme_copy":
+            code = fun_mod.theme_code(cfg)
+            ok = copy_to_clipboard(code)
+            f.flag("theme_shared")
+            st.dirty_cfg = True
+            self.show_alert((lang.tr("copied!! paste it in #theme-share:") if ok else lang.tr("ur code:")) + " " + code, secs=10)
+        elif action == "theme_enter":
+            self.open_keyboard(lang.tr("Paste a theme code (FLUFF-...)"), "", ("cfg", "theme_code"))
+        elif action == "wave":
+            if self.friends.wave(a0):
+                f.add("waves")
+                f.check_badges()
+                st.dirty_cfg = True
+                self.show_alert("👋 " + lang.tr("waved!"), secs=3)
+        elif action == "key_enter":
+            self.open_keyboard(lang.tr("Ur app key from the Fluff Discord (/key)"), "", ("cfg", "app_key"))
+        elif action == "key_forget":
+            if self.confirmed("key_forget"):
+                self.access.forget()
+                st.dirty_cfg = True
+        elif action == "lang":
+            cfg["language"] = a0 if a0 in lang.CODES else lang.next_lang(cfg.get("language", "en"))
+            lang.set_lang(cfg["language"])
+            self.kitty.changed = True
+            st.dirty_cfg = st.hud_dirty = True
+            self.show_alert(lang.tr("language") + ": " + lang.NAMES[cfg["language"]], secs=3)
+        elif action == "a11y":
+            ax = cfg.setdefault("a11y", {})
+            ax[a0] = not ax.get(a0)
+            if a0 == "reduced_motion":
+                cfg["animate_logo"] = not ax[a0]
+                cfg["intro"] = not ax[a0]
+            ui.COLORBLIND = bool(ax.get("colorblind"))
+            st.dirty_cfg = st.hud_dirty = True
+        elif action == "left_handed":
+            cfg["wrist"]["hand"] = "right" if cfg["wrist"]["hand"] == "left" else "left"
+            self.apply_wrist()
+            self.kitty_idx = -1                      # re-attach kitty to the other wrist
+            st.dirty_cfg = st.hud_dirty = True
+        elif action == "menu_size":
+            sizes = [1.6, 2.0, 2.4, 2.8]
+            cur = float(cfg.get("dashboard_width_m", 2.0))
+            cfg["dashboard_width_m"] = sizes[(min(range(4), key=lambda i: abs(sizes[i] - cur)) + 1) % 4]
+            try:
+                self.ov.setOverlayWidthInMeters(self.dash, cfg["dashboard_width_m"])
+            except Exception:
+                pass
+            st.dirty_cfg = True
+        elif action == "wrist_size":
+            sizes = [0.11, 0.13, 0.16, 0.19]
+            cur = float(cfg["wrist"].get("width_m", 0.13))
+            cfg["wrist"]["width_m"] = sizes[(min(range(4), key=lambda i: abs(sizes[i] - cur)) + 1) % 4]
+            self.apply_wrist()
+            st.dirty_cfg = True
+        elif action == "privacy":
+            cfg["discord"][a0] = not cfg["discord"].get(a0, a0 == "hide_world")
+            st.dirty_cfg = True
+        elif action == "start_with_steamvr":
+            cfg["start_with_steamvr"] = not cfg.get("start_with_steamvr")
+            self.safe("SteamVR startup list", self.register_manifest)
+            st.dirty_cfg = True
+        elif action == "profile":
+            if apply_profile(cfg, a0):
+                st.dirty_cfg = st.hud_dirty = True
+                self.hud_alpha = None
+                self.show_alert(lang.tr("profile") + ": " + lang.tr(PROFILES.get(a0, {}).get("label", "my own picks")), secs=4)
+        elif action == "export_cfg":
+            path = export_cfg(cfg)
+            self.show_alert(lang.tr("saved ur settings to") + " exports/" + os.path.basename(path), secs=6)
+        elif action == "import_cfg":
+            path = latest_export()
+            if not path:
+                self.show_alert(lang.tr("no settings file in the exports folder yet"), "warn", 6)
+            elif self.confirmed("import_cfg"):
+                import_cfg(cfg, path)
+                lang.set_lang(cfg.get("language", "en"))
+                st.dirty_cfg = st.hud_dirty = True
+                self.apply_wrist()
+                self.show_alert(lang.tr("loaded") + " " + os.path.basename(path), secs=6)
+        elif action == "reset_cfg":
+            if self.confirmed("reset_cfg"):
+                reset_cfg(cfg)
+                lang.set_lang(cfg.get("language", "en"))
+                st.dirty_cfg = st.hud_dirty = True
+                self.apply_wrist()
+                self.show_alert(lang.tr("settings reset ~ a backup is in the exports folder"), secs=6)
+        elif action == "copy_logs":
+            ok = copy_to_clipboard(recent_logs())
+            try:
+                if sys.platform == "win32":
+                    os.startfile(os.path.dirname(LOG_PATH))
+            except Exception:
+                pass
+            self.show_alert(lang.tr("logs copied ~ paste them in ur Discord ticket") if ok
+                            else lang.tr("opened the logs folder ~ send fluffvr.log in ur ticket"), secs=8)
+        elif action == "safe_off":
+            leave_safe_mode(cfg)
+            st.safe_mode = False
+            st.dirty_cfg = st.hud_dirty = True
+            self.show_alert(lang.tr("mods are back on :3"), secs=4)
+        elif action == "whatsnew_close":
+            st.whatsnew = None
+        elif action == "checklist":
+            if a0 == "done":
+                st.checklist = None
+                cfg["checklist_done"] = True
+                st.dirty_cfg = True
+            else:
+                st.checklist = True
+                st.tab = "Home"
+        elif action == "gchat_report":
+            why = self.gchat.report(a0)
+            self.show_alert(why or lang.tr("reported to staff, thank u <3"), "warn" if why else "info", 5)
+        else:
+            return False
+        return True
+
     def mouse_flipped(self):
         """SteamVR reports laser y from the bottom for raw textures but from the top for
         OpenGL textures. 'auto' picks by texture mode and self-corrects if clicks keep missing."""
@@ -1363,6 +1882,20 @@ class App:
             return
         if isinstance(target, tuple) and target[0] == "cfg":
             key, text = target[1], text.strip()
+            if key == "app_key":
+                why = self.access.start(text)
+                self.show_alert(why or lang.tr("checking ur key…"), "warn" if why else "info", 6)
+                st.dash_dirty = True
+                return
+            if key == "theme_code":
+                if fun_mod.apply_theme_code(self.cfg, text):
+                    self.show_alert(lang.tr("new look applied!! :3"), secs=4)
+                    st.hud_dirty = True
+                    self.safe("icon", self.refresh_icon)
+                else:
+                    self.show_alert(lang.tr("that's not a theme code ~ they look like FLUFF-ABCD..."), "warn", 6)
+                st.dirty_cfg = st.dash_dirty = True
+                return
             if key == "gchat_name":
                 from gchat import clean_name
                 name = clean_name(text)
@@ -1606,6 +2139,7 @@ class App:
             self.extras.changed = True
 
     def show_alert(self, text, kind="info", secs=8):
+        text = lang.tr(text)
         self.state.alert = {"text": text, "kind": kind, "until": time.time() + secs}
         self.state.hud_dirty = True
         self.hud_alpha = None
@@ -1641,7 +2175,8 @@ class App:
             if mu.get("title") and mu.get("playing") is not False:
                 song = f"{mu['title']} - {mu['artist']}" if mu.get("artist") else mu["title"]
             self.discord.status = {
-                "fps": st.stats.get("fps"), "world": st.extras.get("world_name") or None,
+                "fps": st.stats.get("fps"),
+                "world": None if self.cfg["discord"].get("hide_world", True) else (st.extras.get("world_name") or None),
                 "song": song, "session_start": st.extras.get("session_start")}
             if self.discord.changed:
                 self.discord.changed = False
@@ -2042,6 +2577,7 @@ class App:
             self.safe("desktop screen", self.update_screen)
             self.safe("zoom", self.update_zoom)
             self.safe("kitty", self.step_kitty, now)
+            self.safe("fun", self.tick_fun, now)
             if st.dirty_cfg and now - self.t["save"] > 1:
                 st.dirty_cfg = False
                 self.t["save"] = now
@@ -2106,8 +2642,9 @@ class App:
             th = ui.get_theme(self.cfg)
             frame = ui.draw_hover(ui.add_logo(self.dash_base, self.logo_i, st.anim_slots), st.hover_box, th)
             if self.cfg.get("cursor", "paw") != "steamvr":
-                trail = [(x, y, now - t0) for x, y, t0 in st.trail]
-                clicks = [(x, y, now - t0) for x, y, t0 in st.click_fx]
+                calm = self.cfg.get("a11y", {}).get("reduced_motion")
+                trail = [] if calm else [(x, y, now - t0) for x, y, t0 in st.trail]
+                clicks = [] if calm else [(x, y, now - t0) for x, y, t0 in st.click_fx]
                 frame = ui.draw_cursor(frame, st.cursor, trail, clicks, th, self.cfg.get("cursor", "paw"))
             self.push(self.dash, frame, "dash")
 
@@ -2216,7 +2753,10 @@ def main():
         updater.check_and_update(load_cfg(), log=log)
     except Exception as e:
         log.warning("updater: %s", e)
-    mode = choose_mode(load_cfg())
+    _c = load_cfg()
+    if launch_begin(_c):
+        print("  safe mode: started with every mod off (it crashed on launch twice). Settings -> mods back on")
+    mode = choose_mode(_c)
     if mode is None:          # closed the picker
         return
     if mode == "desktop":

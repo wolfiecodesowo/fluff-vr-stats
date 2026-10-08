@@ -62,6 +62,44 @@ class _FakeChat:
         return "me"
 st.gchat = _FakeChat()
 cfg["gchat"]["name"] = "me"
+# v0.4 bits: badges, wrapped, closet, friends, events, key
+import fun as _fun, fluffnet as _net, kitty as _kitty
+st.fun = _fun.Fun(cfg)
+st.fun.f["badges"].update({b[0]: int(time.time()) - i * 3600 for i, b in enumerate(_fun.BADGES[:14])})
+st.fun.f["life"].update(pats=420, boops=133, vr_s=200000, walked_m=12000, kitty_pats=380, songs=150, best_streak=9)
+m = st.fun.month()
+m.update(vr_s=61200, pats=212, boops=48, walked_m=8400, people=96, kitty_pats=151, songs=88, jumps=40, candy=17,
+         world_s={"The Black Cat": 30000, "Furry Hideout": 12000, "Midnight Rooftop": 6000},
+         song_n={"Midnight City - M83": 14, "Kids - MGMT": 6})
+st.fun.f["seen_badges"] = list(st.fun.f["badges"])[:-2]
+st.fun.f["candy_season"] = {_fun.season_id("halloween"): 17}
+
+
+class _FakeAccess:
+    enabled, linked, status = True, True, "key ok"
+    def who(self): return "wolfie"
+    def locked(self, now=None): return False
+    def grace_left(self, now=None): return 0
+    def token(self): return "x"
+
+
+class _FakeFriends:
+    def list(self):
+        return [["a1", {"n": "Kitsu", "c": "pc", "seen": time.time()}], ["b2", {"n": "Bunbun", "c": "quest", "seen": time.time()}]]
+
+
+class _FakeEvents:
+    def upcoming(self, now=None):
+        return [{"id": "e1", "title": "Spooky Floof Night", "start": time.time() + 7200, "end": time.time() + 14400,
+                 "world": "The Black Cat", "desc": "costumes + candy hunt", "cancel": False}]
+    def live(self, now=None): return []
+
+
+st.access, st.friends, st.cevents = _FakeAccess(), _FakeFriends(), _FakeEvents()
+st.world["world_id"] = "wrld_x"
+_k = _kitty.Kitty(cfg)
+_k.outfit = st.fun.closet()
+st.kitty_img = _k.render(ui.get_theme(cfg))
 ui.render_hud(st).save(os.path.join(out, "preview_hud.png"))
 st.extras.update(boops=4, vr_today_s=6200, vr_streak=3)
 st.version = "v0.3.0"
@@ -74,6 +112,42 @@ for tab in ui.TABS:
     if tab == "Home":
         st.gchat.unread = 2
     img.save(os.path.join(out, f"preview_dash_{name}.png"))
+for page, _ in __import__("ui_fun").FUN_PAGES:
+    st.tab, st.fun_page = "Fun", page
+    img, _ = ui.render_dashboard(st)
+    ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_fun_{page}.png"))
+for page, _ in __import__("ui_fun").SET_PAGES:
+    st.tab, st.set_page = "Settings", page
+    img, _ = ui.render_dashboard(st)
+    ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_settings_{page}.png"))
+st.tab = "Home"
+st.whatsnew = ("v0.4.0: the big safety + fun update", ["🔐 global chat is safe now: Fluff Bot checks every message",
+               "🎁 Fluff Wrapped: ur month in VR as a card", "🏅 37 badges", "🌍 12 languages"])
+img, _ = ui.render_dashboard(st)
+ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_whatsnew.png"))
+st.whatsnew = None
+st.checklist, st.conflicts = True, ["MagicChatbox"]
+img, _ = ui.render_dashboard(st)
+ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_checklist.png"))
+st.checklist = None
+_FakeAccess.locked = lambda self, now=None: True
+_FakeAccess.linked = False
+_FakeAccess.status = "no key yet"
+img, _ = ui.render_dashboard(st)
+ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_keylock.png"))
+_FakeAccess.locked = lambda self, now=None: False
+_FakeAccess.linked = True
+_fun.render_wrapped(st.fun, cfg, "wolfie").save(os.path.join(out, "preview_wrapped_card.png"))
+# every language, Home + Settings
+import lang as _lang
+for code in (sys.argv[2].split(",") if len(sys.argv) > 2 else []):
+    _lang.set_lang(code)
+    for tab in ("Home", "Settings", "Mods", "Fun"):
+        st.tab, st.set_page, st.fun_page = tab, "general", "badges"
+        img, _ = ui.render_dashboard(st)
+        ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_lang_{code}_{tab.lower()}.png"))
+    ui.render_hud(st).save(os.path.join(out, f"preview_lang_{code}_hud.png"))
+_lang.set_lang("en")
 # error card examples
 st.tab = "Stats"
 st.errors.append({"text": "desktop screen: OSError: monitor 2 unplugged", "time": time.time()})

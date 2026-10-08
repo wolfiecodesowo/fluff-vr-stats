@@ -6,8 +6,15 @@ Never touched: config.json (settings + AI key), bot/bot_config.json (bot token),
 else the user added that isn't part of the app. Replaced files are backed up in .update_backup/ first,
 and if anything goes wrong mid-update the old files are put back.
 
+Safety: once the owner has set up release signing (tools/make_keys.py + tools/sign_release.py),
+every release carries fluff-manifest.json: the SHA-256 of every file, signed with the release key.
+The updater checks the signature AND every file's hash before it swaps anything. If the manifest is
+missing, the signature is wrong, or one byte of one file doesn't match, the update is refused and
+the app starts normally on the old version.
+
 Turn it off: config.json -> "auto_update": false
 """
+import hashlib
 import io
 import json
 import os
@@ -27,8 +34,9 @@ VERSION_FILE = os.path.join(HERE, "VERSION")
 UA = {"User-Agent": "FluffVRStats-updater", "Accept": "application/vnd.github+json"}
 
 # never overwrite or delete these (user data / secrets)
-KEEP = {"config.json", "config.json.tmp", "bot/bot_config.json", "bot/bot_config.json.tmp", "VERSION.skip"}
-KEEP_DIRS = ("logs/", ".update_backup/", "__pycache__/", ".git/")
+KEEP = {"config.json", "config.json.tmp", "bot/bot_config.json", "bot/bot_config.json.tmp", "VERSION.skip",
+        "bot/bot_key.pem", "bot/bot_data.json"}
+KEEP_DIRS = ("logs/", ".update_backup/", "__pycache__/", ".git/", "keys/", "wrapped/")
 # not needed on PC (website + Quest source), skip to keep updates small
 SKIP_DIRS = ("docs/", "quest/", ".github/")
 
@@ -79,8 +87,50 @@ def _skip(rel):
             or rel.endswith((".pyc",)))
 
 
-def apply_zip(data, tag, status=None):
-    """Unpacks the release over the app folder (keeping user files), with a backup + rollback."""
+MANIFEST_NAME = "fluff-manifest.json"
+
+
+class UpdateRefused(Exception):
+    pass
+
+
+def _need_crypto():
+    """old installs might not have the 'cryptography' package yet: grab it before checking signatures"""
+    import importlib
+    import trust
+    if trust.HAVE_CRYPTO:
+        return trust
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "cryptography"], timeout=300)
+        importlib.invalidate_caches()
+        trust = importlib.reload(trust)
+    except Exception:
+        pass
+    return trust
+
+
+def fetch_manifest(rel, tag):
+    """signed file list for this release, or raises UpdateRefused"""
+    trust = _need_crypto()
+    if not trust.HAVE_CRYPTO:
+        raise UpdateRefused("can't check the update's signature (run install.bat)")
+    url = None
+    for a in rel.get("assets") or []:
+        if a.get("name") == MANIFEST_NAME:
+            url = a.get("browser_download_url")
+    if not url:
+        raise UpdateRefused("this release isn't signed")
+    man = json.loads(_download(url).decode("utf-8"))
+    if not trust.verify_payload("release", man):
+        raise UpdateRefused("the update's signature is wrong")
+    if man.get("tag") != tag or not isinstance(man.get("files"), dict):
+        raise UpdateRefused("the signed file list is for a different version")
+    return man
+
+
+def apply_zip(data, tag, status=None, manifest=None):
+    """Unpacks the release over the app folder (keeping user files), with a backup + rollback.
+    With a manifest: every file must match its signed SHA-256 or nothing gets installed."""
     zf = zipfile.ZipFile(io.BytesIO(data))
     names = [n for n in zf.namelist() if not n.endswith("/")]
     root = os.path.commonprefix(names).split("/")[0] + "/" if names else ""   # GitHub's "repo-tag/" folder
@@ -95,6 +145,17 @@ def apply_zip(data, tag, status=None):
             rel = n[len(root):]
             if rel and not _skip(rel):
                 files.append(rel)
+        if manifest is not None:
+            want = manifest["files"]
+            for rel in [r for r in files if r not in want]:
+                files.remove(rel)                      # not in the signed list -> don't install it
+            for rel in files:
+                with open(os.path.join(src_root, rel), "rb") as f:
+                    if hashlib.sha256(f.read()).hexdigest() != want[rel]:
+                        raise UpdateRefused(f"{rel} doesn't match the signed release")
+            missing = [r for r in want if not _skip(r) and r not in files]
+            if missing:
+                raise UpdateRefused(f"the download is missing {missing[0]}")
         old_req = _read(os.path.join(HERE, "requirements.txt"))
         for i, rel in enumerate(files):
             dst = os.path.join(HERE, rel)
@@ -211,13 +272,23 @@ def check_and_update(cfg=None, restart=True, log=None):
     if not tag or parse(tag) <= parse(local_version()):
         return None
     url = rel.get("zipball_url") or f"https://github.com/{REPO}/archive/refs/tags/{tag}.zip"
+    manifest = None
+    try:
+        import trust
+        if trust.configured("release"):
+            manifest = fetch_manifest(rel, tag)
+    except Exception as e:
+        if log:
+            log.warning("update %s refused: %s", tag, e)
+        return None
     win = _Window(f"✨ updating to {tag}…")
     try:
         def prog(got, total):
             win.set(f"downloading… {got * 100 // total}%" if total else f"downloading… {got // 1024} KB")
         data = _download(url, prog)
         win.set("installing…")
-        written, req_changed = apply_zip(data, tag, win.set)
+        win.set("checking the signature…" if manifest else "installing…")
+        written, req_changed = apply_zip(data, tag, win.set, manifest=manifest)
         if req_changed:
             win.set("installing new parts (pip)…")
             try:

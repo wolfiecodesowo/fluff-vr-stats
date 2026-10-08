@@ -18,6 +18,7 @@ import time
 from functools import lru_cache
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
+from lang import ImageDraw, tr as _tr  # translates drawn text (Settings -> Language)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "assets", "kitty")
@@ -156,6 +157,7 @@ class Kitty:
         self.changed = True
         self.hits = []              # [(x0, y0, x1, y1), action] in image px
         self.sound = None           # name of a sound to play (main loop picks it up)
+        self.outfit = ("none", "none")  # (hat, collar) from the Fun tab closet (fun.py)
 
     # ---- state
     def hunger(self, now=None):
@@ -186,7 +188,7 @@ class Kitty:
                     k["unlocked"] = True
                     self._set("love", 4, "pat", "meow")
                     self.say, self.say_until = "i trust u now!! <3", now + 4
-                    return f"{k['name']} trusts u now!! u can feed her :3"
+                    return k['name'] + " " + _tr("trusts u now!! u can feed her :3")
                 self._set("shy", 1.6, "shy", "meow")
             else:
                 self._set("happy", 2.2, "pat", random.choice(["meow", "meow", "purr"]))
@@ -198,7 +200,7 @@ class Kitty:
             self._set("grumpy", 1.5, "tail", "mrrp")
         elif action == "feed":
             if not k["unlocked"]:
-                self.say, self.say_until = f"too shy... pat her ({k['trust']}/{TRUST_NEEDED})", now + 3
+                self.say, self.say_until = _tr("too shy... pat her") + f" ({k['trust']}/{TRUST_NEEDED})", now + 3
                 self.changed = True
                 return None
             k["fed"] += 1
@@ -270,9 +272,10 @@ class Kitty:
         pic = _fit(i, w, h) if not squish else _fit(i, w, h).resize((w, hh), Image.LANCZOS)
         ox, oy = (S - w) // 2, 48 + (h - hh)
         img.alpha_composite(pic, (ox, oy))
-        d = ImageDraw.Draw(img)
         X = lambda x: ox + x * sc
         Y = lambda y: 48 + y * sc
+        self._wear(img, X(108), Y(30) + (h - hh), 110 * sc, Y(106) + (h - hh))
+        d = ImageDraw.Draw(img)
         hits = [((X(110 - 26), Y(70), X(110 + 26), Y(100)), "boop"),
                 ((X(40), Y(10), X(180), Y(108)), "pat"),
                 ((X(75), Y(100), X(150), Y(290)), "pat"),
@@ -293,11 +296,22 @@ class Kitty:
         self._ui(d, img, now, hits, ink, accent, ink)
         return img
 
+    def _wear(self, img, cx, top, w, neck_y):
+        hat, neck = self.outfit or ("none", "none")
+        if hat == "none" and neck == "none":
+            return
+        try:
+            import fun
+            fun.draw_outfit(img, hat, neck, cx, top, w, neck_y)
+        except Exception:
+            pass
+
     def _ui(self, d, img, now, hits, ink, accent, txt):
         """name, tummy / trust bar, feed button (cached, text is slow to draw) + speech bubble"""
         S = SIZE
         hg = round(self.hunger(now), 2)
-        key = (self.k["name"], self.k["unlocked"], self.k["trust"], hg, ink, accent, txt,
+        import lang
+        key = (self.k["name"], self.k["unlocked"], self.k["trust"], hg, ink, accent, txt, lang.current(),
                bool(custom_frames()) and self.k.get("style", "custom") == "custom")
         if getattr(self, "_ui_key", None) != key:
             layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -341,7 +355,7 @@ class Kitty:
             d.rounded_rectangle([lx - 16, ly - 4, lx + 16, ly + 22], 5, fill=(255, 210, 90), outline=ink, width=2)
             d.arc([lx - 11, ly - 20, lx + 11, ly + 4], 180, 360, fill=ink, width=4)
             tr = self.k["trust"]
-            d.text((S / 2, S - 44), f"pat me to make friends! {tr}/{TRUST_NEEDED}", font=_font(17), fill=txt, anchor="mm")
+            d.text((S / 2, S - 44), _tr("pat me to make friends!") + f" {tr}/{TRUST_NEEDED}", font=_font(17), fill=txt, anchor="mm")
             bw2 = S - 80
             d.rounded_rectangle([40, S - 30, 40 + bw2, S - 17], 7, fill=(60, 48, 72))
             if tr:
@@ -369,6 +383,7 @@ class Kitty:
         # body (gentle breathing bob)
         bob = int(round(math.sin(now * (1.0 if face == "sleepy" else 2.0)) * 2))
         img.alpha_composite(sprite("body_" + face, color), (0, bob))
+        self._wear(img, 200, 48 + bob, 160, 160 + bob)
         d = ImageDraw.Draw(img)
         # food bowl when eating
         if face == "eat":
@@ -408,7 +423,7 @@ class Kitty:
             d.rounded_rectangle([lx - 16, ly - 4, lx + 16, ly + 22], 5, fill=(255, 210, 90), outline=ink, width=2)
             d.arc([lx - 11, ly - 20, lx + 11, ly + 4], 180, 360, fill=ink, width=4)
             tr = self.k["trust"]
-            d.text((S / 2, S - 48), f"pat me to make friends! {tr}/{TRUST_NEEDED}", font=_font(18), fill=txt, anchor="mm")
+            d.text((S / 2, S - 48), _tr("pat me to make friends!") + f" {tr}/{TRUST_NEEDED}", font=_font(18), fill=txt, anchor="mm")
             bw2 = S - 80
             d.rounded_rectangle([40, S - 32, 40 + bw2, S - 18], 7, fill=(30, 20, 40))
             if tr:

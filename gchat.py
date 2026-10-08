@@ -2,8 +2,12 @@
 Global chat (mod): one big chat room shared by everyone using Fluff VR Stats (PC, desktop, Quest)
 and the #global-chat channel in the Discord (Fluff Bot relays both ways).
 
-How: messages go through ntfy.sh, a free public message relay (no accounts, no keys). Every client
-listens to the same topic. It's a public room, so:
+How: messages go through ntfy.sh, a free public message relay.
+  v2 (once the owner set up keys, see trust.py): the app sends to an "inbox", Fluff Bot checks ur app
+  key + the rules (filter, slow mode, bans) and re-posts it SIGNED into the room. The app only shows
+  signed messages, so nobody can skip the rules by posting to ntfy directly.
+  v1 (old clients / keys not set up yet): everyone posts + listens to one topic.
+It's a public room, so:
   - no links (anti-scam), max 200 characters, slow mode (1 msg / 3s)
   - a small bad-word filter, and u can mute anyone on ur side
   - never post personal info in it!
@@ -18,7 +22,9 @@ import time
 import urllib.request
 
 BASE = "https://ntfy.sh"
-TOPIC = "fluffvrstats-global-chat-v1"
+TOPIC = "fluffvrstats-global-chat-v1"      # v1 (legacy) room
+ROOM2 = "fluffvrstats-room-v2"              # v2: only Fluff Bot posts here (signed)
+INBOX2 = "fluffvrstats-inbox-v2"            # v2: apps send here, Fluff Bot checks + relays
 MAX_LEN = 200
 SLOW_S = 3.0
 UA = {"User-Agent": "FluffVRStats-gchat"}
@@ -46,8 +52,15 @@ def clean_name(name):
 
 
 class GlobalChat:
-    def __init__(self, cfg, client="pc", on_message=None):
+    def __init__(self, cfg, client="pc", on_message=None, access=None):
         self.cfg = cfg
+        self.access = access
+        try:
+            import trust
+            self.v2 = trust.configured("bot") and trust.HAVE_CRYPTO
+        except Exception:
+            self.v2 = False
+        self.banned = set()
         g = cfg.setdefault("gchat", {})
         g.setdefault("name", "")
         g.setdefault("muted", [])
@@ -97,13 +110,22 @@ class GlobalChat:
         now = time.time()
         if now - self.last_sent < SLOW_S:
             return "slow mode ~ wait a sec :3"
+        topic = TOPIC
+        if self.v2:
+            tok = self.access.token() if self.access else None
+            if not tok:
+                return "global chat needs ur free app key ~ type /key in the Fluff Discord :3"
+            body = json.dumps({"v": 2, "t": "msg", "n": self.name(), "m": text, "s": self.sid, "c": self.client,
+                               "tok": tok}, ensure_ascii=False).encode("utf-8")
+            topic = INBOX2
+        else:
+            body = json.dumps({"v": 1, "n": self.name(), "m": text, "s": self.sid, "c": self.client},
+                              ensure_ascii=False).encode("utf-8")
         self.last_sent = now
-        body = json.dumps({"v": 1, "n": self.name(), "m": text, "s": self.sid, "c": self.client},
-                          ensure_ascii=False).encode("utf-8")
 
         def post():
             try:
-                req = urllib.request.Request(f"{BASE}/{TOPIC}", data=body, method="POST",
+                req = urllib.request.Request(f"{BASE}/{topic}", data=body, method="POST",
                                              headers=dict(UA, **{"Content-Type": "text/plain; charset=utf-8"}))
                 with urllib.request.urlopen(req, timeout=10) as r:
                     r.read()
@@ -114,7 +136,50 @@ class GlobalChat:
         threading.Thread(target=post, daemon=True, name="gchat-send").start()
         return None
 
+    def report(self, msg_id, why="reported from the app"):
+        """sends a message to the staff's #mod-log (v2 only). Returns None if ok, or why not."""
+        if not self.v2:
+            return "reporting needs the new chat ~ ask staff in the Discord"
+        tok = self.access.token() if self.access else None
+        if not tok:
+            return "u need ur app key to report ~ /key in the Discord"
+        body = json.dumps({"v": 2, "t": "report", "id": str(msg_id), "why": str(why)[:120], "tok": tok,
+                           "s": self.sid}).encode("utf-8")
+
+        def post():
+            try:
+                req = urllib.request.Request(f"{BASE}/{INBOX2}", data=body, method="POST", headers=UA)
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    r.read()
+            except Exception:
+                pass
+        threading.Thread(target=post, daemon=True, name="gchat-report").start()
+        return None
+
     # ---------------------------------------------------------------- receive
+    def parse_v2(self, line):
+        """v2 room line -> message dict, or ("ban", sid) / ("del", id), or None. Must be signed by Fluff Bot."""
+        try:
+            ev = json.loads(line)
+            if ev.get("event") != "message":
+                return None
+            m = json.loads(ev.get("message", ""))
+        except ValueError:
+            return None
+        import trust
+        if not isinstance(m, dict) or not trust.verify_payload("bot", m):
+            return None
+        if m.get("t") == "ban":
+            return ("ban", str(m.get("s", ""))[:16])
+        if m.get("t") == "del":
+            return ("del", str(m.get("id", "")))
+        if m.get("t") != "msg":
+            return None
+        sid = str(m.get("s", ""))[:16]
+        return {"id": str(m.get("id") or ev.get("id")), "name": clean_name(m.get("n")) or "fluff",
+                "text": str(m.get("m", ""))[:MAX_LEN], "time": float(m.get("ts") or ev.get("time") or time.time()),
+                "sid": sid, "client": str(m.get("c", "pc"))[:8], "mine": sid == self.sid}
+
     def parse(self, line):
         """One line from ntfy's JSON stream -> message dict (or None)."""
         try:
@@ -139,7 +204,7 @@ class GlobalChat:
                 "client": str(m.get("c", "pc"))[:8], "mine": sid == self.sid}
 
     def _add(self, msg):
-        if msg["id"] in self.seen or msg["sid"] in self.cfg["gchat"].get("muted", []):
+        if msg["id"] in self.seen or msg["sid"] in self.cfg["gchat"].get("muted", []) or msg["sid"] in self.banned:
             return
         self.seen.add(msg["id"])
         self.msgs.append(msg)
@@ -165,7 +230,8 @@ class GlobalChat:
             since = last_id or "3h"
             t0 = time.time()
             try:
-                req = urllib.request.Request(f"{BASE}/{TOPIC}/json?since={since}", headers=UA)
+                room = ROOM2 if self.v2 else TOPIC
+                req = urllib.request.Request(f"{BASE}/{room}/json?since={since}", headers=UA)
                 with urllib.request.urlopen(req, timeout=75) as r:   # ntfy sends a keepalive every ~45s
                     self._resp = r
                     self.status, self.error = "live", ""
@@ -179,8 +245,15 @@ class GlobalChat:
                                 last_id = ev["id"]
                         except ValueError:
                             continue
-                        msg = self.parse(line)
-                        if msg:
+                        msg = self.parse_v2(line) if self.v2 else self.parse(line)
+                        if isinstance(msg, tuple):
+                            kind, val = msg
+                            if kind == "ban":
+                                self.banned.add(val)
+                                self.msgs = collections.deque((x for x in self.msgs if x["sid"] != val), maxlen=80)
+                            elif kind == "del":
+                                self.msgs = collections.deque((x for x in self.msgs if x["id"] != val), maxlen=80)
+                        elif msg:
                             self._add(msg)
             except Exception as e:
                 if time.time() - t0 > 20:           # it was working, the stream just got cut: reconnect now

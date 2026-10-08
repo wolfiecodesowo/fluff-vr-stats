@@ -205,6 +205,7 @@ class FluffBot(discord.Client):
         self.bump_loop.start()
         if G is not None:
             self.gchat_task = asyncio.create_task(self.gchat_listen())
+        asyncio.create_task(self.safe_start())
 
     # ---- helpers
     def guild(self):
@@ -377,6 +378,8 @@ class FluffBot(discord.Client):
                             posted.add(ev["id"])
                             if len(posted) > 500:
                                 posted = set(list(posted)[-200:])
+                            if getattr(self, "safe_keys_on", lambda: False)():
+                                continue                     # the safe relay (fluffsafe.py) handles it now
                             m = G.GlobalChat.parse(self._gc_parser(), line)
                             if not m or m["client"] == "discord":
                                 continue
@@ -427,6 +430,8 @@ class FluffBot(discord.Client):
         if now - last.get(msg.author.id, 0) < G.SLOW_S:
             return
         last[msg.author.id] = now
+        if await self.safe_from_discord(msg, text):     # signed v2 room (+ v1 for old apps)
+            return
         body = json.dumps({"v": 1, "n": G.clean_name(msg.author.display_name) or "fluff", "m": text,
                            "s": "d" + str(msg.author.id)[-9:], "c": "discord"}, ensure_ascii=False).encode("utf-8")
         import aiohttp
@@ -1269,6 +1274,10 @@ async def invite_cmd(inter: discord.Interaction):
     e = discord.Embed(title="💌 invite ur friends!", color=C.PINK,
                       description=f"**link:** {link}\n\n**copy + paste this anywhere:**\n```{share}```")
     await inter.response.send_message(embed=e)
+
+
+import fluffsafe  # noqa: E402  app keys, safe chat relay, bans, reports, testers, badges, events, themes
+fluffsafe.install(bot, {"C": C, "G": G, "CFG": CFG, "staff_only": staff_only, "log": log, "save_cfg": save_cfg})
 
 
 def main():

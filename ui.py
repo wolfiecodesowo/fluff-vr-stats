@@ -12,6 +12,8 @@ import random
 import time
 from functools import lru_cache
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+import lang
+from lang import ImageDraw, tr   # translating drawer (Settings -> Language)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(HERE, "fonts")
@@ -78,6 +80,9 @@ def _runs(text, size, kind):
     runs = []
     for ch in text:
         f, emo = _font_for(ch, size, kind)
+        if f is not None and not emo and (ord(ch) >= 0x0400 and ord(ch) < 0x0530 or ord(ch) >= 0x1100) \
+                and ch not in "…–—‘’“”•€":
+            f = lang.font_for_text(ch, font(kind, size))
         if f is None:
             continue
         if runs and runs[-1][1] is f:
@@ -88,11 +93,13 @@ def _runs(text, size, kind):
 
 
 def rich_length(text, size, kind="body"):
+    text = tr(text)
     return sum(f.getlength(t) for t, f, _ in _runs(text, size, kind))
 
 
 def rich_text(d, xy, text, size, fill, kind="body", center=False):
     x, y = xy
+    text = tr(text)
     runs = _runs(text, size, kind)
     if center:
         x -= sum(f.getlength(t) for t, f, _ in runs) / 2
@@ -108,6 +115,7 @@ def rich_text(d, xy, text, size, fill, kind="body", center=False):
 
 
 def rich_wrap(text, size, width, kind="body"):
+    text = tr(text)
     out = []
     for para in text.split("\n"):
         line = ""
@@ -122,7 +130,15 @@ def rich_wrap(text, size, width, kind="body"):
     return out
 
 
+def tw(text, fnt):
+    """width of text as it will really be drawn (translated, in a font that has its letters)"""
+    t2 = tr(text)
+    return lang.font_for_text(t2, fnt).getlength(t2)
+
+
 def wrap(text, fnt, width):
+    text = tr(text)
+    fnt = lang.font_for_text(text, fnt)
     lines = []
     for para in text.split("\n"):
         words, line = para.split(" "), ""
@@ -145,6 +161,8 @@ def wrap(text, fnt, width):
 
 
 def ellipsize(text, fnt, width):
+    text = tr(text)
+    fnt = lang.font_for_text(text, fnt)
     if fnt.getlength(text) <= width:
         return text
     while text and fnt.getlength(text + "…") > width:
@@ -491,11 +509,25 @@ def switch(d, x, y, on, t, scale=1.0):
         heart(d, kx + k / 2, y + 4 * scale + k / 2 + 1, k * 0.28, t["primary"])
 
 
+COLORBLIND = False      # Settings -> comfy: blue / orange / pink instead of green / yellow / red
+CB_COLORS = ((86, 180, 233), (230, 159, 0), (204, 121, 167))   # Okabe-Ito, safe for every type of colorblindness
+
+
 def color_for_fps(fps, refresh, t):
     if not refresh or fps is None:
         return t["text"]
     r = fps / refresh
+    if COLORBLIND:
+        return CB_COLORS[0] if r >= 0.9 else CB_COLORS[1] if r >= 0.6 else CB_COLORS[2]
     return t["good"] if r >= 0.9 else t["warn"] if r >= 0.6 else t["bad"]
+
+
+def fps_word(fps, refresh):
+    """'smooth' / 'ok' / 'low' so fps never depends on color alone"""
+    if not refresh or fps is None:
+        return ""
+    r = fps / refresh
+    return "smooth" if r >= 0.9 else "ok" if r >= 0.6 else "low"
 
 
 def graph(d, box, values, target, t):
@@ -876,8 +908,9 @@ def hud_chips(state):
 
 def layout_chips(chips, width, f_lab, f_val, gap=8):
     rows, row, used = [], [], 0
+    chips = [(tr(c[0]) if c[0] else c[0], tr(c[1]) if isinstance(c[1], str) else c[1]) + tuple(c[2:]) for c in chips]
     for c in chips:
-        w = (f_lab.getlength(c[0]) + 8 if c[0] else 0) + f_val.getlength(c[1]) + 28
+        w = (tw(c[0], f_lab) + 8 if c[0] else 0) + tw(c[1], f_val) + 28
         if row and used + gap + w > width:
             rows.append(row)
             row, used = [], 0
@@ -982,6 +1015,10 @@ SHORT_LABEL = {"zoom": "zoom", "chatbox": "chatbox", "timer": "timer", "kitty": 
 
 def render_hud(state):
     """Wrist HUD. Returns an RGBA image."""
+    acc = getattr(state, "access", None)
+    if acc is not None and acc.locked():
+        import ui_fun
+        return ui_fun.locked_hud(state)
     cfg, s, t = state.cfg, state.stats, get_theme(state.cfg)
     mods = cfg["modules"]
     state.hud_hits = []
@@ -1091,7 +1128,8 @@ def render_hud(state):
                 col = color_for_fps(fps, s.get("refresh"), t)
                 d.text((x, y + 78), txt, font=font("title", 76), fill=col, anchor="ls")
                 fw = font("title", 76).getlength(txt)
-                d.text((x + fw + 8, y + 50), "fps", font=font("head", 24), fill=t["sub"], anchor="ls")
+                d.text((x + fw + 8, y + 50), tr("fps") + (" · " + tr(fps_word(fps, s.get("refresh"))) if COLORBLIND and fps_word(fps, s.get("refresh")) else ""),
+                       font=font("head", 24), fill=col if COLORBLIND else t["sub"], anchor="ls")
                 ref = s.get("refresh")
                 if ref:
                     d.text((x + fw + 8, y + 76), f"of {ref:.0f}Hz", font=font("body2", 18),
@@ -1158,7 +1196,7 @@ def render_hud(state):
                 tx = cx + 14
                 if lab:
                     d.text((tx, y + 16), lab, font=f_lab, fill=t["sub"], anchor="lm")
-                    tx += f_lab.getlength(lab) + 8
+                    tx += tw(lab, f_lab) + 8
                 d.text((tx, y + 16), val, font=f_val, fill=t[ck] if ck else t["text"], anchor="lm")
                 cx += w + 8
         elif kind == "music":
@@ -1258,7 +1296,7 @@ def add_logo(base, frame_idx, slots=()):
         except Exception:
             pass
     return img
-TABS = ["Home", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
+TABS = ["Home", "Fun", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
         "Wrist", "Settings", "<3"]
 
 
@@ -1395,6 +1433,10 @@ def draw_cursor(img, pos, trail, clicks, t, style="paw"):
             doodle_heart(d, x, y, 11, t["primary"], t["line"])
         elif style == "star":
             doodle_star(d, x, y, 13, t["warn"], t["line"])
+        elif style == "pumpkin":
+            for dx in (-6, 0, 6):
+                d.ellipse([x + dx - 9, y - 9, x + dx + 9, y + 9], fill=(255, 140, 40), outline=t["line"], width=2)
+            d.rectangle([x - 2, y - 15, x + 2, y - 8], fill=(90, 160, 70))
         else:                                       # paw with ink outline
             paw(d, x, y + 6, 16, t["line"])
             paw(d, x, y + 6, 13, t["primary"])
@@ -1455,18 +1497,21 @@ def render_dashboard(state):
 
     body = [SIDE_X1 + 20, top + 96, DASH_W - 36, DASH_H - 38]
     state.anim_slots = []
-    {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings, "Dev": _tab_dev,
+    import ui_fun
+    {"Home": _tab_home, "Global": _tab_global, "Settings": ui_fun.tab_settings, "Dev": _tab_dev,
+     "Fun": ui_fun.tab_fun,
      "Stats": _tab_stats,
      "Screen": _tab_screen, "Mods": _tab_mods, "Style": _tab_style,
      "Music": _tab_music, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
      "Boost": _tab_boost,
      "Wrist": _tab_wrist, "<3": _tab_thanks}.get(state.tab, _tab_home)(d, hit, body, state, t)
+    ui_fun.overlay_card(d, hit, state, t, body)
     if state.errors and not state.errors_dismissed:
         _error_toast(d, hit, body, state, t)
     return img, hit
 
 
-TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox"}
+TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox", "Fun": "fun stuff"}
 
 
 def _sidebar(d, hit, state, t):
@@ -1486,13 +1531,18 @@ def _sidebar(d, hit, state, t):
             fluff_card(d, box, t, radius=int(rh / 2), fill=t["primary"], glow=True)
             d.rounded_rectangle([box[0] - 6, ry + rh * 0.25, box[0] - 3, ry + rh * 0.75], radius=2, fill=t["primary"])
         col = t["on_primary"] if active else t["text"]
-        tab_icon(d, name, box[0] + 18, (box[1] + box[3]) / 2, col, t) if rh >= 30 else None
-        if rh < 30:
+        tab_icon(d, name, box[0] + 18, (box[1] + box[3]) / 2, col, t) if rh >= 26 else None
+        if rh < 26:
             tab_icon_small = (box[0] + 16, (box[1] + box[3]) / 2)
             d.ellipse([tab_icon_small[0] - 3, tab_icon_small[1] - 3, tab_icon_small[0] + 3, tab_icon_small[1] + 3],
                       fill=col if active else t["sub"])
         d.text((box[0] + 38, (box[1] + box[3]) / 2), TAB_LABEL.get(name, name).lower(), font=f,
                fill=col if active else t["sub"], anchor="lm")
+        nb = len(state.fun.new_badges()) if name == "Fun" and getattr(state, "fun", None) else 0
+        if nb and not active:
+            bx = box[2] - 14
+            d.ellipse([bx - 9, (box[1] + box[3]) / 2 - 9, bx + 9, (box[1] + box[3]) / 2 + 9], fill=t["primary"])
+            d.text((bx, (box[1] + box[3]) / 2), str(min(nb, 9)), font=font("body", 11), fill=t["on_primary"], anchor="mm")
         if name == "Global" and unread and not active:
             bx = box[2] - 14
             d.ellipse([bx - 9, (box[1] + box[3]) / 2 - 9, bx + 9, (box[1] + box[3]) / 2 + 9], fill=t["bad"])
@@ -1536,12 +1586,12 @@ def _header_status(d, hit, state, t, top):
     cfg = state.cfg
     name = (cfg.get("gchat", {}).get("name") or "").strip()
     R = DASH_W - 44
-    greet = _greeting() + (f", {name}" if name else "") + " ~"
+    greet = tr(_greeting()) + (f", {name}" if name else "") + " ~"
     d.text((R, top + 24), greet, font=font("head", 22), fill=t["text"], anchor="rm")
     pills = []
     ss = state.extras.get("session_start")
     if ss:
-        pills.append((f"in VR {fmt_dur(time.time() - ss)}" if not state.desktop else f"on {fmt_dur(time.time() - ss)}", None, None))
+        pills.append((f"{tr('in VR')} {fmt_dur(time.time() - ss)}" if not state.desktop else f"{tr('on')} {fmt_dur(time.time() - ss)}", None, None))
     vd = cfg.get("vr_days") or {}
     if cfg["modules"].get("vr_streak") and vd:
         streak = state.extras.get("vr_streak") or 0
@@ -1560,7 +1610,8 @@ def _header_status(d, hit, state, t, top):
     f = font("body", 14)
     x = R
     for lab, ck, act in reversed(pills):
-        w = f.getlength(lab) + 26
+        lab = tr(lab)
+        w = lang.font_for_text(lab, f).getlength(lab) + 26
         box = [x - w, top + 46, x, top + 74]
         pill(d, box, t["panel2"])
         dot = t[ck] if ck and ck != "sub" else None
@@ -1615,8 +1666,20 @@ def _tab_home(d, hit, box, state, t):
     qy = y0 + 108
     panel(d, [x0, qy, lx1, qy + 150], 22, t, ears_on=True)
     d.text((x0 + 20, qy + 14), "quick actions", font=font("head", 20), fill=t["text"])
-    d.text((lx1 - 20, qy + 18), "also on ur wrist ~ tap w/ ur other hand" if not state.desktop else "also on ur floating wrist menu",
-           font=font("body2", 13), fill=t["sub"], anchor="ra")
+    import ui_fun
+    news = ui_fun.home_news(state, t)
+    if news:
+        txt, act, args, col = news
+        fnn = font("body", 13)
+        txt = ellipsize(txt, fnn, lx1 - x0 - 230)
+        w = rich_length(txt, 13) + 28
+        nb = [lx1 - 16 - w, qy + 10, lx1 - 16, qy + 38]
+        pill(d, nb, mix(t["panel2"], col, 0.35))
+        rich_text(d, (nb[0] + 14, qy + 15), txt, 13, t["text"])
+        hit.add(nb, act, *args)
+    else:
+        d.text((lx1 - 20, qy + 18), "also on ur wrist ~ tap w/ ur other hand" if not state.desktop else "also on ur floating wrist menu",
+               font=font("body2", 13), fill=t["sub"], anchor="ra")
     acts = _quick_actions(state)
     n = len(acts)
     bw = (lx1 - x0 - 40 - 10 * (n - 1)) / n
@@ -1695,7 +1758,8 @@ def _chat_card(d, hit, box, state, t, compact=False):
     col = t["good"] if st_txt == "live" else t["warn"]
     if st_txt:
         f = font("body2", 13)
-        d.ellipse([x1 - 30 - f.getlength(st_txt), y0 + 23, x1 - 22 - f.getlength(st_txt), y0 + 31], fill=col)
+        tw_ = lang.font_for_text(tr(st_txt), f).getlength(tr(st_txt))
+        d.ellipse([x1 - 30 - tw_, y0 + 23, x1 - 22 - tw_, y0 + 31], fill=col)
         d.text((x1 - 18, y0 + 28), st_txt, font=f, fill=t["sub"], anchor="rm")
     if compact:
         if gc is not None:
@@ -1780,8 +1844,12 @@ def _tab_global(d, hit, box, state, t):
         if not mine and mm.get("sid"):
             mx = bb[2] + 16
             if mx + 12 < cx1:
-                d.text((mx, (bb[1] + bb[3]) / 2), "mute", font=font("body2", 11), fill=t["sub"], anchor="lm")
-                hit.add([mx - 4, bb[1], mx + 34, bb[3]], "gchat_mute", mm["sid"])
+                cyb = (bb[1] + bb[3]) / 2
+                d.text((mx, cyb - 9), "mute", font=font("body2", 11), fill=t["sub"], anchor="lm")
+                hit.add([mx - 4, bb[1], mx + 40, cyb], "gchat_mute", mm["sid"])
+                if getattr(gc, "v2", False):
+                    d.text((mx, cyb + 9), "report", font=font("body2", 11), fill=t["bad"], anchor="lm")
+                    hit.add([mx - 4, cyb, mx + 40, bb[3]], "gchat_report", mm["id"])
     if not msgs:
         d.text(((x0 + cx1) / 2, (y0 + y1) / 2 - 20), "no messages yet ~ be the first to say hiii!", font=font("head", 20),
                fill=t["sub"], anchor="mm")
@@ -1833,7 +1901,7 @@ def _setting_row(d, hit, box, label, value, t, action, *args, toggle=None, sub=N
         switch(d, x1 - 62, cy - 13, toggle, t, scale=0.85)
     else:
         f = font("head", 16)
-        w = f.getlength(value) + 28
+        w = min(tw(value, f) + 28, (x1 - x0) * 0.5)
         pill(d, [x1 - 12 - w, cy - 15, x1 - 12, cy + 15], t["primary"] if action else t["panel2"])
         d.text((x1 - 12 - w / 2, cy), value, font=f, fill=t["on_primary"] if action else t["sub"], anchor="mm")
     if action:
@@ -2029,6 +2097,13 @@ def tab_icon(d, name, cx, cy, col, t):
         d.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], outline=col, width=4)
     elif name == "<3":
         doodle_heart(d, cx, cy + 1, 9, col if col != t["text"] else t["primary"], t["line"])
+    elif name == "Fun":       # lil gift box w/ a bow
+        d.rounded_rectangle([cx - 10, cy - 3, cx + 10, cy + 11], radius=3, fill=col)
+        d.rounded_rectangle([cx - 12, cy - 8, cx + 12, cy - 1], radius=2, fill=col)
+        bg_ = t["primary"] if col == t["on_primary"] else t["panel2"]
+        d.rectangle([cx - 2, cy - 8, cx + 2, cy + 11], fill=bg_)
+        d.ellipse([cx - 9, cy - 15, cx - 1, cy - 8], outline=col, width=3)
+        d.ellipse([cx + 1, cy - 15, cx + 9, cy - 8], outline=col, width=3)
 
 
 def media_icon(d, kind, cx, cy, r, col):
@@ -2583,6 +2658,10 @@ def _tab_stats(d, hit, box, state, t):
         d.rectangle([cx + 4, ry + 6, cx + 4 + 22 * pct / 100, ry + 14], fill=colr)
         d.text((cx + 40, ry + 10), f"{lab} {pct:.0f}%" + (" +" if chg else ""),
                font=font("body", 17), fill=t["text"], anchor="lm")
+    au = getattr(state, "app_usage", None)
+    if au:
+        d.text((bx + 20, y1 - 18), f"Fluff VR Stats itself: {au.get('cpu', 0):.1f}% CPU · {au.get('ram_mb', 0):.0f} MB RAM",
+               font=font("body2", 13), fill=t["sub"], anchor="lm")
 
 
 def _tab_mods(d, hit, box, state, t):
@@ -2592,12 +2671,12 @@ def _tab_mods(d, hit, box, state, t):
     labs = []
     for c in MOD_CATS:
         on_count = sum(1 for k, _, _ in MOD_INFO[c] if state.cfg["modules"].get(k))
-        labs.append((c, f"{c} {on_count}/{len(MOD_INFO[c])}"))
+        labs.append((c, f"{tr(c)} {on_count}/{len(MOD_INFO[c])}"))
     fs = 19
-    while fs > 13 and sum(font("head", fs).getlength(l) + 28 + 8 for _, l in labs) > x1 - x0:
+    while fs > 13 and sum(tw(l, font("head", fs)) + 28 + 8 for _, l in labs) > x1 - x0:
         fs -= 1
     for c, lab in labs:
-        w = font("head", fs).getlength(lab) + 28
+        w = tw(lab, font("head", fs)) + 28
         button(d, hit, [cx, y0, cx + w, y0 + 44], lab, t, "mods_cat", c, active=cat == c, fsize=fs)
         cx += w + 8
     gap, ch = 12, (56 if len(MOD_INFO[cat]) <= 8 else 50)

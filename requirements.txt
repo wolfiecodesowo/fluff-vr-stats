@@ -7,3 +7,4 @@ glfw
 PyOpenGL
 numpy
 pypresence
+cryptography

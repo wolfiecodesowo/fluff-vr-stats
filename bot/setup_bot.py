@@ -10,7 +10,8 @@ CFG = os.path.join(HERE, "bot_config.json")
 
 print("\n  ~ Fluff Bot setup :3 ~\n")
 print("  installing discord.py ...")
-subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "discord.py"])
+subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "discord.py", "aiohttp",
+                "cryptography", "pillow"])
 try:
     cfg = json.load(open(CFG, encoding="utf-8"))
 except Exception:

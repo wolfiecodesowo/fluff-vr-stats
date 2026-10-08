@@ -22,3 +22,18 @@ trailer*.mp4
 
 # auto-updater backups
 .update_backup/
+
+# signing keys (PRIVATE - made by tools/make_keys.py, never upload)
+keys/
+*.pem
+bot/bot_data.json
+bot/bot_data.json.tmp
+fluff-manifest.json
+
+# Fluff Wrapped cards + exported settings
+wrapped/
+exports/
+
+# installer build output
+build/
+dist/

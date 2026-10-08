@@ -17,6 +17,9 @@
 
 ---
 
+> ### ✨ New in v0.4: the big safety + fun update
+> 🔐 **way safer:** global chat now goes through Fluff Bot (bans + reports actually work, nobody can skip the rules), and **every update is signed + checked** before it installs · 🔑 **free app key** from our Discord (`/key`) links you up + gets you **🧪 Beta Tester** · 🎁 **Fluff Wrapped** monthly recap cards · 🏅 **37 badges** · 🎩 **kitty closet** · 🎃 **spooky season** event · 🎨 **theme codes** · 👋 **Fluff Friends** · 🎪 **community nights** · 🌍 **12 languages** · 🛟 safe mode, copy logs, profiles, backups, left-handed mode, colorblind-safe colors, reduced motion. Full list in the [changelog](CHANGELOG.md).
+
 > ### 🥽 Quest Edition: early beta 🧪
 > Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles, 30 Quest mods, phone remote).
 > It's an **early beta**: small, maybe buggy, more mods coming.
@@ -98,10 +101,18 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's been a lot of hate and drama around AI, and a lot of people just aren't vibing with it, so for now Fluff VR Stats is **100% AI-free**. This isn't us hating on AI at all, we just want everyone to feel comfy using the app. We're pretty sure this'll blow over soon, and if it does, it might come back as an optional mod :3
 
 ## 💾 Install (Windows)
+**Easy way:** download **`FluffVRStats-Setup.exe`** from the [latest release](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest) and run it. It comes with everything (its own private Python), no admin needed, and it has a normal uninstaller. Check it against `SHA256SUMS.txt` on the release page if you like.
+> Windows might say "Windows protected your PC" because the .exe isn't code-signed yet. Click **More info → Run anyway**. It's the same open source code you can read here.
+
+**Manual way:**
 1. Download the latest **[release](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest)** (**Source code (zip)**) and unzip it anywhere.
 2. Double-click **`install.bat`**. No Python? It offers to install it for you automatically (or install **Python 3.10+** from [python.org](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**).
 3. Double-click **`run.bat`**. It waits for SteamVR if SteamVR isn't open yet.
-4. *(optional)* Run `python autostart_with_steamvr.py` once to start it with SteamVR every time.
+4. *(optional)* Settings → general → **Start with SteamVR**.
+
+**🔑 Your free app key:** join the [Discord](https://wolfiecodesowo.github.io/fluff-vr-stats/#community), type **`/key`**, and put the key in the app once (it asks the first time, or Settings → app key). It's free forever. It links the app to the community, lets Fluff Bot keep global chat safe, syncs your badges, and gives you the **🧪 Beta Tester** role. It's checked once, then works offline, and if Fluff Bot is ever down the app keeps working.
+
+**Something not working?** → **[Troubleshooting + FAQ](https://wolfiecodesowo.github.io/fluff-vr-stats/faq.html)** (overlay not showing, OSC, apps that conflict, low FPS). Settings → backup + help → **Copy logs** puts your log on the clipboard for a `/ticket`.
 
 **VRChat features** (chatbox, avatar toggles, mute, headpats) need OSC: in VRChat, go to Action Menu → Options → OSC → **Enabled**.
 - Close MagicChatbox while using the chatbox tab, or they'll fight over the chatbox.
@@ -112,6 +123,7 @@ We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's
   - `/setup` builds the whole server: roles, channels, staff-only info channels, role buttons and all the info posts.
   - It gives anyone running the app the **🥽 In VR Now** role and keeps a live counter.
   - It welcomes people, logs to #mod-log, blocks invite spam and auto-posts GitHub releases.
+  - **v0.4:** `/key` + `/resetkey` (free app keys), `/testers` (who's actually beta testing, with version + last seen), `/badges`, `/chatban` `/chatunban` `/chatdelete` + chat reports in #mod-log, `/event create|cancel|list` (community nights that show up in the app), `/sharetheme` (#theme-share), `/emotes`.
   - **49 slash commands:** client guides (`/download`, `/install`, `/mods`, `/boost`...), `/ticket` private support, `/suggest` + `/bug` with voting threads, `/invr`, fun ones (`/headpat`, `/boop`, `/fluffrate`, `/8ball`) and staff tools (`/poll`, `/warn`, `/timeout`, `/lockdown`).
   - **🔔 bump helper:** thanks whoever bumps on DISBOARD, keeps a `/bumpers` leaderboard and pings 🔔 Bumpers every 2 hours when it's time to bump again. `/invite` gives a share-ready invite.
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
@@ -123,8 +135,17 @@ There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs rig
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
 - Sideload it with SideQuest. Steps are in [quest/README.md](quest/README.md).
 
-## 🔄 Updates install themselves
-Every time you start Fluff VR Stats it checks for a new version. If there is one, it downloads it, swaps in the new files and restarts, all by itself (about 10 seconds). Your settings and bot token are never touched, and the old files are backed up in `.update_backup/`. Don't want that? Set `"auto_update": false` in `config.json`.
+## 🔄 Updates install themselves (signed)
+Every time you start Fluff VR Stats it checks for a new version. If there is one, it downloads it, swaps in the new files and restarts, all by itself (about 10 seconds). Your settings, key, kitty and badges are never touched, and the old files are backed up in `.update_backup/`. Don't want that? Settings → general → Auto updates.
+
+**Every release is signed.** Each release has a `fluff-manifest.json` with the SHA-256 of every file, signed with a key only the owner has. Before swapping a single file, the updater checks the signature *and* every file's hash. A missing signature, a wrong signature, or one changed byte = the update is refused and you keep running the old version.
+
+## 🔐 Safety
+- **Global chat can't be faked.** The app sends messages to an inbox; Fluff Bot checks your app key, the filter, slow mode and the ban list, then re-posts it **signed**. The app only shows signed messages, so posting straight to the relay with curl does nothing. Staff can ban (`/chatban`), delete (`/chatdelete`) and get reports (**report** button) in #mod-log, and it all works instantly without an app update.
+- **App keys** are made and signed by Fluff Bot. They can be reset (`/resetkey`) or turned off by staff.
+- **No secrets in the repo.** Only *public* keys are in `trust.json`. Bot tokens, `bot/bot_key.pem` and `keys/release_key.pem` are git-ignored and never leave the owner's PC.
+- **Safe mode:** if the app crashes on launch twice in a row, it starts with every mod off so you can still open it.
+- It's open source, so honest note: someone could edit the key check out of their own copy. That only changes *their* app. Chat, Fluff Friends, events and badges all run through Fluff Bot, so the rules still apply to them.
 
 ## 🖥️ Desktop mode
 Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_desktop.bat`).
@@ -136,15 +157,20 @@ Playing VRChat on desktop? Start the app and pick **Desktop** (or run `run_deskt
 - **F10** opens a round zoom magnifier (drag it, scroll to resize, right-click to close)
 - things that need a headset (wrist HUD, laser menu, VR FPS/battery stats) only show in VR
 
-## 🔒 Privacy
-- Everything runs on your PC.
-- The only things that go online:
-  - global chat messages (if the mod is on), through the free ntfy.sh relay. it's a public room, so never post personal info
-  - Discord status, sent to your local Discord app (turn off in Mods)
-  - weather, if you turn it on
-  - ping, if you turn it on
-- World and player info comes from VRChat's own log file on your PC.
-- Your settings stay in `config.json`, which is git-ignored and never shared.
+## 🔒 Privacy: what leaves your PC
+| what | what's sent | where | turn it off |
+|---|---|---|---|
+| Global chat | your messages + chat name | ntfy.sh relay → Fluff Bot → everyone + our Discord | Settings → privacy |
+| Fluff Friends | your chat name + waves | only Fluff users in the **same instance** (the room name is a hash of the instance) | Settings → privacy |
+| App key | your key, chat name, app version, PC/desktop, badge names | Fluff Bot | Settings → app key → remove |
+| Discord status | fps, song, and your world **only if you allow it** (hidden by default) | your own Discord app on your PC | Settings → privacy |
+| Update check | "what's the newest version?" | GitHub | Settings → general |
+| Weather / ping | your city / a ping | weather service / 1.1.1.1 | off by default |
+
+That's everything. No tracking, no ads, no analytics, nothing about your PC or your VRChat account. World and player info is read from VRChat's own log file on your PC and stays there. Your settings stay in `config.json` (git-ignored, never shared, and **Export settings** leaves your key + chat id out).
+
+## 🌍 Languages
+Settings → general → **Language**: English, 日本語, 한국어, 简体中文, Español, Português, Français, Deutsch, Italiano, Polski, Русский, Українська. The first launch picks your Windows language. Want to fix or add one? Edit `lang/<code>.json` (English line → your translation) and `python tools/lang_check.py` shows what's missing. PRs super welcome!
 
 ## 🛠️ For developers
 ```
@@ -154,6 +180,9 @@ python tools/make_sound.py   # rebuild the startup sound
 - **Code map:** `main.py` (app + VR), `ui.py` (all drawing), `themes.py`, `stats.py`, `music.py`, `chatbox.py`, `vrclog.py`, `avatar.py`, `tweaks.py`, `discord_link.py` (Discord status), `gltex.py` (flicker-free GPU textures), `bot/` (Fluff Bot).
 - **New theme:** add one line to `PRESETS` in `themes.py`.
 - **New mod:** add it to `MOD_INFO` in `ui.py` and `DEFAULT_CFG["modules"]` in `main.py`.
+- **v0.4 parts:** `fun.py` (badges, Wrapped, closet, seasons, theme codes), `fluffnet.py` (app keys, Fluff Friends, events), `trust.py` (signatures), `lang.py` + `lang/` (translations), `ui_fun.py` (Fun tab, paged Settings, popups), `bot/fluffsafe.py` (key + safe chat side of Fluff Bot).
+- **Owner setup, once:** `tools/make_keys.bat` → commit + push `trust.json` → restart Fluff Bot. Then every release: `python tools/sign_release.py vX.Y.Z --upload` (or put `keys/release_key.pem` in the `RELEASE_KEY` repo secret and the release workflow signs + builds the installer for you).
+- **Emotes + stickers:** `python tools/make_emotes.py` (all drawn in code, ours to use anywhere), then `/emotes` in the Discord uploads them.
 
 PRs welcome!! Please keep it cute :3
 
