@@ -131,6 +131,10 @@ DEFAULT_CFG = {
     "ping_host": "1.1.1.1",
     "osc_port": 9000,
     "osc_listen_port": 9001,
+    # OSCQuery lets VRChat find us on a port the OS picks, so nothing can be
+    # "already in use". "classic" pins the two ports above like we used to.
+    "osc": {"mode": "auto",            # auto | classic
+            "router": {"enabled": False, "forward_to": [], "chatbox": "yield"}},
     "animate_logo": True,
     "intro": True,
     "startup_sound": True,
@@ -1792,6 +1796,10 @@ class App:
             if now - self.last_chatbox >= max(2, float(cb.get("interval_s", 3))):
                 self.last_chatbox = now
                 text = chatbox.compose(self.cfg, st.stats, st.extras, st.music, now)
+                router = getattr(self.extras, "router", None)
+                if text and router is not None:
+                    # another app driving the chatbox? yield instead of fighting it
+                    text = router.compose(text)
                 if text and (text != self.last_chatbox_text or now - self.last_chatbox_sent > 20):
                     self.last_chatbox_text, self.last_chatbox_sent = text, now
                     osc.chatbox(text, self.cfg.get("osc_port", 9000))
