@@ -149,6 +149,9 @@ DEFAULT_CFG = {
     "afk_minutes": 5,
     "walked_total_m": 0,
     "cursor": "paw",
+    "dev_mode": False,                 # unlocks the hidden Dev tab (local toys only, for testing ur own client)
+    "dev": {"fake_stats": False, "fps": 90, "gpu_temp": 70, "battery": 80, "fake_world": False,
+            "spikes": False, "gold_skin": False},
 }
 CFG_NOTICE = []   # problems found while loading config, shown once the app is up
 
@@ -381,6 +384,7 @@ class State:
         self.gchat_scroll = 0
         self.desktop = False
         self.version = _version()
+        self.dev_msg = ""
 
 
 def _version():
@@ -1129,6 +1133,8 @@ class App:
             else:
                 self.show_alert("max 6 wrist buttons ~ remove one first", "warn", 4)
             st.dirty_cfg = st.hud_dirty = True
+        elif action == "dev":
+            self.dev_action(args)
         elif action == "set":                     # Settings tab: set / cycle simple options
             key, val = args[0], args[1]
             if val == "__cycle__":
@@ -1234,6 +1240,97 @@ class App:
         elif what == "reset":
             tm.update(running=False, elapsed=0.0, left=300.0 if tm["mode"] == "timer" else 0.0)
         self.state.hud_dirty = True
+
+    def dev_action(self, args):
+        """Dev tab: local-only toys for messing with ur OWN client (testing, screenshots, fun)."""
+        st, cfg = self.state, self.cfg
+        dev = cfg.setdefault("dev", {})
+        what = args[0]
+        a = args[1] if len(args) > 1 else None
+        if what == "toggle":
+            dev[a] = not dev.get(a)
+            self.dev_msg = f"{a} = {dev.get(a)}"
+        elif what == "fps":
+            dev["fps"] = a; dev["fake_stats"] = True
+        elif what == "temp":
+            dev["gpu_temp"] = a; dev["fake_stats"] = True
+        elif what == "battery":
+            dev["battery"] = a; dev["fake_stats"] = True
+        elif what == "pats":
+            for _ in range(a):
+                self.extras._set("headpats", self.extras.get("headpats", 0) + 1)
+            self.dev_msg = f"+{a} pats"
+        elif what == "boops":
+            for _ in range(a):
+                self.extras._set("boops", self.extras.get("boops", 0) + 1)
+        elif what == "combo":
+            nm = self.__dict__.setdefault("_nm", {})
+            nm["pat_t"] = [time.time()] * a
+            self.extras._set("headpats", self.extras.get("headpats", 0) + a)
+            self.dev_msg = f"combo x{a} primed"
+        elif what == "zoomies":
+            st.zoomies = not getattr(st, "zoomies", False)
+        elif what == "alert":
+            self.show_alert(a or "dev test alert :3", "info", 6)
+        elif what == "warn":
+            self.show_alert("dev test warning!!", "warn", 6)
+        elif what == "error":
+            self.report("dev test", msg="dev test error cat :3")
+        elif what == "theme_roll":
+            import random as _r
+            cfg["theme"] = _r.choice([p[0] for p in ui.PRESETS])
+            self.dev_msg = f"theme: {cfg['theme']}"
+            self.safe("icon", self.refresh_icon)
+        elif what == "ears_roll":
+            import random as _r
+            cfg["style"]["ears"] = _r.choice(ui.EAR_STYLES)
+        elif what == "all_mods":
+            for k in cfg["modules"]:
+                cfg["modules"][k] = bool(a)
+            self.dev_msg = "all mods " + ("ON" if a else "off")
+        elif what == "reload_ui":
+            for fn in (ui.hud_bg, ui.dash_bg, ui.furry_frame, ui.fluff_shape, getattr(ui, "_velvet", None),
+                       getattr(ui, "_card_ears", None), getattr(ui, "_glow", None)):
+                try:
+                    fn.cache_clear()
+                except Exception:
+                    pass
+            self.dev_msg = "UI caches cleared, redrawing"
+        elif what == "dump_cfg":
+            safe = {k: v for k, v in cfg.items() if k not in ("ai",)}
+            log.info("DEV config dump: %s", json.dumps(safe)[:4000])
+            self.dev_msg = "config dumped to logs/ :3"
+        elif what == "tab":
+            st.tab = a
+        st.dirty_cfg = st.dash_dirty = st.hud_dirty = True
+
+    def apply_dev_stats(self, stats):
+        """Overlay the Dev tab's fake values onto real stats (only when fake_stats is on)."""
+        dev = self.cfg.get("dev", {})
+        if dev.get("fake_stats"):
+            ref = stats.get("refresh") or 90
+            stats["fps"] = float(dev.get("fps", 90))
+            stats["refresh"] = ref
+            stats["gpu_temp"] = float(dev.get("gpu_temp", 70))
+            stats["gpu_ms"] = 1000.0 / max(1, stats["fps"]) * 0.6
+            stats["cpu_ms"] = 1000.0 / max(1, stats["fps"]) * 0.4
+            b = float(dev.get("battery", 80))
+            stats["batteries"] = [("HMD", b, False), ("L", b, False), ("R", max(0, b - 20), False)]
+        if dev.get("spikes"):
+            ft = list(stats.get("frametimes") or [11.0] * 60)
+            import random as _r
+            for _ in range(3):
+                ft[_r.randint(0, len(ft) - 1)] = _r.uniform(25, 45)
+            stats["frametimes"] = ft
+        return stats
+
+    def apply_dev_extras(self):
+        """Fake world + players for testing the World tab / chatbox, local only."""
+        if self.cfg.get("dev", {}).get("fake_world"):
+            x = self.state.extras
+            x["world_name"] = "DEV Test World"
+            x["world_players"] = 7
+            x.setdefault("world_since", time.time() - 600)
 
     def play_ding(self):
         path = os.path.join(HERE, "assets", "ding.wav")
@@ -1968,7 +2065,8 @@ class App:
         hud_period = 1.0 / max(0.5, float(self.cfg.get("hud_refresh_hz", 2)))
         if now - self.t["stats"] > hud_period:
             self.t["stats"] = now
-            st.stats = self.stats.collect()
+            st.stats = self.apply_dev_stats(self.stats.collect())
+            self.apply_dev_extras()
             st.hud_dirty = True
             info = {"monitors": self.mirror.monitor_count, "error": self.mirror.error}
             if info != st.screen_info:

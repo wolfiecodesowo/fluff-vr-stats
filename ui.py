@@ -1263,7 +1263,10 @@ TABS = ["Home", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "World
 
 
 def visible_tabs(cfg):
-    return [n for n in TABS if n != "Global" or cfg["modules"].get("global_chat", True)]
+    tabs = [n for n in TABS if n != "Global" or cfg["modules"].get("global_chat", True)]
+    if cfg.get("dev_mode"):
+        tabs = tabs + ["Dev"]
+    return tabs
 
 MOD_CATS = ["Performance", "Wrist", "VRChat", "Counters", "Fun", "Comfy"]
 MOD_INFO = {
@@ -1452,7 +1455,7 @@ def render_dashboard(state):
 
     body = [SIDE_X1 + 20, top + 96, DASH_W - 36, DASH_H - 38]
     state.anim_slots = []
-    {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings,
+    {"Home": _tab_home, "Global": _tab_global, "Settings": _tab_settings, "Dev": _tab_dev,
      "Stats": _tab_stats,
      "Screen": _tab_screen, "Mods": _tab_mods, "Style": _tab_style,
      "Music": _tab_music, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
@@ -1837,6 +1840,89 @@ def _setting_row(d, hit, box, label, value, t, action, *args, toggle=None, sub=N
         hit.add(box, action, *args)
 
 
+def _dev_btn(d, hit, box, label, t, *args, active=False, hot=False):
+    fill = t["warn"] if hot else (t["primary"] if active else t["panel2"])
+    pill(d, box, fill)
+    col = (40, 24, 40) if (hot or active) else t["text"]
+    d.text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), label, font=font("head", 15), fill=col, anchor="mm")
+    hit.add(box, "dev", *args)
+
+
+def _tab_dev(d, hit, box, state, t):
+    """Hidden Dev tab (unlocked by dev_mode in config). Local toys only: fake data, effects, resets."""
+    x0, y0, x1, y1 = box
+    cfg = state.cfg
+    dev = cfg.get("dev", {})
+    gap = 14
+    cw = (x1 - x0 - gap) / 2
+    # banner
+    d.text((x0 + 4, y0 - 2), "\U0001f6e0 DEV MODE \u2014 everything here only touches YOUR client :3",
+           font=font("head", 17), fill=t["warn"])
+    yy = y0 + 28
+
+    # --- left column: fake stats
+    lx = x0
+    panel(d, [lx, yy, lx + cw, yy + 232], 18, t)
+    d.text((lx + 18, yy + 14), "fake stats", font=font("head", 20), fill=t["text"])
+    on = dev.get("fake_stats")
+    _dev_btn(d, hit, [lx + cw - 150, yy + 12, lx + cw - 18, yy + 44], "ON" if on else "off", t,
+             "toggle", "fake_stats", active=on)
+    d.text((lx + 18, yy + 58), "FPS", font=font("body2", 15), fill=t["sub"])
+    for i, v in enumerate((15, 30, 60, 90, 144)):
+        bx = lx + 70 + i * ((cw - 88) / 5)
+        _dev_btn(d, hit, [bx, yy + 50, bx + (cw - 88) / 5 - 6, yy + 82], str(v), t, "fps", v,
+                 active=on and dev.get("fps") == v)
+    d.text((lx + 18, yy + 98), "GPU \u00b0C", font=font("body2", 15), fill=t["sub"])
+    for i, v in enumerate((50, 70, 85, 95)):
+        bx = lx + 70 + i * ((cw - 88) / 4)
+        _dev_btn(d, hit, [bx, yy + 90, bx + (cw - 88) / 4 - 6, yy + 122], str(v), t, "temp", v,
+                 active=on and dev.get("gpu_temp") == v, hot=v >= 85 and on and dev.get("gpu_temp") == v)
+    d.text((lx + 18, yy + 138), "batt", font=font("body2", 15), fill=t["sub"])
+    for i, v in enumerate((100, 50, 20, 8)):
+        bx = lx + 70 + i * ((cw - 88) / 4)
+        _dev_btn(d, hit, [bx, yy + 130, bx + (cw - 88) / 4 - 6, yy + 162], f"{v}%", t, "battery", v,
+                 active=on and dev.get("battery") == v)
+    _dev_btn(d, hit, [lx + 18, yy + 174, lx + cw - 18, yy + 206], "frametime spikes: " +
+             ("ON" if dev.get("spikes") else "off"), t, "toggle", "spikes", active=dev.get("spikes"))
+
+    # --- right column: counters + effects
+    rx = x0 + cw + gap
+    panel(d, [rx, yy, rx + cw, yy + 232], 18, t)
+    d.text((rx + 18, yy + 14), "counters + fx", font=font("head", 20), fill=t["text"])
+    for i, (lab, act) in enumerate((("+1 pat", ("pats", 1)), ("+10 pats", ("pats", 10)),
+                                    ("+1 boop", ("boops", 1)), ("combo x10", ("combo", 10)))):
+        bx = rx + 18 + (i % 2) * ((cw - 44) / 2 + 8)
+        by = yy + 48 + (i // 2) * 42
+        _dev_btn(d, hit, [bx, by, bx + (cw - 44) / 2, by + 34], lab, t, *act)
+    _dev_btn(d, hit, [rx + 18, yy + 136, rx + cw - 18, yy + 168],
+             "zoomies: " + ("ON" if getattr(state, "zoomies", False) else "off"), t, "zoomies",
+             active=getattr(state, "zoomies", False))
+    for i, (lab, act) in enumerate((("test alert", ("alert", "hiii from dev mode :3")),
+                                    ("test warn", ("warn",)), ("error cat", ("error",)))):
+        bx = rx + 18 + i * ((cw - 44) / 3 + 7)
+        _dev_btn(d, hit, [bx, yy + 178, bx + (cw - 44) / 3, yy + 210], lab, t, *act)
+
+    # --- bottom row: world/theme/power toys
+    by = yy + 248
+    panel(d, [x0, by, x1, y1], 18, t)
+    d.text((x0 + 18, by + 12), "toys", font=font("head", 20), fill=t["text"])
+    row = [("fake world: " + ("ON" if dev.get("fake_world") else "off"), ("toggle", "fake_world"), dev.get("fake_world")),
+           ("gold skin: " + ("ON" if dev.get("gold_skin") else "off"), ("toggle", "gold_skin"), dev.get("gold_skin")),
+           ("theme roll", ("theme_roll",), False), ("ears roll", ("ears_roll",), False)]
+    bw = (x1 - x0 - 36 - 3 * 8) / 4
+    for i, (lab, act, act2) in enumerate(row):
+        bx = x0 + 18 + i * (bw + 8)
+        _dev_btn(d, hit, [bx, by + 44, bx + bw, by + 78], lab, t, *act, active=bool(act2))
+    row2 = [("all mods ON", ("all_mods", 1)), ("all mods off", ("all_mods", 0)),
+            ("reload UI", ("reload_ui",)), ("dump config", ("dump_cfg",))]
+    for i, (lab, act) in enumerate(row2):
+        bx = x0 + 18 + i * (bw + 8)
+        _dev_btn(d, hit, [bx, by + 86, bx + bw, by + 120], lab, t, *act)
+    msg = getattr(state, "dev_msg", "")
+    if msg:
+        d.text((x0 + 18, y1 - 22), "> " + msg, font=font("body2", 15), fill=t["good"], anchor="lm")
+
+
 def _tab_settings(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     cfg = state.cfg
@@ -1932,6 +2018,10 @@ def tab_icon(d, name, cx, cy, col, t):
         heart(d, cx, cy + 4, 4, t["primary"] if col == t["on_primary"] else t["panel2"])
     elif name == "Global":
         action_icon(d, "global", cx, cy, 12, col)
+    elif name == "Dev":       # wrench
+        d.line([(cx - 9, cy + 9), (cx + 4, cy - 4)], fill=col, width=4)
+        d.ellipse([cx - 1, cy - 11, cx + 11, cy + 1], outline=col, width=3)
+        d.ellipse([cx + 2, cy - 8, cx + 8, cy - 2], fill=t["panel2"] if col == t["on_primary"] else t["bg"][:3])
     elif name == "Settings":  # cog
         for i in range(8):
             a = i * math.pi / 4
