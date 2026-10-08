@@ -45,6 +45,7 @@ def _pause():
 
 
 try:
+    import numpy as np
     import openvr
     import psutil
     from PIL import Image, ImageDraw
@@ -279,10 +280,23 @@ def wrist_transform(w):
 
 
 def push_image(overlay, handle, img, state_key, cache):
-    """Upload a PIL RGBA image. Falls back to a temp PNG if raw upload is refused."""
+    """Upload a PIL RGBA image. Falls back to a temp PNG if raw upload is refused.
+
+    img.tobytes() builds a fresh multi-MB bytes object and from_buffer_copy then
+    copies it a second time: ~4ms a frame on the dashboard, every frame. numpy
+    gives us one contiguous buffer we can point at, so we copy once instead of
+    twice. `arr` has to stay referenced until setOverlayRaw returns.
+    """
     w, h = img.size
-    data = img.tobytes()
-    buf = (ctypes.c_char * len(data)).from_buffer_copy(data)
+    try:
+        if img.mode != "RGBA":                     # asarray would give 3 channels
+            img = img.convert("RGBA")
+        arr = np.ascontiguousarray(np.asarray(img))   # crops/views aren't contiguous
+        buf = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_char))
+    except Exception:
+        data = img.tobytes()
+        arr = None
+        buf = (ctypes.c_char * len(data)).from_buffer_copy(data)
     try:
         overlay.setOverlayRaw(handle, buf, w, h, 4)
     except Exception:
