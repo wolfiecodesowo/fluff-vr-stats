@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# lil helper for Fluff Bot on the server:  ./fluff move | start | stop | restart | status | logs | update
+DIR="$HOME/fluff-vr-stats"
+case "$1" in
+  move)
+    for f in bot_config.json bot_key.pem bot_data.json; do
+      if [ -f "$HOME/$f" ]; then mv -f "$HOME/$f" "$DIR/bot/$f"; chmod 600 "$DIR/bot/$f"; echo "  moved $f"; else echo "  !! $f not uploaded yet"; fi
+    done
+    sudo systemctl restart fluffbot; sleep 4; systemctl --no-pager -n 15 status fluffbot ;;
+  start|stop|restart) sudo systemctl "$1" fluffbot; echo "  $1 ok" ;;
+  status) systemctl --no-pager status fluffbot ;;
+  logs) journalctl -u fluffbot -n 80 --no-pager ;;
+  update) git -C "$DIR" pull && sudo systemctl restart fluffbot && echo "  updated + restarted :3" ;;
+  backup) cp "$DIR/bot/bot_data.json" "$HOME/bot_data_backup_$(date +%F).json" && echo "  saved $HOME/bot_data_backup_$(date +%F).json (download it to keep it safe)" ;;
+  *) echo "usage: ./fluff move | start | stop | restart | status | logs | update | backup" ;;
+esac

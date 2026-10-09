@@ -26,7 +26,7 @@
 > 🔐 **way safer:** global chat now goes through Fluff Bot (bans + reports actually work, nobody can skip the rules), and **every update is signed + checked** before it installs · 🔑 **free app key** from our Discord (`/key`) links you up + gets you **🧪 Beta Tester** · 🎁 **Fluff Wrapped** monthly recap cards · 🏅 **37 badges** · 🎩 **kitty closet** · 🎃 **spooky season** event · 🎨 **theme codes** · 👋 **Fluff Friends** · 🎪 **community nights** · 🌍 **12 languages** · 🛟 safe mode, copy logs, profiles, backups, left-handed mode, colorblind-safe colors, reduced motion. Full list in the [changelog](CHANGELOG.md).
 
 > ### 🥽 Quest Edition: early beta 🧪
-> Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles, 30 Quest mods, phone remote).
+> Fluff VR Stats now has a **standalone Quest app** (chatbox stats, headset battery, song info, avatar toggles, 53 Quest mods, 15 themes, phone remote).
 > It's an **early beta**: small, maybe buggy, more mods coming.
 >
 > **🖐️ No wrist menu on standalone Quest (yet).** Quest doesn't let any app draw menus on top of VRChat, so the hand/wrist menu from the PC version may not work on Quest.
@@ -132,9 +132,10 @@ We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's
   - **49 slash commands:** client guides (`/download`, `/install`, `/mods`, `/boost`...), `/ticket` private support, `/suggest` + `/bug` with voting threads, `/invr`, fun ones (`/headpat`, `/boop`, `/fluffrate`, `/8ball`) and staff tools (`/poll`, `/warn`, `/timeout`, `/lockdown`).
   - **🔔 bump helper:** thanks whoever bumps on DISBOARD, keeps a `/bumpers` leaderboard and pings 🔔 Bumpers every 2 hours when it's time to bump again. `/invite` gives a share-ready invite.
   - To run your own: `bot/setup_bot.bat` (paste your bot token), then `bot/run_bot.bat`. Edit `bot/content.py` to change the channels and posts.
+  - Run it 24/7 for free (no PC needed): [bot/cloud/README.md](bot/cloud/README.md)
 
 ## 🥽 Quest (standalone)
-There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info, avatar toggles and 30 Quest mods over OSC.
+There's an **early beta Quest Edition** 🧪 in [`quest/`](quest/) that runs right on your Quest next to VRChat. It has chatbox stats, headset battery, song info, avatar toggles and 53 Quest mods over OSC (v0.9.0).
 - 🖐️ **Heads up:** the wrist/hand menu may not work on standalone Quest. Quest blocks apps from drawing over VRChat.
 - 📱 **Phone remote replaces it:** put the same APK on an Android phone and use the **Remote** tab as your menu while you play. **Android only, not available on iPhone.**
 - Get the APK: [FluffVRStats-Quest.apk](https://wolfiecodesowo.github.io/fluff-vr-stats/quest/FluffVRStats-Quest.apk)
