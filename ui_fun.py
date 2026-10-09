@@ -16,8 +16,8 @@ from ui import (button, ellipsize, font, mix, panel, paw, pill, rich_text, switc
 
 FUN_PAGES = [("badges", "badges"), ("wrapped", "wrapped"), ("closet", "kitty closet"), ("themes", "theme codes"),
              ("friends", "fluff friends"), ("events", "community nights")]
-SET_PAGES = [("general", "general"), ("comfy", "comfy + access"), ("privacy", "privacy"), ("key", "app key"),
-             ("backup", "backup + help")]
+SET_PAGES = [("general", "general"), ("comfy", "comfy + access"), ("osc", "osc + chatbox"), ("privacy", "privacy"),
+             ("key", "app key"), ("backup", "backup + help")]
 
 
 def _pills(d, hit, x0, y0, x1, pages, cur, t, action):
@@ -345,6 +345,8 @@ def tab_settings(d, hit, box, state, t):
              "stats go on ur right wrist, kitty on the left"),
             ("Menu size", f"{cfg.get('dashboard_width_m', 2.0):.1f} m", ("menu_size",), None, "bigger menu = bigger text"),
             ("Wrist size", f"{cfg['wrist'].get('width_m', 0.13) * 100:.0f} cm", ("wrist_size",), None, "bigger wrist = bigger text"),
+            ("Wrist layout", {"full": "full", "compact": "compact", "minimal": "minimal"}.get(cfg.get("hud_style", "full"), "full"),
+             ("set", "hud_style", "__cycle__", ["full", "compact", "minimal"]), None, "minimal = fps, clock, batteries only"),
             ("Reduced motion", None, ("a11y", "reduced_motion"), ax.get("reduced_motion", False),
              "no intro, no animated logo, calmer cursor"),
             ("Colorblind-safe colors", None, ("a11y", "colorblind"), ax.get("colorblind", False),
@@ -357,6 +359,38 @@ def tab_settings(d, hit, box, state, t):
             ("Break reminder", None, ("toggle", "break_reminder"), cfg["modules"].get("break_reminder", False), "water + stretch nudges"),
             ("Night dim", None, ("toggle", "night_dim"), cfg["modules"].get("night_dim", False), "softer wrist after 10pm"),
         ]
+    elif page == "osc":
+        oc = cfg.get("osc") or {}
+        rt = oc.get("router") or {}
+        mode = oc.get("mode", "auto")
+        cbm = rt.get("chatbox", "yield")
+        fw = rt.get("forward_to") or []
+        rows_l = [
+            ("OSC connection", {"auto": "auto (OSCQuery)", "classic": "classic ports"}.get(mode, mode),
+             ("osc_set", "mode", "classic" if mode == "auto" else "auto"), None,
+             "auto finds VRChat by itself · classic = 9000/9001"),
+            ("Another app uses the chatbox", {"yield": "let them", "own": "Fluff wins", "merge": "share it"}.get(cbm, cbm),
+             ("osc_set", "chatbox", {"yield": "merge", "merge": "own", "own": "yield"}.get(cbm, "yield")), None,
+             "let them = Fluff waits · share = both show · Fluff wins"),
+            ("Pass OSC to other apps", None, ("osc_set", "router", not rt.get("enabled", False)), rt.get("enabled", False),
+             "for apps that need port 9001 too (classic mode)"),
+            ("Forward to ports", ", ".join(str(p) for p in fw) or "none", ("mod_edit", "osc_forward"), None,
+             "like 9002, 9003"),
+        ]
+        rows_r = [
+            ("Chatbox on/off", None, ("toggle", "chatbox_status"), cfg["modules"].get("chatbox_status", False),
+             "what to show: Chatbox tab"),
+            ("Chatbox every", f"{cfg['chatbox'].get('interval_s', 3)}s",
+             ("cb_set", "interval_s", {2: 3, 3: 5, 5: 2}.get(cfg["chatbox"].get("interval_s", 3), 3)), None,
+             "VRChat allows about one msg every 2s"),
+            ("Rotate statuses", None, ("cb_set", "rotate", not cfg["chatbox"].get("rotate", True)),
+             cfg["chatbox"].get("rotate", True), "the status line changes by itself"),
+            ("Open Chatbox tab", "open", ("tab", "Chatbox"), None, "pick lines + edit ur status"),
+        ]
+        note = state.extras.get("note_osc_router") or (
+            "auto works for almost everyone: VRChat finds Fluff by itself, and other OSC apps (MagicChatbox, VRCOSC...) "
+            "keep working. if VRChat doesn't see Fluff, try classic. 'let them' = when another app writes ur chatbox, "
+            "Fluff waits until it's done instead of fighting it.")
     elif page == "privacy":
         rows_l = [
             ("Hide world on Discord", None, ("privacy", "hide_world"), disc.get("hide_world", True),

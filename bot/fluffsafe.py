@@ -182,6 +182,16 @@ def install(bot, env):
         g = bot.guild()
         return g.get_member(int(uid)) if g and uid else None
 
+    ONLINE_S = 7 * 60          # apps ping every 3 min, so 7 min = still on
+
+    def app_online(uid):
+        u = D["users"].get(str(uid))
+        if not u or time.time() - float(u.get("last", 0) or 0) > ONLINE_S:
+            return None
+        return u.get("c") or "pc"
+
+    type(bot).APP_ONLINE = staticmethod(app_online)
+
     async def give_role(uid, key, reason):
         m, r = member(uid), bot.role(key)
         if m and r and r not in m.roles:
@@ -227,9 +237,12 @@ def install(bot, env):
         elif t == "hb":
             uid, u = check_tok(p.get("tok"), p.get("sid"))
             if u:
+                fresh = time.time() - float(u.get("last", 0) or 0) > ONLINE_S
                 u.update(v=str(p.get("v", ""))[:20], c=str(p.get("c", ""))[:8], last=time.time())
                 save_data(D)
                 await give_role(uid, "beta", "using the app")
+                if fresh:
+                    await give_role(uid, "invr", "app is open")
         elif t == "badges":
             uid, u = check_tok(p.get("tok"), p.get("sid"))
             if u:

@@ -958,6 +958,22 @@ def hud_chips(state):
         out.append(("met", str(x["met"]), None))
     if m.get("lucky_paw") and x.get("fortune"):
         out.append(("", ellipsize(x["fortune"], font("body", 16), 300), None))
+    if m.get("second_clock") and x.get("clock2"):
+        out.append((x["clock2"][0], x["clock2"][1], None))
+    if m.get("steps") and x.get("steps") is not None:
+        st_ = x["steps"]
+        out.append(("steps", f"{st_ / 1000:.1f}k" if st_ >= 1000 else str(st_), None))
+    if m.get("avatar_swaps") and x.get("avatar_swaps"):
+        out.append(("avis", str(x["avatar_swaps"]), None))
+    if m.get("water_log"):
+        out.append(("water", str(x.get("water", 0)), "good" if x.get("water", 0) >= 8 else None))
+    if m.get("pat_goal") and x.get("pat_goal"):
+        g_, n_ = x["pat_goal"]
+        out.append(("pat goal", f"{g_}/{n_}", "good" if g_ >= n_ else None))
+    if m.get("mood_line") and x.get("mood"):
+        out.append(("", x["mood"], None))
+    if getattr(state, "power_saving", False):
+        out.append(("", "power saver", "warn"))
     if m.get("afk_detect") and state.afk:
         out.append(("", "afk " + fmt_dur(time.time() - (state.afk_since or time.time())), "warn"))
     return out
@@ -983,6 +999,7 @@ WRIST_ACTIONS = {
     "zoom": ("zoom", "Zoom lens"), "chatbox": ("chatbox", "Chatbox on/off"), "timer": ("timer", "5 min timer"),
     "kitty": ("kitty", "Lil Kitty"), "gchat": ("global", "Global chat"),
     "menu": ("menu", "Open menu"), "screen": ("screen", "Desktop in VR"), "pat": ("pat", "Pat Fluff"),
+    "sip": ("sip", "Water sip"), "mood": ("mood", "Change mood"), "boost": ("boost", "FPS boost"),
 }
 
 
@@ -1035,6 +1052,20 @@ def action_icon(d, kind, cx, cy, r, col, bg=None):
         d.rounded_rectangle([cx - r, cy - r * 0.75, cx + r, cy + r * 0.45], radius=4, outline=col, width=lw)
         d.line([(cx, cy + r * 0.45), (cx, cy + r * 0.85)], fill=col, width=lw)
         d.line([(cx - r * 0.5, cy + r * 0.85), (cx + r * 0.5, cy + r * 0.85)], fill=col, width=lw)
+    elif kind == "sip":
+        pts = [(cx, cy - r * 0.95)]
+        for i in range(13):
+            a = math.pi * (i / 12)
+            pts.append((cx + r * 0.62 * math.cos(a), cy + r * 0.2 + r * 0.62 * math.sin(a)))
+        d.polygon(pts, fill=col)
+        d.ellipse([cx - r * 0.3, cy + r * 0.05, cx - r * 0.08, cy + r * 0.3], fill=bg)
+    elif kind == "mood":
+        rr = r * 0.85
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=lw)
+        e = r * 0.12
+        for sx in (-1, 1):
+            d.ellipse([cx + sx * r * 0.32 - e, cy - r * 0.25 - e, cx + sx * r * 0.32 + e, cy - r * 0.25 + e], fill=col)
+        d.arc([cx - r * 0.45, cy - r * 0.2, cx + r * 0.45, cy + r * 0.5], 20, 160, fill=col, width=lw)
     elif kind == "boost":
         d.polygon([(cx + r * 0.2, cy - r), (cx - r * 0.6, cy + r * 0.15), (cx - r * 0.05, cy + r * 0.15), (cx - r * 0.3, cy + r),
                    (cx + r * 0.6, cy - r * 0.2), (cx + r * 0.05, cy - r * 0.2)], fill=col)
@@ -1067,7 +1098,8 @@ def wrist_button(d, box, kind, label, t, on=False, pressed=False, tint=None, bad
 
 
 SHORT_LABEL = {"zoom": "zoom", "chatbox": "chatbox", "timer": "timer", "kitty": "kitty",
-               "gchat": "global", "menu": "menu", "screen": "screen", "pat": "pat"}
+               "gchat": "global", "menu": "menu", "screen": "screen", "pat": "pat", "sip": "sip",
+               "mood": "mood", "boost": "boost"}
 
 
 def render_hud(state):
@@ -1120,6 +1152,20 @@ def render_hud(state):
     acts = [a for a in cfg.get("wrist_actions", []) if a in WRIST_ACTIONS][:6]
     if mods.get("wrist_buttons", True) and acts:
         rows.append(("buttons", 86, acts))
+    style = cfg.get("hud_style", "full")
+    if style == "minimal":           # just the essentials: fps + clock, batteries, alerts, buttons
+        rows = [r for r in rows if r[0] in ("alert", "top", "timer", "bat", "buttons")]
+    elif style == "compact":         # no graph / pet / ms row, max 2 rows of chips
+        out_, chips_ = [], 0
+        for r in rows:
+            if r[0] in ("graph", "pet", "ms", "gchat"):
+                continue
+            if r[0] == "chips":
+                chips_ += 1
+                if chips_ > 2:
+                    continue
+            out_.append(r)
+        rows = out_
     if not rows:
         rows.append(("empty", 60))
     h = HUD_EAR + 26 + sum(r[1] for r in rows) + 30
@@ -1438,9 +1484,15 @@ MOD_INFO = {
         ("hourly_chime", "Hourly chime", "A soft ding every hour"),
     ],
 }
+# v0.4.2 mods (mods2.py) slot into their categories
+import mods2 as _mods2
+for _k, (_cat, _lab, _desc) in _mods2.INFO.items():
+    if _k not in [m[0] for m in MOD_INFO[_cat]]:
+        MOD_INFO[_cat].append((_k, _lab, _desc))
 # turning these mods on also adds their line to the chatbox
 MOD_TO_LINE = {"headpat_counter": "headpats", "boop_counter": "boops", "jump_counter": "jumps", "yap_meter": "yap",
                "avatar_height": "height", "countdown": "countdown", "quote_of_hour": "quote", "kaomoji": "kaomoji"}
+MOD_TO_LINE.update(_mods2.MOD_TO_LINE)
 # little settings row under some categories: (label fn, action, args)
 ALL_MODS = [m for cat in MOD_CATS for m in MOD_INFO[cat]]
 
@@ -2297,8 +2349,10 @@ def _tab_chatbox(d, hit, box, state, t):
     hit.add([x0, y0, x0 + lw, y0 + 72], "toggle", "chatbox_status")
     # what to show
     d.text((x0 + 4, y0 + 92), "show in chatbox", font=font("head", 20), fill=t["text"])
-    cols = 3 if len(cbx.LINE_KEYS) <= 12 else 4
-    cw, ch, gy = (lw - 8 * (cols - 1)) / cols, (38 if cols == 3 else 30), (10 if cols == 3 else 6)
+    nk = len(cbx.LINE_KEYS)
+    cols = 3 if nk <= 12 else 4
+    cw = (lw - 8 * (cols - 1)) / cols
+    ch, gy = (38, 10) if cols == 3 else ((30, 6) if nk <= 28 else (27, 5))
     for i, k in enumerate(cbx.LINE_KEYS):
         cx = x0 + (i % cols) * (cw + 8)
         cy = y0 + 120 + (i // cols) * (ch + gy)
@@ -2319,11 +2373,25 @@ def _tab_chatbox(d, hit, box, state, t):
         button(d, hit, [bx, ry, bx + 72, ry + 40], lab, t, "cb_set", "style", v,
                active=cb.get("style") == v, fsize=17)
     ty = ry + 50
-    button(d, hit, [x0, ty, x0 + 150, ty + 40], "24h clock" if cb.get("time_24h") else "12h clock", t,
-           "cb_set", "time_24h", not cb.get("time_24h"), fsize=17)
-    if state.extras.get("magicchatbox"):
-        d.text((x0 + 164, ty + 20), "MagicChatbox is open - close it so they don't fight!",
-               font=font("body2", 14), fill=t["bad"], anchor="lm")
+    if ty + 40 <= y1:
+        button(d, hit, [x0, ty, x0 + 150, ty + 40], "24h clock" if cb.get("time_24h") else "12h clock", t,
+               "cb_set", "time_24h", not cb.get("time_24h"), fsize=17)
+    else:                       # lots of lines: the clock button moves next to the preview
+        ty = ry
+        cbx_ = x0 + lw + 22
+        button(d, hit, [cbx_, y0 + 290, cbx_ + 120, y0 + 314], "24h clock" if cb.get("time_24h") else "12h clock", t,
+               "cb_set", "time_24h", not cb.get("time_24h"), fsize=14)
+    rnote = state.extras.get("note_osc_router") or ""
+    nx, ny = x0 + lw + 22 + 132, y0 + 302                # next to the clock button, under the preview
+    nw = x1 - nx
+    if "standing" in rnote:
+        d.text((nx, ny), ellipsize("another app is using ur chatbox ~ Fluff waits (tap to change)", font("body2", 13), nw),
+               font=font("body2", 13), fill=t["warn"], anchor="lm")
+        hit.add([nx, ny - 12, x1, ny + 12], "settings_page", "osc")
+    elif state.extras.get("magicchatbox"):
+        d.text((nx, ny), ellipsize("MagicChatbox is open ~ sharing the chatbox (Settings > osc)", font("body2", 13), nw),
+               font=font("body2", 13), fill=t["sub"], anchor="lm")
+        hit.add([nx, ny - 12, x1, ny + 12], "settings_page", "osc")
 
     # live preview: VRChat-style bubble
     px = x0 + lw + 22
@@ -2342,11 +2410,12 @@ def _tab_chatbox(d, hit, box, state, t):
     # status messages
     sy = y0 + 320
     sts = cb.get("statuses") or [""]
-    idx = cb.get("status_index", 0) % len(sts)
+    cur = cbx.current_status_index(cb)                 # the one VRChat is showing right now
+    idx = cur if cur is not None else cb.get("status_index", 0) % len(sts)
     panel(d, [px, sy, x1, y1], 20, t)
     d.text((px + 16, sy + 10), f"status {idx + 1}/{len(sts)}", font=font("head", 18), fill=t["text"])
     d.text((px + 130, sy + 12), ellipsize(sts[idx] or "(empty)", font("body2", 15), x1 - px - 150),
-           font=font("body2", 15), fill=t["sub"])
+           font=font("body2", 15), fill=t["primary"] if on and cb["lines"].get("status") else t["sub"])
     bw = (x1 - px - 32 - 4 * 6) / 5
     labels = [("<", "cb_status", "prev"), (">", "cb_status", "next"), ("edit", "cb_status", "edit"),
               ("+ new", "cb_status", "add"), ("delete", "cb_status", "delete")]
@@ -2354,10 +2423,14 @@ def _tab_chatbox(d, hit, box, state, t):
         bx = px + 16 + i * (bw + 6)
         button(d, hit, [bx, sy + 40, bx + bw, sy + 76], lab, t, act, arg, fsize=16)
     rot = cb.get("rotate", True)
-    d.text((px + 16, sy + 98), f"rotate statuses every {cb.get('rotate_s', 30)}s", font=font("body2", 14),
-           fill=t["sub"], anchor="lm")
+    d.text((px + 16, sy + 98), "rotate statuses every", font=font("body2", 14), fill=t["sub"], anchor="lm")
+    rb = [px + 172, sy + 86, px + 232, sy + 110]
+    button(d, hit, rb, f"{cb.get('rotate_s', 30)}s", t, "cb_status", "rotate_s", fsize=14)
     switch(d, x1 - 70, sy + 86, rot, t, scale=0.8)
-    hit.add([px, sy + 82, x1, sy + 114], "cb_set", "rotate", not rot)
+    hit.add([x1 - 80, sy + 82, x1, sy + 114], "cb_set", "rotate", not rot)
+    if not cb["lines"].get("status"):
+        d.text((px + 16, sy + 128), "turn on \"Status text\" on the left to show it", font=font("body2", 13),
+               fill=t["warn"], anchor="lm")
 
 
 def _tab_boost(d, hit, box, state, t):
@@ -2736,20 +2809,26 @@ def _tab_mods(d, hit, box, state, t):
         w = tw(lab, font("head", fs)) + 28
         button(d, hit, [cx, y0, cx + w, y0 + 44], lab, t, "mods_cat", c, active=cat == c, fsize=fs)
         cx += w + 8
-    gap, ch = 12, (56 if len(MOD_INFO[cat]) <= 8 else 50)
-    cw = (x1 - x0 - gap) / 2
+    n_mods = len(MOD_INFO[cat])
+    cols = 2 if n_mods <= 12 else 3
+    rows_n = -(-n_mods // cols)
+    room = (y1 - y0 - 56) - (96 if cat == "Counters" else 52)       # leave space for the settings row
+    gap, ch = 12, int(max(46, min(56, room / rows_n - 6)))
+    cw = (x1 - x0 - gap * (cols - 1)) / cols
+    small = ch <= 52 or cols == 3
     for i, (key, name, desc) in enumerate(MOD_INFO[cat]):
-        cx = x0 + (i % 2) * (cw + gap)
-        cy = y0 + 56 + (i // 2) * (ch + 6)
+        cx = x0 + (i % cols) * (cw + gap)
+        cy = y0 + 56 + (i // cols) * (ch + 6)
         on = state.cfg["modules"].get(key, False)
-        panel(d, [cx, cy, cx + cw, cy + ch], 18, t)
-        d.text((cx + 20, cy + (10 if ch > 52 else 7)), name, font=font("head", 20), fill=t["text"])
-        d.text((cx + 20, cy + (34 if ch > 52 else 29)), ellipsize(desc, font("body2", 15), cw - 110),
-               font=font("body2", 15), fill=t["sub"])
-        switch(d, cx + cw - 74, cy + (14 if ch > 52 else 11), on, t)
+        panel(d, [cx, cy, cx + cw, cy + ch], 18, t, fill=mix(t["panel"], t["primary"], 0.10) if on else None)
+        fn = font("head", 18 if cols == 3 else 20)
+        d.text((cx + 18, cy + (7 if small else 10)), ellipsize(name, fn, cw - 96), font=fn, fill=t["text"])
+        d.text((cx + 18, cy + (28 if small else 34)), ellipsize(desc, font("body2", 13 if cols == 3 else 15), cw - 96),
+               font=font("body2", 13 if cols == 3 else 15), fill=t["sub"])
+        switch(d, cx + cw - 70, cy + (ch - 30) / 2 - 1, on, t, scale=0.9 if cols == 3 else 1.0)
         hit.add([cx, cy, cx + cw, cy + ch], "toggle", key)
     # small settings row for some categories
-    rows_used = -(-len(MOD_INFO[cat]) // 2)
+    rows_used = rows_n
     sy = y0 + 56 + rows_used * (ch + 6) + 4
     cfg = state.cfg
     btns = []
@@ -2757,7 +2836,8 @@ def _tab_mods(d, hit, box, state, t):
         x = state.extras
         pat = x.get("pat_param") or "auto"
         learning = x.get("learn")
-        btns = [("listening for a pat..." if learning == "headpats" else "learn my headpat", "learn_contact", "headpats"),
+        btns = [(f"pat goal: {cfg.get('pat_goal_n', 50)}", "mod_cycle", "pat_goal_n"),
+                ("listening for a pat..." if learning == "headpats" else "learn my headpat", "learn_contact", "headpats"),
                 ("listening for a boop..." if learning == "boops" else "learn my boop", "learn_contact", "boops"),
                 (f"pat: {pat} ✎", "mod_edit", "headpat_param"),
                 ("reset counts", "mod_reset_counts", None)]
@@ -2777,14 +2857,20 @@ def _tab_mods(d, hit, box, state, t):
     elif cat == "Fun":
         cd = cfg.get("countdown", {})
         btns = [(f"countdown: {cd.get('name') or 'name'} ✎", "mod_edit", "countdown_name"),
-                (f"date: {cd.get('date') or 'YYYY-MM-DD'} ✎", "mod_edit", "countdown_date")]
+                (f"date: {cd.get('date') or 'YYYY-MM-DD'} ✎", "mod_edit", "countdown_date"),
+                (f"mood: {cfg.get('mood', _mods2.MOODS[0])}", "mood_next", None)]
     elif cat == "Wrist":
         kt = cfg.get("kitty", {})
+        c2 = cfg.get("second_clock", {})
         btns = [(f"kitty: {kt.get('name', 'Mochi')} ✎", "mod_edit", "kitty_name"),
+                (f"2nd clock: {c2.get('name', 'Tokyo')} {float(c2.get('offset', 9)):+g}h ✎", "mod_edit", "second_clock"),
                 (f"fur: {kt.get('color', 'cream')}", "kitty_color", None),
                 (f"trust {min(20, kt.get('trust', 0))}/20 · fed {kt.get('fed', 0)}x", "mods_cat", "Wrist")]
     elif cat == "Comfy":
+        q = cfg.get("quiet", {})
         btns = [(f"bedtime: {cfg.get('bedtime', '01:00')} ✎", "mod_edit", "bedtime"),
+                (f"quiet: {q.get('from', '23:00')}-{q.get('to', '08:00')} ✎", "mod_edit", "quiet_hours"),
+                (f"playtime: {cfg.get('play_limit_h', 3)}h", "mod_cycle", "play_limit_h"),
                 (f"eye break: {cfg.get('eye_break_min', 20)}m", "mod_cycle", "eye_break_min"),
                 (f"posture: {cfg.get('posture_min', 30)}m", "mod_cycle", "posture_min")]
     bx = x0

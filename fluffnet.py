@@ -104,6 +104,7 @@ class Access:
         self.busy = False
         self.status = "key ok" if self.info else ("no key yet" if self.enabled else "keys not set up")
         if self.info:
+            self._hb_started = True
             _bg(self._heartbeat)
 
     # ---- state
@@ -168,8 +169,12 @@ class Access:
                         self.A["tok"] = p["tok"]
                         self.A["who"] = str(p.get("who") or "")[:40]
                         self.A["at"] = int(time.time())
+                        had = bool(self.info)
                         self.info = info
                         self.status = "key ok"
+                        if not had and not getattr(self, "_hb_started", False):
+                            self._hb_started = True
+                            _bg(self._heartbeat)
                         if self.on_linked:
                             self.on_linked(self.A["who"], bool(p.get("beta", True)))
                         return
@@ -186,11 +191,15 @@ class Access:
             self.busy = False
 
     def _heartbeat(self):
-        """once per launch: lets the bot see who's actively testing + on which version"""
-        try:
-            post(AUTH_TOPIC, {"t": "hb", "tok": self.A["tok"], "sid": self.sid(), "v": self.version, "c": self.client})
-        except Exception:
-            pass
+        """every 3 min while the app is open: shows u as 🥽 In VR Now in the Discord (+ who's testing which version)"""
+        while True:
+            tok = self.A.get("tok") if self.info else None
+            if tok:
+                try:
+                    post(AUTH_TOPIC, {"t": "hb", "tok": tok, "sid": self.sid(), "v": self.version, "c": self.client})
+                except Exception:
+                    pass
+            time.sleep(180)
 
     def sync_badges(self, badges):
         if not self.info:

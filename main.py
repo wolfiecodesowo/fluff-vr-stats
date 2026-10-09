@@ -103,6 +103,7 @@ DEFAULT_CFG = {
         "pat_combo": True, "vibe_meter": False, "daily_goal": False, "world_timer": False, "met_today": False,
         "lucky_paw": False, "night_dim": False, "hot_gpu_alert": True, "ram_alert": True, "hourly_chime": False,
         "fps_drop_log": False, "battery_eta": False, "fluff_friends": True,
+        **__import__("mods2").DEFAULTS,
     },
     "language": "auto",                # Settings -> Language (auto = ur Windows language)
     "a11y": {"reduced_motion": False, "colorblind": False},
@@ -164,6 +165,11 @@ DEFAULT_CFG = {
     "afk_minutes": 5,
     "walked_total_m": 0,
     "cursor": "paw",
+    "second_clock": {"name": "Tokyo", "offset": 9},
+    "quiet": {"from": "23:00", "to": "08:00"},
+    "play_limit_h": 3,
+    "pat_goal_n": 50,
+    "mood": "😊 happy",
     "dev_mode": False,                 # unlocks the hidden Dev tab (local toys only, for testing ur own client)
     "dev": {"fake_stats": False, "fps": 90, "gpu_temp": 70, "battery": 80, "fake_world": False,
             "spikes": False, "gold_skin": False},
@@ -621,6 +627,7 @@ class State:
         self.whatsnew = None          # (title, bullets) shown once after an update
         self.checklist = None         # first-run checklist card
         self.update_required = None   # (min tag, message): this version is too old, must update
+        self.power_saving = False     # power saver mod: fps is low, overlay is going easy
         self.confirm = None           # (action, until) for "tap again to confirm"
         self.app_usage = {}
         self.safe_mode = False
@@ -1248,6 +1255,23 @@ class App:
             cfg["screen"]["enabled"] = not cfg["screen"]["enabled"]
             self.scr_placed = False
             st.dirty_cfg = True
+        elif cmd == "sip":
+            import mods2
+            mods2.sip(self)
+        elif cmd == "mood":
+            import mods2
+            self.show_alert("mood: " + mods2.next_mood(cfg), secs=3)
+            self.last_chatbox, self.last_chatbox_text = 0, None
+            st.dirty_cfg = True
+        elif cmd == "boost":
+            done = 0
+            for key in ("power_plan", "game_mode", "game_dvr", "vr_priority", "gpu_pref"):
+                try:
+                    if self.tweaks.apply(key):
+                        done += 1
+                except Exception:
+                    pass
+            self.show_alert(f"BOOSTED ⚡ {done} tweaks on (undo in the Boost tab)" if done else "already boosted ⚡", secs=4)
         elif cmd == "pat":
             cfg["floof_pats"] = cfg.get("floof_pats", 0) + 1
             st.last_pat = time.time()
@@ -1323,11 +1347,18 @@ class App:
             cur = {"kitty_name": cfg.get("kitty", {}).get("name", "Mochi"),
                    "gchat_name": cfg.get("gchat", {}).get("name", ""),
                    "countdown_name": cfg.get("countdown", {}).get("name", ""),
-                   "countdown_date": cfg.get("countdown", {}).get("date", "")}.get(key, str(cfg.get(key, "")))
+                   "countdown_date": cfg.get("countdown", {}).get("date", ""),
+                   "osc_forward": ", ".join(str(p) for p in ((cfg.get("osc") or {}).get("router") or {}).get("forward_to", [])),
+                   "second_clock": f"{cfg.get('second_clock', {}).get('name', 'Tokyo')} {float(cfg.get('second_clock', {}).get('offset', 9)):+g}",
+                   "quiet_hours": f"{cfg.get('quiet', {}).get('from', '23:00')}-{cfg.get('quiet', {}).get('to', '08:00')}"
+                   }.get(key, str(cfg.get(key, "")))
             desc = {"headpat_param": "Headpat parameter name (blank = auto)", "boop_param": "Boop parameter name (blank = auto)",
                     "countdown_name": "Countdown to what?", "countdown_date": "Date (YYYY-MM-DD)",
                     "bedtime": "Bedtime (HH:MM, 24h)", "kitty_name": "Name ur kitty",
-                    "gchat_name": "Ur name in global chat", "weather_location": "Weather city (blank = auto)"}.get(key, key)
+                    "gchat_name": "Ur name in global chat", "weather_location": "Weather city (blank = auto)",
+                    "osc_forward": "OSC ports to forward to (like 9002, 9003)",
+                    "second_clock": "2nd clock: name + hours from UTC (like Tokyo +9)",
+                    "quiet_hours": "Quiet hours (like 23:00-08:00)"}.get(key, key)
             self.open_keyboard(desc, cur, ("cfg", key))
         elif action == "kitty_color":
             cols = list(self.kitty_mod.COLORS)
@@ -1335,10 +1366,15 @@ class App:
             kt["color"] = cols[(cols.index(kt.get("color", "cream")) + 1) % len(cols)] if kt.get("color") in cols else "cream"
             self.kitty.changed = True
             st.dirty_cfg = st.dash_dirty = True
+        elif action == "mood_next":
+            import mods2
+            mods2.next_mood(cfg)
+            self.last_chatbox, self.last_chatbox_text = 0, None
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "mod_cycle":
-            opts = [10, 15, 20, 30, 45, 60]
-            cur = cfg.get(args[0], 20)
-            cfg[args[0]] = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else 20
+            opts = {"play_limit_h": [1, 2, 3, 4, 6], "pat_goal_n": [10, 25, 50, 100, 250]}.get(args[0], [10, 15, 20, 30, 45, 60])
+            cur = cfg.get(args[0], opts[0])
+            cfg[args[0]] = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0]
             st.dirty_cfg = st.dash_dirty = True
         elif action == "learn_contact":
             kind = args[0]
@@ -1418,30 +1454,67 @@ class App:
             st.avatar_page = max(0, st.avatar_page + args[0])
         elif action == "av_refresh":
             self.avatar.load_latest()
+        elif action == "settings_page":
+            st.tab, st.set_page = "Settings", args[0]
+            st.dash_dirty = True
+        elif action == "osc_set":
+            oc = cfg.setdefault("osc", {})
+            rt = oc.setdefault("router", {})
+            key, val = args[0], args[1]
+            if key == "mode":
+                oc["mode"] = val
+                self.show_alert("OSC mode changed ~ restart the app to use it", secs=5)
+            elif key == "chatbox":
+                rt["chatbox"] = val
+            elif key == "router":
+                rt["enabled"] = bool(val)
+            router = getattr(self.extras, "router", None)
+            if router is not None:                     # the router reads its settings live
+                try:
+                    router.cfg = rt
+                except Exception:
+                    pass
+            self.last_chatbox, self.last_chatbox_text = 0, None
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "cb_line":
             ln = cfg["chatbox"]["lines"]
             ln[args[0]] = not ln.get(args[0], False)
-            st.dirty_cfg = True
+            self.last_chatbox, self.last_chatbox_text = 0, None     # send the change right away
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "cb_set":
             cfg["chatbox"][args[0]] = args[1]
-            st.dirty_cfg = True
+            if args[0] == "rotate":
+                cfg["chatbox"]["rotate_from"] = time.time()
+            self.last_chatbox, self.last_chatbox_text = 0, None
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "cb_status":
             cb = cfg["chatbox"]
             sts = cb.setdefault("statuses", [])
             n = max(1, len(sts))
             i = cb.get("status_index", 0) % n
-            if args[0] == "prev":
-                cb["status_index"] = (i - 1) % n
-            elif args[0] == "next":
-                cb["status_index"] = (i + 1) % n
+            if args[0] in ("prev", "next"):
+                import chatbox as _cbx
+                cur = _cbx.current_status_index(cb)          # step from what's showing right now
+                i = cur if cur is not None else i
+                cb["status_index"] = (i + (1 if args[0] == "next" else -1)) % n
+            elif args[0] == "rotate_s":
+                opts = [10, 15, 30, 60, 120]
+                cur_s = cb.get("rotate_s", 30)
+                cb["rotate_s"] = opts[(opts.index(cur_s) + 1) % len(opts)] if cur_s in opts else 30
             elif args[0] == "edit":
+                import chatbox as _cbx
+                cur = _cbx.current_status_index(cb)          # edit the one that's showing
+                i = cur if cur is not None else i
+                cb["status_index"] = i
                 self.open_keyboard("Edit status", sts[i] if sts else "", ("status", i))
             elif args[0] == "add":
                 self.open_keyboard("New status", "", ("status", None))
             elif args[0] == "delete" and sts:
                 sts.pop(i)
                 cb["status_index"] = max(0, i - 1)
-            st.dirty_cfg = True
+            cb["rotate_from"] = time.time()                  # show the picked one right away
+            self.last_chatbox, self.last_chatbox_text = 0, None
+            st.dirty_cfg = st.dash_dirty = True
         elif action == "screen_toggle":
             cfg["screen"]["enabled"] = not cfg["screen"]["enabled"]
             self.scr_placed = False
@@ -1934,6 +2007,32 @@ class App:
                 if name:
                     self.cfg["gchat"]["name"] = name
                     self.show_alert(f"hiii {name}! ur global chat name is set :3", secs=5)
+            elif key == "second_clock":
+                import re as _re
+                mt = _re.match(r"^\s*(.*?)\s*([+-]?\d+(?:\.\d+)?)\s*$", text)
+                if not mt or not -12 <= float(mt.group(2)) <= 14:
+                    self.show_alert("type it like: Tokyo +9  (name + hours from UTC)", "warn", 6)
+                    return
+                self.cfg["second_clock"] = {"name": (mt.group(1) or "other")[:14], "offset": float(mt.group(2))}
+            elif key == "quiet_hours":
+                try:
+                    a, b = [v.strip() for v in text.replace("to", "-").split("-")[:2]]
+                    for v in (a, b):
+                        hh, mm = [int(z) for z in v.split(":")[:2]]
+                        assert 0 <= hh < 24 and 0 <= mm < 60
+                    self.cfg["quiet"] = {"from": a, "to": b}
+                except Exception:
+                    self.show_alert("type it like: 23:00-08:00", "warn", 6)
+                    return
+            elif key == "osc_forward":
+                ports = []
+                for part in text.replace(";", ",").replace(" ", ",").split(","):
+                    if part.strip().isdigit() and 1024 <= int(part) <= 65535 and int(part) not in ports:
+                        ports.append(int(part))
+                self.cfg.setdefault("osc", {}).setdefault("router", {})["forward_to"] = ports[:8]
+                if ports:
+                    self.cfg["osc"]["router"]["enabled"] = True
+                self.show_alert("restart the app to start forwarding" if ports else "forwarding off", secs=5)
             elif key == "kitty_name":
                 if text:
                     self.cfg.setdefault("kitty", {})["name"] = text[:16]
@@ -1971,6 +2070,9 @@ class App:
                     sts[target[1]] = text
                 else:
                     sts.pop(target[1])
+                self.cfg["chatbox"]["status_index"] = min(target[1], max(0, len(sts) - 1))
+            self.cfg["chatbox"]["rotate_from"] = time.time()   # show the new text right away
+            self.last_chatbox, self.last_chatbox_text = 0, None
             st.dirty_cfg = st.dash_dirty = True
 
     def scroll(self, amount):
@@ -2097,6 +2199,8 @@ class App:
         st, m = self.state, self.cfg["modules"]
         x = st.extras
         self.safe("new mods", self.tick_new_mods, now)
+        import mods2
+        self.safe("v0.4.2 mods", mods2.tick, self, now)
         # VR time today + streak (every minute)
         if now - self.last_vr_tick >= 60:
             self.update_vr_days(now - self.last_vr_tick)
@@ -2171,6 +2275,9 @@ class App:
             self.extras.changed = True
 
     def show_alert(self, text, kind="info", secs=8):
+        import mods2
+        if kind == "info" and mods2.is_quiet(self.cfg) and not text.startswith(("update", "🔑")):
+            return                                      # quiet hours: only warnings get through
         text = lang.tr(text)
         self.state.alert = {"text": text, "kind": kind, "until": time.time() + secs}
         self.state.hud_dirty = True
@@ -2635,6 +2742,8 @@ class App:
     def step_stats(self, now):
         st = self.state
         hud_period = 1.0 / max(0.5, float(self.cfg.get("hud_refresh_hz", 2)))
+        if getattr(st, "power_saving", False):
+            hud_period = max(hud_period, 1.0)            # power saver: wrist updates once a sec
         if now - self.t["stats"] > hud_period:
             self.t["stats"] = now
             st.stats = self.apply_dev_stats(self.stats.collect())
@@ -2673,7 +2782,7 @@ class App:
             self.cursor_moved = False
             # only the little stickers animate: cheap paste, no full redraw
             self.t["logo"] = now
-            if self.cfg.get("animate_logo", True):
+            if self.cfg.get("animate_logo", True) and not getattr(st, "power_saving", False):
                 self.logo_i += 1
             th = ui.get_theme(self.cfg)
             frame = ui.draw_hover(ui.add_logo(self.dash_base, self.logo_i, st.anim_slots), st.hover_box, th)

@@ -10,7 +10,7 @@ import time
 
 LINE_KEYS = ["status", "afk", "time", "date", "song", "song_bar", "world", "fps", "pc", "gpu_temp", "session",
              "today", "streak", "distance", "headpats", "boops", "jumps", "yap", "height", "countdown", "quote",
-             "combo", "vibe", "goal", "fortune", "kaomoji"]
+             "combo", "vibe", "goal", "fortune", "mood", "water", "steps", "avatars", "compliment", "kaomoji"]
 LINE_LABELS = {
     "status": "Status text", "time": "Time", "song": "Song", "song_bar": "Song progress",
     "fps": "FPS", "pc": "CPU / GPU %", "gpu_temp": "GPU temp", "session": "Time in VR",
@@ -18,6 +18,7 @@ LINE_LABELS = {
     "date": "Date", "today": "VR today", "streak": "VR streak", "boops": "Boops", "jumps": "Jumps",
     "yap": "Yap meter", "height": "Avi height", "countdown": "Countdown", "quote": "Cute quote",
     "kaomoji": "Kaomoji", "combo": "Pat combo", "vibe": "Vibe meter", "goal": "Daily goal", "fortune": "Lucky paw",
+    "mood": "Mood", "water": "Water", "steps": "Steps", "avatars": "Avi swaps", "compliment": "Compliment",
 }
 QUOTES = ["u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
           "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
@@ -44,7 +45,7 @@ ICONS = {
                "session": "⏱️", "headpats": "🐾", "afk": "💤", "world": "🌍", "distance": "👣",
                "date": "📅", "today": "🥽", "streak": "🔥", "boops": "👃", "jumps": "🐇", "yap": "🗣️",
                "height": "📏", "countdown": "🎉", "quote": "💭", "combo": "💥", "vibe": "🕺", "goal": "🎯",
-               "fortune": "🍀"},
+               "fortune": "🍀", "water": "💧", "steps": "👟", "avatars": "👗", "compliment": "💖"},
     "simple": {"status": "♡", "time": "", "song": "♪", "fps": "", "pc": "", "gpu_temp": "",
                "session": "", "headpats": "", "afk": "zzz", "world": "@", "distance": ""},
 }
@@ -64,15 +65,27 @@ def song_bar(pos, dur, width=11):
     return f"{_fmt_t(pos)} " + "━" * i + "◉" + "─" * (width - 1 - i) + f" {_fmt_t(dur)}"
 
 
-def current_status(cb, now=None):
-    sts = [s for s in cb.get("statuses", []) if s.strip()]
-    if not sts:
-        return ""
-    idx = cb.get("status_index", 0) % len(sts)
-    if cb.get("rotate", True) and len(sts) > 1:
+def current_status_index(cb, now=None):
+    """index (into cb["statuses"]) of the status the chatbox shows right now, or None.
+    Rotation starts from the status u picked last (cb["rotate_from"] = when u picked it), so
+    picking / editing / adding a status always shows THAT one first."""
+    sts = cb.get("statuses", [])
+    good = [i for i, s in enumerate(sts) if str(s).strip()]
+    if not good:
+        return None
+    sel = cb.get("status_index", 0) % len(sts)
+    if sel not in good:
+        sel = good[0]
+    if cb.get("rotate", True) and len(good) > 1:
         now = time.time() if now is None else now
-        idx = (idx + int(now // max(5, cb.get("rotate_s", 30)))) % len(sts)
-    return sts[idx]
+        steps = int(max(0.0, now - float(cb.get("rotate_from", 0) or 0)) // max(5, cb.get("rotate_s", 30)))
+        return good[(good.index(sel) + steps) % len(good)]
+    return sel
+
+
+def current_status(cb, now=None):
+    i = current_status_index(cb, now)
+    return "" if i is None else cb["statuses"][i]
 
 
 def _short(text, n):
@@ -201,6 +214,19 @@ def compose(cfg, stats, extras, music, now=None):
         lines.append("  ".join(row))
     if on.get("fortune") and extras.get("fortune"):
         lines.append(tag("fortune", _short(extras["fortune"], 44)))
+    if on.get("mood") and extras.get("mood"):
+        lines.append(_short(extras["mood"], 30))
+    row = []
+    if on.get("water") and extras.get("water") is not None:
+        row.append(tag("water", f"{extras['water']} sip" + ("" if extras["water"] == 1 else "s")))
+    if on.get("steps") and extras.get("steps"):
+        row.append(tag("steps", f"{extras['steps']:,} steps"))
+    if on.get("avatars") and extras.get("avatar_swaps"):
+        row.append(tag("avatars", f"{extras['avatar_swaps']} avis today"))
+    if row:
+        lines.append("  ".join(row))
+    if on.get("compliment") and extras.get("compliment"):
+        lines.append(tag("compliment", _short(extras["compliment"], 44)))
     if on.get("quote"):
         lines.append(tag("quote", QUOTES[int(now // 3600) % len(QUOTES)]))
     if on.get("kaomoji") and lines:

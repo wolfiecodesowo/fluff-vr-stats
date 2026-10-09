@@ -27,14 +27,30 @@ import trust  # noqa: E402
 KEY = os.environ.get("RELEASE_KEY_FILE") or os.path.join(HERE, "keys", "release_key.pem")
 
 
+def _zip_bytes(tag):
+    """the release's files: from git if this is a git checkout, otherwise straight from GitHub"""
+    try:
+        return subprocess.run(["git", "-C", HERE, "archive", "--format=zip", tag], capture_output=True,
+                              check=True).stdout, False
+    except Exception:
+        import urllib.request
+        url = f"https://github.com/wolfiecodesowo/fluff-vr-stats/archive/refs/tags/{tag}.zip"
+        print(f"  no git here, downloading {url}")
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "FluffVRStats-sign"}),
+                                    timeout=120) as r:
+            return r.read(), True
+
+
 def manifest_for(tag):
-    data = subprocess.run(["git", "-C", HERE, "archive", "--format=zip", tag], capture_output=True, check=True).stdout
+    data, prefixed = _zip_bytes(tag)
     zf = zipfile.ZipFile(io.BytesIO(data))
     files = {}
     for n in zf.namelist():
         if n.endswith("/"):
             continue
-        files[n] = hashlib.sha256(zf.read(n)).hexdigest()
+        rel = n.split("/", 1)[1] if prefixed else n       # GitHub's zip has a "repo-tag/" folder on top
+        if rel:
+            files[rel] = hashlib.sha256(zf.read(n)).hexdigest()
     return {"v": 1, "tag": tag, "files": files}
 
 

@@ -234,8 +234,18 @@ class FluffBot(discord.Client):
             except discord.HTTPException:
                 pass
 
+    APP_ONLINE = None          # set by fluffsafe.py: uid -> client ("pc"/"quest"/...) if their app pinged lately
+
+    @staticmethod
+    def app_client(member):
+        """'quest' / 'phone' / 'pc' / 'desktop' if their app sent a heartbeat in the last few min (keyed apps)"""
+        fn = FluffBot.APP_ONLINE
+        return fn(getattr(member, "id", 0)) if fn else None
+
     @staticmethod
     def using_fluff(member):
+        if FluffBot.app_client(member):            # Quest can't show Discord status, so heartbeats count too
+            return True
         for a in member.activities or []:
             name = (getattr(a, "name", "") or "").lower()
             if any(n in name for n in PRESENCE_NAMES):
@@ -1018,7 +1028,9 @@ async def invr_cmd(inter: discord.Interaction):
     for m in vr[:25]:
         act = next((a for a in m.activities if bot.using_fluff(type("x", (), {"activities": [a]})())), None)
         extra = f" · {act.details}" if act is not None and getattr(act, "details", None) else ""
-        lines.append(f"🥽 **{m.display_name}**{extra}")
+        cl = bot.app_client(m)
+        tag = {"quest": " · 🥽 Quest", "phone": " · 📱 phone", "desktop": " · 🖥️ desktop"}.get(cl or "", "")
+        lines.append(f"🥽 **{m.display_name}**{tag}{extra}")
     await inter.response.send_message(embed=discord.Embed(title=f"🥽 {len(vr)} in VR right now",
                                                           description="\n".join(lines), color=C.PURPLE))
 

@@ -100,14 +100,23 @@ object AppKey {
         }
     }
 
-    /** once per launch: lets the bot see who's actively testing + on which version */
+    @Volatile private var hbRunning = false
+
+    /** every 3 min while the app is open: shows u as 🥽 In VR Now in the Discord (Quest can't set a Discord status) */
     fun heartbeat(ctx: Context, client: String) {
-        val tok = token(ctx) ?: return
-        val sid = Settings(ctx).gchatSid
+        if (hbRunning) return
+        hbRunning = true
+        val app = ctx.applicationContext
         Thread {
-            try { post(AUTH_TOPIC, JSONObject().put("t", "hb").put("tok", tok).put("sid", sid).put("v", BuildConfig.VERSION_NAME).put("c", client)) }
-            catch (_: Exception) {}
-        }.start()
+            while (true) {
+                val tok = token(app)
+                if (tok != null) try {
+                    post(AUTH_TOPIC, JSONObject().put("t", "hb").put("tok", tok).put("sid", Settings(app).gchatSid)
+                        .put("v", BuildConfig.VERSION_NAME).put("c", client))
+                } catch (_: Exception) {}
+                try { Thread.sleep(180_000) } catch (_: InterruptedException) { break }
+            }
+        }.apply { isDaemon = true; start() }
     }
 
     fun forget(ctx: Context) {

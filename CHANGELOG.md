@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.2 + Quest Edition v0.8.0: more mods, fresh looks, chatbox fix
+- 🗨️ **chatbox status fixed:** picking, editing or adding a status now shows THAT one right away (rotation used to jump to a different one). the Chatbox tab shows what VRChat is showing rn, and u can pick how fast it rotates (10s-2min)
+- ⚙️ **new Settings → osc + chatbox page:** OSC auto/classic, what happens when another app uses ur chatbox (let them / share it / Fluff wins), pass OSC to other apps
+- 🧩 **17 new mods (92 total):**
+  - ⚡ **Power saver** (on by default): fps low? the overlay slows itself down until it recovers · **Auto boost** · **Stutter alert**
+  - ⌚ **2nd clock** (a friend's time zone) · **Step counter** · **AFK recap**
+  - 🌍 **Public alert** (on by default) · **Avatar swaps** · **Busy instance**
+  - 💧 **Water tracker** (new 💧 wrist button) · **Headpat goal**
+  - 💖 **Compliments** · **Mood** (new mood wrist button + chatbox line) · **Dance party**
+  - 🌙 **Quiet hours** (no pop-ups at night) · **Playtime check** · **Charge reminder**
+- 🗨️ new chatbox lines: mood, water, steps, avi swaps, compliment
+- 🎨 **10 new themes:** Midnight Fox, Sakura, Ocean Otter, Matcha Latte, Aurora, Peach Fuzz, Lilac Dream, Cyber Wolf, Cozy Cabin, Candy Corn
+- ⌚ **wrist layouts:** full / compact / minimal (Settings → comfy). minimal = fps, clock + batteries only, lighter on ur PC too
+- 🧩 Mods tab shows 3 columns when a category is big, mods that are on get a soft glow
+- 🥽 **Discord "In VR now" counts Quest players too** (and PC players without the Discord app): the app pings Fluff Bot every 3 min
+- 🥽 **Quest Edition v0.8.0:** free app key (same as PC), safe signed global chat, long-press to mute or report, shows u as In VR in the Discord. **one-time fresh install: uninstall the old Quest app first**, then updates are automatic again
+- 🌍 everything new is translated in all 12 languages
+
 ## Quest Edition v0.8.0: keys + safe chat
 - 🔑 **app key** on Quest too: same free key as PC (`/key`), works on up to 5 devices. put it in Settings or the popup
 - 🔐 **safe global chat:** messages go through Fluff Bot and only signed ones show up, same as PC
