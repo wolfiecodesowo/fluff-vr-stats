@@ -47,6 +47,30 @@ class Settings(ctx: Context) {
     var vrStreak: Int get() = p.getInt("vr_streak", 0); set(v) = p.edit().putInt("vr_streak", v).apply()
     var hydrateMin: Int get() = p.getInt("hydrate_min", 30); set(v) = p.edit().putInt("hydrate_min", v).apply()
 
+    // v0.9.0: picked status + rotation anchor (so the one u pick shows right away)
+    var statusIdx: Int get() = p.getInt("status_idx", 0); set(v) = p.edit().putInt("status_idx", v).apply()
+    var rotateFrom: Long get() = p.getLong("rotate_from", 0L); set(v) = p.edit().putLong("rotate_from", v).apply()
+    var rotate: Boolean get() = p.getBoolean("rotate_on", true); set(v) = p.edit().putBoolean("rotate_on", v).apply()
+    var mood: String get() = p.getString("mood", MOODS[0])!!; set(v) = p.edit().putString("mood", v).apply()
+    var sips: Int get() = p.getInt("sips", 0); set(v) = p.edit().putInt("sips", v).apply()
+    var sipDate: String get() = p.getString("sip_date", "")!!; set(v) = p.edit().putString("sip_date", v).apply()
+    var clock2Name: String get() = p.getString("clock2_name", "Tokyo")!!; set(v) = p.edit().putString("clock2_name", v).apply()
+    var clock2Off: Float get() = p.getFloat("clock2_off", 9f); set(v) = p.edit().putFloat("clock2_off", v).apply()
+    var quietFrom: String get() = p.getString("quiet_from", "23:00")!!; set(v) = p.edit().putString("quiet_from", v).apply()
+    var quietTo: String get() = p.getString("quiet_to", "08:00")!!; set(v) = p.edit().putString("quiet_to", v).apply()
+    var playLimitH: Int get() = p.getInt("play_limit_h", 3); set(v) = p.edit().putInt("play_limit_h", v).apply()
+    var patGoal: Int get() = p.getInt("pat_goal", 50); set(v) = p.edit().putInt("pat_goal", v).apply()
+    var patGoalDate: String get() = p.getString("pat_goal_date", "")!!; set(v) = p.edit().putString("pat_goal_date", v).apply()
+    var patGoalStart: Int get() = p.getInt("pat_goal_start", 0); set(v) = p.edit().putInt("pat_goal_start", v).apply()
+    var swaps: Int get() = p.getInt("swaps", 0); set(v) = p.edit().putInt("swaps", v).apply()
+    var swapDate: String get() = p.getString("swap_date", "")!!; set(v) = p.edit().putString("swap_date", v).apply()
+    var modFilter: String get() = p.getString("mod_filter", "all")!!; set(v) = p.edit().putString("mod_filter", v).apply()
+    var seenNews: Int get() = p.getInt("seen_news", 0); set(v) = p.edit().putInt("seen_news", v).apply()
+
+    fun statusList() = statuses.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    /** pick a status: it shows right now, rotation carries on from it */
+    fun pickStatus(i: Int) { statusIdx = i; rotateFrom = System.currentTimeMillis() }
+
     /** 4-digit code the phone remote needs (made once, random) */
     val pairCode: String get() = p.getString("pair", null) ?: (1000 + java.util.Random().nextInt(9000)).toString().also { p.edit().putString("pair", it).apply() }
     var remoteIp: String get() = p.getString("remote_ip", "")!!; set(v) = p.edit().putString("remote_ip", v).apply()
@@ -137,11 +161,41 @@ class Settings(ctx: Context) {
             Triple("ram_alert", "🧠 Low memory alert", "warns u when the Quest is almost out of RAM"),
             Triple("hot_alert", "🔥 Too hot alert", "warns u when ur headset is cooking (42°C+)"),
             Triple("batt_alerts", "🔋 Battery steps", "a heads up at 50%, 30% and 15%"),
+            // ---- v0.9.0
+            Triple("water", "🥤 Water tracker", "tap 💧 sip on Home for every sip, shows today's count"),
+            Triple("mood", "😊 Mood", "ur mood in the chatbox, change it from Home"),
+            Triple("compliment", "💖 Compliments", "a sweet note in ur chatbox + a pop-up every 30 min"),
+            Triple("clock2", "🌏 2nd clock", "a friend's time zone next to urs"),
+            Triple("steps", "🚶 Step counter", "steps walked in VRChat this session"),
+            Triple("swaps", "👗 Avatar swaps", "how many avis u tried today"),
+            Triple("pat_goal", "🏅 Headpat goal", "daily headpat goal with a big alert when u hit it"),
+            Triple("speed", "💨 Speedometer", "how fast u're moving rn"),
+            Triple("afk_recap", "📋 AFK recap", "a lil session recap when u take the headset off"),
+            Triple("dance", "💃 Dance party", "notices when u're dancing"),
+            Triple("play_limit", "⏰ Playtime check", "gentle nudge after a few hours in VR"),
+            Triple("charge", "🔌 Charge reminder", "AFK + low battery? reminds u to plug in"),
+            Triple("quiet", "🌙 Quiet hours", "no pop-ups at night (warnings still show)"),
+            Triple("batt_saver", "🪫 Battery saver", "under 20%: chatbox updates slower + ping/weather pause"),
+            Triple("talking", "🎙️ Talking dot", "shows 🎙️ while u're talking"),
         )
+        /** category for each mod (Mods tab filter) */
+        val CATS = listOf("all" to "✨ all", "new" to "🆕 new", "chat" to "💬 chatbox", "alert" to "🔔 alerts", "comfy" to "😌 comfy", "fun" to "🎉 fun")
+        val NEW = setOf("water", "mood", "compliment", "clock2", "steps", "swaps", "pat_goal", "speed", "afk_recap", "dance",
+            "play_limit", "charge", "quiet", "batt_saver", "talking")
+        fun catOf(k: String) = when (k) {
+            "pat_party", "milestones", "mute_nudge", "chime", "ram_alert", "hot_alert", "batt_alerts", "afk_recap", "charge", "lowbatt" -> "alert"
+            "eye_break", "posture", "bedtime", "hydrate", "quiet", "play_limit", "batt_saver" -> "comfy"
+            "kaomoji", "quote", "fortune", "vibe", "combo", "compliment", "mood", "dance" -> "fun"
+            else -> "chat"
+        }
+        val MOODS = listOf("😊 happy", "😴 sleepy", "🥰 cuddly", "😎 chillin", "🤪 chaotic", "🥺 need hugs", "🎉 hyped", "🤫 quiet mode")
+        val COMPLIMENTS = listOf("ur avatar looks so good today", "u make every instance cozier", "ur laugh is contagious",
+            "u're doing amazing, fr", "ur vibe is immaculate", "someone is glad u're here rn", "u deserve all the headpats",
+            "u're a good friend", "ur outfit? 10/10", "proud of u :3", "u light up the room", "u matter <3")
         val QUOTES = listOf("u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
             "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
             "everyone deserves a hug", "being silly is a lifestyle", "kindness is free, spread it", "ur doing amazing")
-        val DEFAULT_ON = setOf("status", "time", "battery", "song", "afk", "timer", "pat_party", "milestones", "mute_nudge", "streak")
+        val DEFAULT_ON = setOf("status", "time", "battery", "song", "afk", "timer", "pat_party", "milestones", "mute_nudge", "streak", "batt_saver")
     }
 }
 
@@ -156,7 +210,9 @@ object Chatbox {
         "temp" to "🌡️", "ram" to "🧠", "lowbatt" to "🪫", "hydrate" to "💧", "counter" to "🔢", "date" to "📅",
         "boops" to "👃", "jumps" to "🐇", "yap" to "🗣️", "zoomies" to "👣", "height" to "📏", "batt_eta" to "⌛",
         "countdown" to "🎉", "today" to "🥽", "streak" to "🔥", "quote" to "💭", "combo" to "💥", "vibe" to "🕺",
-        "goal" to "🎯", "fortune" to "🍀")
+        "goal" to "🎯", "fortune" to "🍀",
+        "water" to "🥤", "mood" to "", "compliment" to "💖", "clock2" to "🌏", "steps" to "🚶", "swaps" to "👗",
+        "pat_goal" to "🏅", "speed" to "💨")
     private val KAO = listOf("(=^･ω･^=)", "(◕ᴗ◕✿)", "(｡•ᴗ•｡)", "ʕ•ᴥ•ʔ", "(≧◡≦)", "(•ω•)", "ฅ^•ﻌ•^ฅ", "(｡♥‿♥｡)")
     private val SIMPLE = mapOf("status" to "♡", "song" to "♪", "afk" to "zzz")
 
@@ -170,12 +226,17 @@ object Chatbox {
         return (level * 100 / scale) to charging
     }
 
-    fun currentStatus(s: Settings, now: Long): String {
-        val list = s.statuses.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (list.isEmpty()) return ""
-        val idx = ((now / 1000) / maxOf(5, s.rotateSec)).toInt() % list.size
-        return list[idx]
+    /** which status is showing rn: the one u picked, then rotating on from it (not jumping to a random one) */
+    fun statusIndex(s: Settings, now: Long): Int {
+        val list = s.statusList()
+        if (list.isEmpty()) return -1
+        val sel = Math.floorMod(s.statusIdx, list.size)
+        if (!s.rotate || list.size < 2) return sel
+        val steps = (maxOf(0L, now - s.rotateFrom) / 1000 / maxOf(5, s.rotateSec)).toInt()
+        return (sel + steps) % list.size
     }
+
+    fun currentStatus(s: Settings, now: Long): String = s.statusList().getOrNull(statusIndex(s, now)) ?: ""
 
     private fun fmt(sec: Long) = "${sec / 60}:${"%02d".format(sec % 60)}"
 
@@ -259,11 +320,22 @@ object Chatbox {
         if (s.line("vibe")) fun3 += tag("vibe", if (QuestMods.vibe > 60) "vibing hard" else if (QuestMods.vibe > 25) "vibing" else "chillin")
         if (s.line("goal")) fun3 += tag("goal", "goal ${QuestMods.goalPct(s)}%")
         if (fun3.isNotEmpty()) lines += fun3.joinToString("  ")
+        val v9 = mutableListOf<String>()
+        if (s.line("mood")) v9 += s.mood
+        if (s.line("talking") && QuestMods.talking) v9 += "🎙️"
+        if (s.line("water")) v9 += tag("water", "${if (s.sipDate == QuestMods.today(now)) s.sips else 0} sips")
+        if (s.line("clock2")) v9 += tag("clock2", QuestMods.clock2(s, now))
+        if (s.line("steps") && QuestMods.steps(s) > 0) v9 += tag("steps", "${QuestMods.steps(s)} steps")
+        if (s.line("swaps") && s.swapDate == QuestMods.today(now) && s.swaps > 0) v9 += tag("swaps", "${s.swaps} avi swaps")
+        if (s.line("pat_goal")) v9 += tag("pat_goal", "${QuestMods.patsToday(s, now)}/${s.patGoal} pats")
+        if (s.line("speed") && QuestMods.speed >= 0.3f) v9 += tag("speed", "%.1f m/s".format(QuestMods.speed))
+        if (v9.isNotEmpty()) lines += v9.joinToString("  ")
+        if (s.line("compliment")) lines += tag("compliment", Settings.COMPLIMENTS[((now / 600_000) % Settings.COMPLIMENTS.size).toInt()])
         if (s.line("fortune")) lines += tag("fortune", short(QuestMods.fortune(now), 44))
         if (s.line("countdown")) countdownText(s, now)?.let { lines += tag("countdown", short(it, 40)) }
         if (s.line("quote")) lines += tag("quote", Settings.QUOTES[((now / 3_600_000) % Settings.QUOTES.size).toInt()])
         val al = QuestMods.alertText
-        if (al.isNotEmpty() && now - QuestMods.alertAt < 15_000 && (al.startsWith("PAT PARTY") || al.contains("hour"))) lines.add(0, al)
+        if (al.isNotEmpty() && now - QuestMods.alertAt < 15_000 && (al.startsWith("PAT PARTY") || al.contains("hour") || al.startsWith("headpat goal") || al.startsWith("DANCE"))) lines.add(0, al)
         if (s.line("kaomoji") && lines.isNotEmpty()) {
             lines[lines.size - 1] = lines.last() + " " + KAO[((now / 20000) % KAO.size).toInt()]
         }

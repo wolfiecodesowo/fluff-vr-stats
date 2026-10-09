@@ -182,6 +182,8 @@ object QuestMods {
         is Boolean -> v; is Int -> v > 0; is Float -> if (was) v > 0.2f else v > 0.5f; else -> false
     }
 
+    val talking get() = talkSince > 0
+
     fun talkSeconds(now: Long = System.currentTimeMillis()) = (talkMs + if (talkSince > 0) now - talkSince else 0L) / 1000
 
     private fun handle(ctx: Context, msg: Pair<String, List<Any>>) {
@@ -190,6 +192,11 @@ object QuestMods {
         val now = oscSeen
         val v = args.firstOrNull() ?: return
         if (addr == "/avatar/change") {
+            if (avatarId.isNotEmpty() && v.toString() != avatarId) {
+                val s0 = Settings(ctx); val d = today(now)
+                if (s0.swapDate != d) { s0.swapDate = d; s0.swaps = 0 }
+                s0.swaps = s0.swaps + 1
+            }
             avatarId = v.toString(); params.clear(); contact.clear(); grounded = null
             patParam = null; boopParam = null; heightM = null; velX = 0f; velZ = 0f; return
         }
@@ -265,7 +272,9 @@ object QuestMods {
     // ---- alerts: shown in the app, as a Quest notification, and on ur phone remote
     @Volatile var alertText = ""
     @Volatile var alertAt = 0L
-    fun alert(ctx: Context, text: String) {
+    /** [warn] = important (battery, heat...), still shows during quiet hours */
+    fun alert(ctx: Context, text: String, warn: Boolean = false) {
+        if (!warn && isQuiet(Settings(ctx))) return
         alertText = text; alertAt = System.currentTimeMillis()
         try {
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -366,4 +375,85 @@ object QuestMods {
         }
         return null
     }
+
+    // ---- v0.9.0 mods
+    fun today(now: Long = System.currentTimeMillis()): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now))
+
+    private fun hm(v: String, def: Int) = v.split(":").mapNotNull { it.trim().toIntOrNull() }.let { if (it.size >= 2) it[0] * 60 + it[1] else def }
+
+    fun isQuiet(s: Settings, now: Long = System.currentTimeMillis()): Boolean {
+        if (!s.line("quiet")) return false
+        val c = java.util.Calendar.getInstance().apply { timeInMillis = now }
+        val m = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE)
+        val a = hm(s.quietFrom, 23 * 60); val b = hm(s.quietTo, 8 * 60)
+        return if (a < b) m in a until b else m >= a || m < b
+    }
+
+    fun clock2(s: Settings, now: Long = System.currentTimeMillis()): String {
+        val f = java.text.SimpleDateFormat(if (s.h24) "HH:mm" else "h:mm a", java.util.Locale.US)
+        f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return "${s.clock2Name.ifBlank { "there" }} " + f.format(java.util.Date(now + (s.clock2Off * 3_600_000).toLong()))
+    }
+
+    fun steps(s: Settings) = (s.walkedM / 0.72f).toInt()
+
+    fun patsToday(s: Settings, now: Long = System.currentTimeMillis()): Int {
+        val d = today(now)
+        if (s.patGoalDate != d) { s.patGoalDate = d; s.patGoalStart = s.headpats }
+        return maxOf(0, s.headpats - s.patGoalStart)
+    }
+
+    fun sip(ctx: Context): Int {
+        val s = Settings(ctx); val d = today()
+        if (s.sipDate != d) { s.sipDate = d; s.sips = 0 }
+        s.sips = s.sips + 1
+        return s.sips
+    }
+
+    fun nextMood(s: Settings): String {
+        val i = Settings.MOODS.indexOf(s.mood)
+        s.mood = Settings.MOODS[(i + 1).mod(Settings.MOODS.size)]
+        return s.mood
+    }
+
+    private var compT = System.currentTimeMillis()
+    private var danceSince = 0L
+    private var danceT = 0L
+    private var playT = 0L
+    private var chargeT = 0L
+    private var afkWas = false
+    private var patGoalDay = ""
+
+    /** runs every 15s from the chatbox service */
+    fun v9Tick(ctx: Context, s: Settings, now: Long = System.currentTimeMillis()) {
+        if (s.line("compliment")) { if (now - compT > 30 * 60_000) { compT = now; alert(ctx, "💖 " + Settings.COMPLIMENTS.random()) } } else compT = now
+        if (s.line("dance")) {
+            if (vibe > 65) {
+                if (danceSince == 0L) danceSince = now
+                if (now - danceSince > 20_000 && now - danceT > 15 * 60_000) { danceT = now; alert(ctx, "DANCE PARTY DETECTED 💃🕺 go off!!") }
+            } else danceSince = 0L
+        }
+        if (s.line("pat_goal")) {
+            val got = patsToday(s, now); val d = today(now)
+            if (got >= s.patGoal && patGoalDay != d) { patGoalDay = d; alert(ctx, "headpat goal reached!! $got/${s.patGoal} today 🐾💖") }
+        }
+        val sess = now - Chatbox.sessionStart
+        if (s.line("play_limit") && sess > s.playLimitH * 3_600_000L && now - playT > 30 * 60_000) {
+            playT = now; alert(ctx, "u've been in VR for ${"%.1f".format(sess / 3_600_000.0)}h ~ water, snack, stretch? :3")
+        }
+        val afk = afkSince > 0
+        if (s.line("afk_recap") && afk && !afkWas) {
+            val mins = sess / 60_000
+            alert(ctx, "recap: ${mins / 60}h ${"%02d".format(mins % 60)}m in VR · ${patsToday(s, now)} pats today · ${steps(s)} steps")
+        }
+        afkWas = afk
+        if (s.line("charge") && afk && now - chargeT > 30 * 60_000) Chatbox.battery(ctx)?.let { (p, chg) ->
+            if (p < 30 && !chg) { chargeT = now; alert(ctx, "u're AFK ~ good time to charge, battery $p% 🔌", warn = true) }
+        }
+    }
+
+    /** battery saver: low battery and not charging */
+    fun saving(ctx: Context, s: Settings): Boolean =
+        s.line("batt_saver") && (Chatbox.battery(ctx)?.let { it.first < 20 && !it.second } ?: false)
 }

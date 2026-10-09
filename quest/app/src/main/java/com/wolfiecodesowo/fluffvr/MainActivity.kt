@@ -37,6 +37,8 @@ class MainActivity : Activity() {
     private var kittyFrame = 0
     private var kittyHappyUntil = 0L
     private var previewView: TextView? = null
+    private var statusNow: LinearLayout? = null
+    private var statusShown = -2
     private var stateView: TextView? = null
     private var startBtn: Button? = null
     private var musicView: TextView? = null
@@ -47,19 +49,38 @@ class MainActivity : Activity() {
     private var modsSig = ""
     @Volatile private var polling = false
 
-    // ---- colors (same palette as the PC app's Pride Pastel theme)
-    private val BG = Color.rgb(34, 22, 46)
-    private val PANEL = Color.rgb(46, 32, 61)
-    private val PANEL2 = Color.rgb(64, 46, 84)
-    private val TEXT = Color.rgb(246, 238, 252)
-    private val SUB = Color.rgb(201, 182, 218)
-    private val ACCENTS = intArrayOf(Color.rgb(255, 143, 199), Color.rgb(181, 140, 255),
-        Color.rgb(123, 224, 181), Color.rgb(255, 170, 90), Color.rgb(110, 200, 255))
-    private val PINK get() = ACCENTS[s.theme.coerceIn(0, ACCENTS.size - 1)]
+    // ---- themes: the first 5 are the classic Pride Pastel look with a different accent, the rest match the PC presets
+    private class Th(val name: String, val bg: Int, val accent: Int, val stripe: IntArray? = null)
+    private val PRIDE_BG = Color.rgb(34, 22, 46)
+    private val THEMES = listOf(
+        Th("pink", PRIDE_BG, Color.rgb(255, 143, 199)), Th("purple", PRIDE_BG, Color.rgb(181, 140, 255)),
+        Th("mint", PRIDE_BG, Color.rgb(123, 224, 181)), Th("orange", PRIDE_BG, Color.rgb(255, 170, 90)),
+        Th("sky", PRIDE_BG, Color.rgb(110, 200, 255)),
+        Th("Midnight Fox", Color.rgb(14, 12, 30), Color.rgb(255, 140, 90), intArrayOf(Color.rgb(255, 120, 80), Color.rgb(255, 170, 110), Color.rgb(120, 110, 220), Color.rgb(60, 50, 140))),
+        Th("Sakura", Color.rgb(40, 22, 34), Color.rgb(255, 170, 205), intArrayOf(Color.rgb(255, 200, 220), Color.rgb(255, 150, 190), Color.rgb(255, 240, 245), Color.rgb(200, 120, 160))),
+        Th("Ocean Otter", Color.rgb(8, 26, 40), Color.rgb(80, 210, 230), intArrayOf(Color.rgb(40, 120, 200), Color.rgb(80, 210, 230), Color.rgb(200, 245, 250), Color.rgb(30, 70, 140))),
+        Th("Matcha Latte", Color.rgb(26, 32, 22), Color.rgb(170, 220, 130), intArrayOf(Color.rgb(130, 180, 100), Color.rgb(200, 230, 160), Color.rgb(245, 240, 220), Color.rgb(110, 90, 70))),
+        Th("Aurora", Color.rgb(10, 16, 30), Color.rgb(120, 255, 200), intArrayOf(Color.rgb(80, 255, 180), Color.rgb(90, 200, 255), Color.rgb(170, 120, 255), Color.rgb(255, 120, 220))),
+        Th("Peach Fuzz", Color.rgb(255, 240, 232), Color.rgb(255, 140, 110), intArrayOf(Color.rgb(255, 190, 160), Color.rgb(255, 150, 120), Color.rgb(255, 230, 200), Color.rgb(240, 120, 120))),
+        Th("Lilac Dream", Color.rgb(30, 24, 44), Color.rgb(205, 170, 255), intArrayOf(Color.rgb(230, 210, 255), Color.rgb(205, 170, 255), Color.rgb(160, 130, 230), Color.rgb(255, 200, 240))),
+        Th("Cyber Wolf", Color.rgb(6, 10, 18), Color.rgb(60, 230, 255), intArrayOf(Color.rgb(60, 230, 255), Color.rgb(255, 60, 200), Color.rgb(40, 40, 60), Color.rgb(60, 230, 255))),
+        Th("Cozy Cabin", Color.rgb(34, 22, 16), Color.rgb(240, 160, 90), intArrayOf(Color.rgb(180, 90, 50), Color.rgb(240, 160, 90), Color.rgb(250, 220, 170), Color.rgb(110, 70, 50))),
+        Th("Candy Corn", Color.rgb(30, 18, 12), Color.rgb(255, 170, 40), intArrayOf(Color.rgb(255, 230, 120), Color.rgb(255, 170, 40), Color.rgb(255, 110, 30), Color.rgb(255, 250, 240))),
+    )
+    private val th get() = THEMES[s.theme.coerceIn(0, THEMES.size - 1)]
+    private fun lum(c: Int) = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255
+    private val light get() = lum(th.bg) > 0.6
+    private val BG get() = th.bg
+    private val PANEL get() = if (light) FluffDrawable.blend(th.bg, Color.BLACK, 0.06f) else FluffDrawable.blend(th.bg, Color.WHITE, 0.07f)
+    private val PANEL2 get() = if (light) FluffDrawable.blend(th.bg, th.accent, 0.22f) else FluffDrawable.blend(FluffDrawable.blend(th.bg, Color.WHITE, 0.12f), th.accent, 0.12f)
+    private val TEXT get() = if (light) Color.rgb(48, 30, 36) else Color.rgb(246, 238, 252)
+    private val SUB get() = if (light) Color.rgb(120, 90, 96) else FluffDrawable.blend(Color.rgb(201, 182, 218), th.accent, 0.15f)
+    private val PINK get() = th.accent
     private val INK = Color.rgb(14, 9, 18)
     private val INNER_EAR = Color.rgb(255, 166, 210)
-    private val STRIPE = intArrayOf(Color.rgb(255, 140, 170), Color.rgb(255, 186, 130), Color.rgb(255, 234, 140),
+    private val PRIDE = intArrayOf(Color.rgb(255, 140, 170), Color.rgb(255, 186, 130), Color.rgb(255, 234, 140),
         Color.rgb(150, 236, 176), Color.rgb(130, 200, 255), Color.rgb(190, 160, 255))
+    private val STRIPE get() = th.stripe?.let { it + it.first() + th.accent } ?: PRIDE
     private val client by lazy { if ((Build.MANUFACTURER ?: "").lowercase().let { "oculus" in it || "meta" in it }) "quest" else "phone" }
 
     private val fTitle by lazy { resources.getFont(R.font.lilita) }
@@ -118,7 +139,19 @@ class MainActivity : Activity() {
         override fun run() {
             MusicState.refresh(this@MainActivity)
             previewView?.text = Chatbox.compose(this@MainActivity, s).ifEmpty { "(nothing to show - turn on a line)" }
-            stateView?.text = if (ChatboxService.running) "💜 sending to VRChat" else "paused"
+            stateView?.text = (if (ChatboxService.running) "💜 sending to VRChat" else "paused") +
+                (if (QuestMods.saving(this@MainActivity, s)) " · 🪫 battery saver" else "") +
+                (if (QuestMods.isQuiet(s)) " · 🌙 quiet hours" else "")
+            statusNow?.let { sv ->      // rotation moved on: just restyle the buttons (a rebuild would wipe what u're typing)
+                val i = Chatbox.statusIndex(s, System.currentTimeMillis())
+                if (i != statusShown) {
+                    statusShown = i
+                    val list = s.statusList()
+                    for (k in 0 until sv.childCount) (sv.getChildAt(k) as? Button)?.let { btn ->
+                        styleButton(btn, k == i); btn.text = (if (k == i) "▶ " else "") + (list.getOrNull(k) ?: "")
+                    }
+                }
+            }
             stateView?.setTextColor(if (ChatboxService.running) PINK else SUB)
             startBtn?.let { styleButton(it, ChatboxService.running) ; it.text = if (ChatboxService.running) "stop" else "start chatbox" }
             musicView?.let { mv ->
@@ -202,6 +235,20 @@ class MainActivity : Activity() {
         parent.addView(b, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(8); bottomMargin = dp(6) })
     }
 
+    /** a theme pick: lil preview of its background + accent */
+    private fun swatch(parent: LinearLayout, i: Int, t: Th) {
+        val on = s.theme == i
+        val v = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = round(t.bg, 22, if (on) 4 else 2, if (on) t.accent else INK)
+            setPadding(dp(10), dp(8), dp(14), dp(8))
+            addView(View(context).apply { background = round(t.accent, 10, 2, INK) }, LinearLayout.LayoutParams(dp(20), dp(20)))
+            addView(text((if (on) "✓ " else "") + t.name, 14f, if (lum(t.bg) > 0.6) Color.rgb(48, 30, 36) else Color.WHITE, fHead).apply { setPadding(dp(8), 0, 0, dp(2)) })
+            setOnClickListener { s.theme = i; window.statusBarColor = t.bg; window.navigationBarColor = t.bg; build() }
+        }
+        parent.addView(v, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(8); bottomMargin = dp(6) })
+    }
+
     private fun edit(value: String, hint: String, multi: Boolean = false) = EditText(this).apply {
         setText(value); this.hint = hint; setHintTextColor(SUB); setTextColor(TEXT); typeface = fBody
         background = round(PANEL2, 16, 3, INK); setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -214,6 +261,7 @@ class MainActivity : Activity() {
 
     private fun build() {
         updView = null
+        statusNow = null
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
         gchatList = null; kittyView = null; kittyText = null; gchatSig = -1
         val root = LinearLayout(this).apply {
@@ -237,7 +285,7 @@ class MainActivity : Activity() {
         tl.addView(text("Fluff VR Stats", 26f, TEXT, fTitle))
         tl.addView(text(" :3", 26f, PINK, fTitle))
         titles.addView(tl)
-        titles.addView(text("Quest Edition · v${myVersion()}", 13f, SUB))
+        titles.addView(text("Quest Edition · v${myVersion()} · ${th.name}", 13f, SUB))
         head.addView(titles, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         if (GlobalChat.unread > 0 && tab != "Global") head.addView(text(" 🌐 ${GlobalChat.unread} new ", 13f, INK, fHead).apply {
             background = fluff(PINK, tufts = false, radius = 16); setPadding(dp(12), dp(6), dp(12), dp(8))
@@ -327,8 +375,26 @@ class MainActivity : Activity() {
         tile(t2, "streak", "${s.vrStreak} days", Color.rgb(255, 222, 130))
         tile(t2, "battery", Chatbox.battery(this)?.let { "${it.first}%" } ?: "--")
 
+        if (s.seenNews < 14) {
+            val nw = card(body, "✨ new in v${myVersion()}", fill = FluffDrawable.blend(PANEL, PINK, 0.18f))
+            nw.addView(text("• picking a status now shows it right away (no more jumping to another one)\n" +
+                "• 15 new mods: water tracker, mood, compliments, 2nd clock, steps, avatar swaps, headpat goal, speedometer, " +
+                "AFK recap, dance party, playtime check, charge reminder, quiet hours, battery saver, talking dot\n" +
+                "• 10 new themes (Settings → look) + a Mods tab with categories", 14f, TEXT))
+            val nr = row(nw); nr.setPadding(0, dp(8), 0, 0)
+            chip(nr, "see the new mods", true) { s.seenNews = 14; s.modFilter = "new"; tab = "Mods" }
+            chip(nr, "got it", false) { s.seenNews = 14 }
+        }
+
         val qa = card(body, "quick actions")
-        val q = row(qa)
+        val q0 = row(qa)
+        chip(q0, "💧 sip (${if (s.sipDate == QuestMods.today()) s.sips else 0})", s.line("water")) {
+            val n = QuestMods.sip(this); if (!s.line("water")) s.setLine("water", true)
+            android.widget.Toast.makeText(this, "💧 sip #$n today ~ good job!", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        chip(q0, "mood: ${s.mood}", s.line("mood")) { QuestMods.nextMood(s); if (!s.line("mood")) s.setLine("mood", true) }
+        chip(q0, "next status ⏭", false) { val n = s.statusList().size; if (n > 0) s.pickStatus((Chatbox.statusIndex(s, System.currentTimeMillis()) + 1) % n) }
+        val q = row(qa); q.setPadding(0, dp(4), 0, 0)
         chip(q, "+5 min timer", false) { val base = maxOf(System.currentTimeMillis(), s.timerEnd); s.stopwatchStart = 0L; s.timerEnd = base + 5 * 60_000L }
         chip(q, "learn headpat", QuestMods.learnKind == "pat") { QuestMods.startLearn("pat"); tab = "Mods" }
         chip(q, "send test msg", false) { Osc.chatbox(s.host, s.port, "hiii from Fluff VR Stats :3 🐾") }
@@ -513,13 +579,34 @@ class MainActivity : Activity() {
         }
         lines.addView(text("song needs \"song info\" allowed in the Music tab", 13f, SUB).apply { setPadding(0, dp(4), 0, 0) })
 
-        val st = card(body, "status messages (one per line, they rotate)")
+        val st = card(body, "✨ status at the top of ur chatbox")
+        if (!s.line("status")) st.addView(text("\"Status text\" is off above ~ turn it on to show these", 14f, PINK, fHead).apply { setPadding(0, 0, 0, dp(6)) })
+        st.addView(text("tap one to show it now" + if (s.rotate) ", then they take turns" else "", 13f, SUB).apply { setPadding(0, 0, 0, dp(6)) })
+        val list = s.statusList()
+        val nowIdx = Chatbox.statusIndex(s, System.currentTimeMillis())
+        statusShown = nowIdx
+        statusNow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        st.addView(statusNow)
+        list.forEachIndexed { i, txt ->
+            val on = i == nowIdx
+            val b = button((if (on) "▶ " else "") + txt, on) { s.pickStatus(i); build() }
+            b.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            statusNow!!.addView(b, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
+        }
+        val sr = row(st)
+        chip(sr, if (s.rotate) "rotate: on" else "rotate: off", s.rotate) { s.rotate = !s.rotate; s.rotateFrom = System.currentTimeMillis() }
+        if (s.rotate) for (sec in listOf(10, 15, 30, 60, 120)) chip(sr, if (sec < 60) "${sec}s" else "${sec / 60}m", s.rotateSec == sec) {
+            s.statusIdx = Chatbox.statusIndex(s, System.currentTimeMillis()); s.rotateSec = sec; s.rotateFrom = System.currentTimeMillis()
+        }
+        st.addView(text("edit (one per line):", 13f, SUB).apply { setPadding(0, dp(8), 0, dp(4)) })
         val ed = edit(s.statuses, "fluffy vibes only :3", multi = true)
         st.addView(ed)
-        val sr = row(st)
-        sr.setPadding(0, dp(8), 0, 0)
-        chip(sr, "save", true) { s.statuses = ed.text.toString() }
-        for (sec in listOf(15, 30, 60)) chip(sr, "every ${sec}s", s.rotateSec == sec) { s.rotateSec = sec }
+        val sr2 = row(st); sr2.setPadding(0, dp(8), 0, 0)
+        chip(sr2, "save", true) {
+            val cur = Chatbox.currentStatus(s, System.currentTimeMillis())
+            s.statuses = ed.text.toString()
+            val nl = s.statusList(); s.pickStatus(maxOf(0, nl.indexOf(cur)).let { if (nl.indexOf(cur) < 0) nl.size - 1 else it }.coerceAtLeast(0))
+        }
 
         val opt = card(body, "style")
         val or1 = row(opt)
@@ -638,17 +725,36 @@ class MainActivity : Activity() {
         liveView = text("", 15f, TEXT)
         live.addView(liveView)
 
-        val list = card(body, "Quest mods")
-        list.addView(text("these replace the PC overlay mods. tap to turn on, they show up in ur chatbox.", 14f, SUB).apply { setPadding(0, 0, 0, dp(8)) })
-        for ((k, label, desc) in Settings.MODS) {
-            val r = row(list, wrap = false)
-            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            col.addView(text(label, 17f, TEXT, fHead))
-            col.addView(text(desc, 13f, SUB))
-            r.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { bottomMargin = dp(10) })
-            val on = s.line(k)
-            r.addView(button(if (on) "on" else "off", on) { s.setLine(k, !s.line(k)); build() })
+        val onCount = Settings.MODS.count { s.line(it.first) }
+        val list = card(body, "🧩 Quest mods · $onCount/${Settings.MODS.size} on")
+        list.addView(text("tap a mod to turn it on, most show up in ur chatbox.", 14f, SUB).apply { setPadding(0, 0, 0, dp(6)) })
+        val fr = row(list)
+        for ((k, label) in Settings.CATS) chip(fr, label, s.modFilter == k) { s.modFilter = k }
+        val shown = Settings.MODS.filter { (k, _, _) ->
+            when (s.modFilter) { "all" -> true; "new" -> k in Settings.NEW; else -> Settings.catOf(k) == s.modFilter }
         }
+        for ((k, label, desc) in shown) {
+            val on = s.line(k)
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                background = round(if (on) FluffDrawable.blend(PANEL2, PINK, 0.22f) else PANEL2, 18, if (on) 3 else 2, if (on) PINK else INK)
+                setPadding(dp(14), dp(10), dp(10), dp(10))
+                setOnClickListener { s.setLine(k, !s.line(k)); build() }
+            }
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            tl.addView(text(label, 17f, TEXT, fHead))
+            if (k in Settings.NEW) tl.addView(text(" NEW ", 10f, INK, fHead).apply { background = round(Color.rgb(255, 222, 130), 8); setPadding(dp(6), dp(1), dp(6), dp(2)) },
+                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
+            col.addView(tl)
+            col.addView(text(desc, 13f, SUB))
+            item.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            item.addView(text(if (on) "ON" else "off", 14f, if (on) INK else SUB, fHead).apply {
+                background = round(if (on) PINK else PANEL, 14); setPadding(dp(14), dp(6), dp(14), dp(8))
+            })
+            list.addView(item, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
+        }
+        if (s.modFilter in listOf("all", "new", "chat", "comfy", "alert")) v9Settings()
 
         val tm = card(body, "⏳ timer / stopwatch")
         val t1 = row(tm)
@@ -739,6 +845,40 @@ class MainActivity : Activity() {
         val hyr = row(hy)
         for (m in listOf(15, 30, 45, 60)) chip(hyr, "every ${m}m", s.hydrateMin == m) { s.hydrateMin = m }
     }
+
+    /** settings for the v0.9 mods */
+    private fun v9Settings() {
+        val c2 = card(body, "🌏 2nd clock")
+        val nm = edit(s.clock2Name, "whose time? e.g. Tokyo, my bestie")
+        c2.addView(nm)
+        val r = row(c2); r.setPadding(0, dp(8), 0, 0)
+        chip(r, "save name", true) { s.clock2Name = nm.text.toString().trim().take(16) }
+        r.addView(text("  UTC${if (s.clock2Off >= 0) "+" else ""}${fmtOff(s.clock2Off)}  ", 16f, TEXT, fHead))
+        chip(r, "−1h", false) { s.clock2Off = (s.clock2Off - 1).coerceAtLeast(-12f) }
+        chip(r, "+1h", false) { s.clock2Off = (s.clock2Off + 1).coerceAtMost(14f) }
+        chip(r, "+30m", false) { s.clock2Off = if (s.clock2Off + 0.5f > 14f) -12f else s.clock2Off + 0.5f }
+        c2.addView(text("now: ${QuestMods.clock2(s)}", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+
+        val g = card(body, "🏅 headpat goal + ⏰ playtime")
+        val gr = row(g)
+        gr.addView(text("pats/day  ", 15f, TEXT, fHead))
+        for (n in listOf(10, 25, 50, 100, 200)) chip(gr, "$n", s.patGoal == n) { s.patGoal = n }
+        val pr = row(g)
+        pr.addView(text("nudge after  ", 15f, TEXT, fHead))
+        for (h in listOf(1, 2, 3, 4, 6)) chip(pr, "${h}h", s.playLimitH == h) { s.playLimitH = h }
+        g.addView(text("today: ${QuestMods.patsToday(s)}/${s.patGoal} pats", 14f, SUB).apply { setPadding(0, dp(4), 0, 0) })
+
+        val q = card(body, "🌙 quiet hours")
+        q.addView(text("no pop-ups in this window (battery + heat warnings still show)" + if (QuestMods.isQuiet(s)) " · on rn" else "", 13f, SUB))
+        val qr = row(q); qr.setPadding(0, dp(6), 0, 0)
+        qr.addView(text("from  ", 15f, TEXT, fHead))
+        for (h in listOf("21:00", "22:00", "23:00", "00:00")) chip(qr, h, s.quietFrom == h) { s.quietFrom = h }
+        val qr2 = row(q)
+        qr2.addView(text("to  ", 15f, TEXT, fHead))
+        for (h in listOf("06:00", "07:00", "08:00", "09:00", "10:00")) chip(qr2, h, s.quietTo == h) { s.quietTo = h }
+    }
+
+    private fun fmtOff(o: Float) = if (o % 1f == 0f) "${o.toInt()}" else (if (o < 0) "-" else "") + "${Math.abs(o.toInt())}:30"
 
     private var lastRemoteAlert = 0L
     private fun phoneAlert(r: org.json.JSONObject) {
@@ -934,9 +1074,10 @@ class MainActivity : Activity() {
         }
         chip(r, "send test message", false) { Osc.chatbox(s.host, s.port, "hiii from Fluff VR Stats :3 🐾") }
 
-        val th = card(body, "look")
-        val tr = row(th)
-        listOf("pink", "purple", "mint", "orange", "sky").forEachIndexed { i, n -> chip(tr, n, s.theme == i) { s.theme = i } }
+        val th = card(body, "🎨 look")
+        th.addView(text("${THEMES.size} themes ~ the first 5 are the classic pride look", 13f, SUB).apply { setPadding(0, 0, 0, dp(6)) })
+        var tr = row(th)
+        THEMES.forEachIndexed { i, t -> if (i == 5) { tr = row(th); tr.setPadding(0, dp(4), 0, 0) }; if (i == 10) tr = row(th); swatch(tr, i, t) }
         val er = row(th); er.setPadding(0, dp(6), 0, 0)
         for (e in listOf("cat", "fox", "wolf", "bunny", "bear")) chip(er, "$e ears", s.ears == e) { s.ears = e }
 
@@ -1010,7 +1151,7 @@ class MainActivity : Activity() {
         val c = card(body)
         c.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(160), dp(160)).apply { gravity = Gravity.CENTER_HORIZONTAL })
         c.addView(text("thank u for downloading!!", 24f, TEXT, fTitle).apply { gravity = Gravity.CENTER })
-        c.addView(text("Quest Edition v${myVersion()} (early beta). more mods are coming. come say hi in the Discord <3",
+        c.addView(text("Quest Edition v${myVersion()} · ${Settings.MODS.size} mods · ${THEMES.size} themes. come say hi in the Discord <3",
             15f, SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(12)) })
         val r = row(c)
         chip(r, "GitHub", true) { open("https://github.com/wolfiecodesowo/fluff-vr-stats") }

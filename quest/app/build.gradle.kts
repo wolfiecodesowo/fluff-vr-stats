@@ -16,8 +16,8 @@ android {
         applicationId = "com.wolfiecodesowo.fluffvr"
         minSdk = 29
         targetSdk = 32          // Quest-friendly, no extra foreground-service paperwork
-        versionCode = 13
-        versionName = "0.8.0-quest"
+        versionCode = 14
+        versionName = "0.9.0-quest"
         buildConfigField("String", "FLUFF_BOT_KEY", "\"$fluffBotKey\"")
     }
     buildFeatures { buildConfig = true }

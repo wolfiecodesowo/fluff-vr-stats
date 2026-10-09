@@ -67,7 +67,8 @@ class ChatboxService : Service() {
                 }
             } catch (_: Exception) {
             }
-            handler.postDelayed(this, maxOf(2, s.interval) * 1000L)
+            val saver = QuestMods.saving(this@ChatboxService, s)
+            handler.postDelayed(this, (if (saver) maxOf(8, s.interval) else maxOf(2, s.interval)) * 1000L)
         }
     }
 
@@ -119,11 +120,11 @@ class ChatboxService : Service() {
             chimeHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
             QuestMods.alert(this, "it's ${java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()).format(java.util.Date(now))} ~ ding!")
         }
-        if (s.line("ram_alert")) QuestMods.freeRamGb(this)?.let { if (it < 0.6 && now - lastRamAlert > 600_000) { lastRamAlert = now; QuestMods.alert(this, "Quest is almost out of memory (${"%.1f".format(it)} GB free)! close other apps") } }
-        if (s.line("hot_alert")) QuestMods.tempC(this)?.let { if (it >= 42 && now - lastHotAlert > 600_000) { lastHotAlert = now; QuestMods.alert(this, "ur headset is toasty (${Math.round(it)}°C)! take a lil break") } }
+        if (s.line("ram_alert")) QuestMods.freeRamGb(this)?.let { if (it < 0.6 && now - lastRamAlert > 600_000) { lastRamAlert = now; QuestMods.alert(this, "Quest is almost out of memory (${"%.1f".format(it)} GB free)! close other apps", warn = true) } }
+        if (s.line("hot_alert")) QuestMods.tempC(this)?.let { if (it >= 42 && now - lastHotAlert > 600_000) { lastHotAlert = now; QuestMods.alert(this, "ur headset is toasty (${Math.round(it)}°C)! take a lil break", warn = true) } }
         if (s.line("batt_alerts")) Chatbox.battery(this)?.let { (p, chg) ->
             if (chg) battStep = 101
-            else for (step in listOf(50, 30, 15)) if (p <= step && battStep > step) { battStep = step; QuestMods.alert(this, "battery at $p% 🔋"); break }
+            else for (step in listOf(50, 30, 15)) if (p <= step && battStep > step) { battStep = step; QuestMods.alert(this, "battery at $p% 🔋", warn = true); break }
         }
         if (s.line("bedtime")) {
             val parts = s.bedtime.split(":").mapNotNull { it.toIntOrNull() }
@@ -142,8 +143,10 @@ class ChatboxService : Service() {
         override fun run() {
             val s = Settings(this@ChatboxService)
             try { reminders(s) } catch (_: Exception) {}
-            if (s.line("ping")) QuestMods.measurePing()
-            if (s.line("weather") && System.currentTimeMillis() - lastWeather > 15 * 60_000) {
+            try { QuestMods.v9Tick(this@ChatboxService, s) } catch (_: Exception) {}
+            val saver = QuestMods.saving(this@ChatboxService, s)
+            if (s.line("ping") && !saver) QuestMods.measurePing()
+            if (s.line("weather") && !saver && System.currentTimeMillis() - lastWeather > 15 * 60_000) {
                 lastWeather = System.currentTimeMillis()
                 QuestMods.fetchWeather(s)
             }

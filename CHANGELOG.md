@@ -1,5 +1,14 @@
 # Changelog
 
+## Quest Edition v0.9.0
+
+- ✨ **status fix on Quest too:** tap a status and it shows right away, then rotates on from it. rotate on/off + 10s-2min speed, and "next status" on Home
+- 🧩 **15 new Quest mods (53 total):** water tracker (💧 sip on Home), mood (change it on Home), compliments, 2nd clock, step counter, avatar swaps, headpat goal, speedometer, AFK recap, dance party, playtime check, charge reminder, quiet hours, battery saver (on by default), talking dot
+- 🎨 **10 new themes** (Midnight Fox, Sakura, Ocean Otter, Matcha Latte, Aurora, Peach Fuzz, Lilac Dream, Cyber Wolf, Cozy Cabin, Candy Corn) with live swatches in Settings → look
+- 🧩 Mods tab: categories (new / chatbox / alerts / comfy / fun), NEW badges, tap the whole card to toggle
+- 🪫 battery saver: under 20% the chatbox updates slower and ping/weather pause
+- on v0.8.0? it updates by itself (same signature)
+
 ## v0.4.2 + Quest Edition v0.8.0: more mods, fresh looks, chatbox fix
 - 🗨️ **chatbox status fixed:** picking, editing or adding a status now shows THAT one right away (rotation used to jump to a different one). the Chatbox tab shows what VRChat is showing rn, and u can pick how fast it rotates (10s-2min)
 - ⚙️ **new Settings → osc + chatbox page:** OSC auto/classic, what happens when another app uses ur chatbox (let them / share it / Fluff wins), pass OSC to other apps
