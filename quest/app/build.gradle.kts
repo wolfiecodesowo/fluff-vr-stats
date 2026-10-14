@@ -16,8 +16,8 @@ android {
         applicationId = "com.wolfiecodesowo.fluffvr"
         minSdk = 29
         targetSdk = 32          // Quest-friendly, no extra foreground-service paperwork
-        versionCode = 18
-        versionName = "0.10.3-quest"
+        versionCode = 19
+        versionName = "0.10.4-quest"
         ndk { abiFilters += listOf("arm64-v8a") }   // Quest + every modern phone are 64-bit ARM (keeps the camera tracker small)
         buildConfigField("String", "FLUFF_BOT_KEY", "\"$fluffBotKey\"")
     }

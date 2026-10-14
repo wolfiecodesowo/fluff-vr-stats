@@ -59,7 +59,7 @@ class MainActivity : Activity() {
             TrackerService.previewWanted = v != null && tab == "Body"
             if (v != null) {
                 TrackerService.preview?.let { if (it !== camShown) { camShown = it; v.setImageBitmap(it) } }
-                camHint?.text = if (TrackerService.running) TrackerService.previewHint else "tap start tracking to see the camera"
+                camHint?.text = if (TrackerService.running) TrackerService.previewHint + "\n" + TrackerService.status else "tap start tracking to see the camera"
                 camHint?.setTextColor(if (TrackerService.previewOk && TrackerService.running) GOOD else PINK)
             }
             ui.postDelayed(this, 200)

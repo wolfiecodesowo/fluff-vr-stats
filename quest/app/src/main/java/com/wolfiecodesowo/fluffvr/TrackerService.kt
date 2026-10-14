@@ -210,8 +210,6 @@ class TrackerService : Service() {
         }
         val m = math ?: PoseMath(s.trackHeight).also { math = it }
         if (recalibrate) { if (m.calibrate(pts)) { recalibrate = false; calibratedAt = System.currentTimeMillis(); status = "calibrated!! now calibrate FBT in VRChat :3" } }
-        val res = m.trackers(pts, s.trackFull)
-        if (res == null) { if (pts.size < 6) status = "can't see ur body ~ step back so ur feet are in view"; return }
         val code = s.remoteCode.ifEmpty { RemoteLink.code }; val ip = RemoteLink.questIp.ifEmpty { s.remoteIp }
         if (ip.isEmpty()) { status = "pair with ur Quest in the Remote tab first (no Quest IP yet)"; return }
         if (code.isEmpty()) { status = "type the pair code from ur Quest in the Remote tab + tap connect"; return }
@@ -227,6 +225,9 @@ class TrackerService : Service() {
                 if (q != null && q != RemoteLink.questIp) { RemoteLink.questIp = q; s.remoteIp = q; status = "found ur Quest at $q :3" }
             }.start()
         }
+        // (the Quest link above runs even before u're fully in view, so pairing problems show right away)
+        val res = m.trackers(pts, s.trackFull)
+        if (res == null) { status = "can't see ur whole body ~ step back so ur hips + feet are in view\n" + questHears(); return }
         try {
             val sk = sock ?: Net.udp().also { sock = it }
             val addr = InetAddress.getByName(ip)
