@@ -301,21 +301,25 @@ object Standable {
                 val t1 = System.nanoTime()
                 val dt = min(0.1f, (t1 - t0) / 1e9f); t0 = t1
                 if (!s.standable) { status = "off"; legs.reset(); Thread.sleep(250); continue }
-                if (now - QuestMods.oscSeen > 4000) { status = "waiting for VRChat ~ turn OSC on in VRChat"; Thread.sleep(250); continue }
-                if (QuestMods.seated) { status = "sitting ~ resting till u stand up"; Thread.sleep(250); continue }
-                val vx = QuestMods.velX.coerceIn(-8f, 8f); val vz = QuestMods.velZ.coerceIn(-8f, 8f)
+                // always send (standing trackers are enough for VRChat to offer "Calibrate FBT");
+                // VRChat's own OSC (if we hear it) adds walking, crouching + sitting on top
+                val hearing = now - QuestMods.oscSeen < 4000
+                if (hearing && QuestMods.seated) { status = "sitting ~ resting till u stand up"; Thread.sleep(250); continue }
+                val vx = if (hearing) QuestMods.velX.coerceIn(-8f, 8f) else 0f
+                val vz = if (hearing) QuestMods.velZ.coerceIn(-8f, 8f) else 0f
                 if (abs(vx) + abs(vz) > 0.05f) { px += vx * dt; pz += vz * dt }
-                val out = compute(s, px, pz, QuestMods.upright, dt)
+                val out = compute(s, px, pz, if (hearing) QuestMods.upright else 1f, dt)
                 last = out
                 try {
                     if (sock == null) sock = DatagramSocket()
                     val addr = InetAddress.getByName(s.host)
                     val eye = s.trackHeight * 0.93f
-                    val headY = eye * (0.5f + 0.5f * QuestMods.upright.coerceIn(0f, 1f))
+                    val headY = eye * (0.5f + 0.5f * (if (hearing) QuestMods.upright else 1f).coerceIn(0f, 1f))
                     val parts = out.filterKeys { s.trackFull || it in setOf("hip", "foot_l", "foot_r") }
                     for (m in Trackers.messages(parts, floatArrayOf(px, headY - 0.09f, pz - 0.06f), 0f))
                         sock.send(DatagramPacket(m, m.size, addr, s.port))
-                    status = "live ~ walk, crouch + stand :3"
+                    status = if (hearing) "live ~ walk, crouch + stand :3"
+                        else "sending trackers ~ calibrate FBT in VRChat. (not hearing VRChat's OSC, so walking won't move ur feet yet)"
                 } catch (e: Exception) { status = "couldn't send (${e.message})" }
                 count++
                 if (now - rateT >= 1000) { rate = count * 1000f / (now - rateT); count = 0; rateT = now }
