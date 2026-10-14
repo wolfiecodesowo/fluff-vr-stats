@@ -82,7 +82,7 @@ def _fbt_card(d, hit, box, state, t):
     d.text((x1 - 118, y0 + 30), tr(state_lab), font=font("head", 16), fill=col, anchor="lm")
     _sub(d, x0 + 22, y0 + 48, "no trackers needed ~ ur headset does the legs", t, x1 - x0 - 44)
     mode = cfg.get("mode", "off")
-    _seg(d, hit, x0 + 22, y0 + 76, x1 - 22, 40, [("off", "off"), ("standable", "standable"), ("camera", "webcam")],
+    _seg(d, hit, x0 + 22, y0 + 76, x1 - 22, 40, [("off", "off"), ("standable", "better standable"), ("camera", "webcam")],
          mode, t, "fbt_mode")
     _seg(d, hit, x0 + 22, y0 + 124, x1 - 22, 34, [("hips_feet", "hips + feet"), ("full", "+ knees + chest")],
          cfg.get("trackers", "hips_feet"), t, "fbt_trackers", fsize=15)

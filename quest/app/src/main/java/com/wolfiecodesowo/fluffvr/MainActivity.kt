@@ -1240,7 +1240,7 @@ class MainActivity : Activity() {
         // full-body estimation from VRChat's own OSC (works on the Quest by itself)
         val st = card(body, "Full-body estimation")
         st.addView(text("no trackers needed ~ ur feet stay planted + step when u move, crouching works too. needs OSC on in VRChat.", 14f, SUB, fBody2))
-        switchRow(st, "standable", if (s.standable) Standable.status else "hip + feet from how u move in VRChat", s.standable) { s.standable = !s.standable }
+        switchRow(st, "better standable", if (s.standable) Standable.status else "hip + feet from how u move in VRChat", s.standable) { s.standable = !s.standable }
         switchRow(st, "+ knees + chest", "more trackers (hips + feet is best for most)", s.trackFull) { s.trackFull = !s.trackFull }
         val hr = row(st)
         hr.addView(text("ur height  ", 16f, TEXT, fHead))
