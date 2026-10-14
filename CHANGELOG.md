@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.3 + Quest Edition v0.10.5: safer global chat + the owner gets a crown 👑
+- 🛡️ **global chat moderation:** troublemakers can get kicked (10 min out), muted or banned, and it works on every version of the app (PC, desktop, Quest, even old ones). when it happens, everyone sees it in chat from **Fluff Mod**
+- 🔨 **ban + mute sounds:** a ban hammer clang, a lil "bwoop" for mutes and a boot + boing for kicks, so everyone hears it happen. don't want them? Global chat → **ban + mute sounds** off
+- 👑 **(Owner) + (Staff) names:** the owner shows up with a crown, a gold bubble, a rainbow name + sparkles. staff get a blue **(Staff)** tag + a star. nobody else can name themselves Owner / Staff / Mod
+- on Quest v0.8.0+? it updates by itself
+
 ## v0.5.2 + Quest Edition v0.10.1: REAL full-body estimation on Quest + natural sitting
 - 🦴 **Quest better standable uses ur REAL moves now:** walk around ur room (no thumbstick!), crouch + sit and ur legs follow. VRChat streams ur headset position to Fluff, so the Quest works just like the PC version
 - 🪑 **natural chair sitting (PC + Quest):** sit in a chair and ur avatar sits like a person: chair-height seat, level thighs, shins hanging down, feet apart + turned out. sitting down + standing up blend smoothly, no more robot snapping
