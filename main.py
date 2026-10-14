@@ -68,6 +68,7 @@ from music import Music
 from discord_link import DiscordLink
 from zoom import Zoom
 from gchat import GlobalChat
+import gchat as gchat_mod
 import zoom as zoom_mod
 from vrclog import VRCLog
 from avatar import Avatar
@@ -1221,6 +1222,8 @@ class App:
     def on_gchat(self, msg):
         st = self.state
         st.dash_dirty = True
+        if msg.get("fx") and time.time() - msg["time"] < gchat_mod.FX_FRESH_S and self.cfg["gchat"].get("mod_sounds", True):
+            gchat_mod.play_fx(msg["fx"])                  # ban hammer / mute / kick, everyone hears it
         if not msg.get("mine") and self.cfg["gchat"].get("hud", True):
             st.hud_dirty = True
 

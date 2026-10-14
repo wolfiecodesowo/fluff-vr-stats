@@ -336,7 +336,8 @@ class Panel:
     # ------------------------------------------------------------------ background
     def start_listeners(self):
         cfg = {"modules": {"global_chat": True}, "gchat": {"sid": "devpanel00", "muted": [], "name": "devpanel"}}
-        self.chat = G.GlobalChat(cfg, client="dev")
+        self.chat = G.GlobalChat(cfg, client="dev", on_message=lambda m: m.get("fx") and
+                                 time.time() - m["time"] < G.FX_FRESH_S and G.play_fx(m["fx"]))
         threading.Thread(target=self.ack_loop, daemon=True, name="modack").start()
 
     def ack_loop(self):
@@ -388,10 +389,10 @@ class Panel:
             self.shown = list(c.msgs)
             self.list.delete(0, "end")
             for i, m in enumerate(self.shown):
-                tag = "🛡️ " if m["sid"] == "fluffmod" else ""
-                self.list.insert("end", f"{time.strftime('%H:%M', time.localtime(m['time']))}  {tag}{m['name']}"
+                tag = "🛡️ " if m["sid"] == "fluffmod" else "👑 " if m.get("role") == "owner" else ""
+                self.list.insert("end", f"{time.strftime('%H:%M', time.localtime(m['time']))}  {tag}{G.shown_name(m)}"
                                         f" · {m['client']}:  {m['text']}")
-                if m["sid"] == "fluffmod":
+                if m["sid"] == "fluffmod" or m.get("role") == "owner":
                     self.list.itemconfig(i, fg=YELLOW)
                 if m["id"] == keep:
                     self.list.selection_set(i)

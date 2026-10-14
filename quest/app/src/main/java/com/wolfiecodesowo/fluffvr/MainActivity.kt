@@ -656,6 +656,32 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------- global chat ---
+    private val OWNER_GOLD = Color.rgb(255, 205, 70)
+    private val STAFF_BLUE = Color.rgb(120, 180, 255)
+
+    /** the owner's name in global chat: a rainbow sliding through the letters, with a soft gold glow */
+    private fun ownerName(name: String, tag: String): TextView = text(name + tag, 13f, OWNER_GOLD, fHead).apply {
+        setShadowLayer(dp(6).toFloat(), 0f, 0f, Color.argb(200, 255, 205, 70))
+        val w = paint.measureText(name).coerceAtLeast(1f)
+        val shader = android.graphics.LinearGradient(0f, 0f, w, 0f,
+            intArrayOf(Color.rgb(255, 140, 190), Color.rgb(255, 214, 102), Color.rgb(140, 240, 170), Color.rgb(130, 200, 255),
+                       Color.rgb(200, 150, 255), Color.rgb(255, 140, 190)), null, android.graphics.Shader.TileMode.MIRROR)
+        paint.shader = shader
+        val m = android.graphics.Matrix()
+        android.animation.ValueAnimator.ofFloat(0f, 2f * w).apply {
+            duration = 2600; repeatCount = android.animation.ValueAnimator.INFINITE; interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { m.setTranslate(it.animatedValue as Float, 0f); shader.setLocalMatrix(m); invalidate() }
+            addOnAttachListener(this)
+        }
+    }
+
+    private fun TextView.addOnAttachListener(anim: android.animation.ValueAnimator) {
+        addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: android.view.View) { anim.start() }
+            override fun onViewDetachedFromWindow(v: android.view.View) { anim.cancel() }
+        })
+    }
+
     private fun fillChat() {
         val list = gchatList ?: return
         gchatSig = GlobalChat.version
@@ -670,7 +696,21 @@ class MainActivity : Activity() {
                 setPadding(dp(12), dp(6), dp(12), dp(8))
             }
             val tag = when (m.client) { "quest" -> " · quest"; "discord" -> " · discord"; "desktop" -> " · desktop"; "phone" -> " · phone"; else -> "" }
-            b.addView(text(m.name + tag, 12f, if (m.mine) Color.rgb(255, 222, 130) else PINK, fHead))
+            val modNote = m.sid == "fluffmod"
+            when (m.role) {
+                "owner" -> {
+                    b.background = round(FluffDrawable.blend(PANEL2, OWNER_GOLD, 0.14f), 16, 4, OWNER_GOLD)
+                    b.addView(ownerName("👑 ${m.shownName}", tag))
+                }
+                "staff" -> {
+                    b.background = round(PANEL2, 16, 4, STAFF_BLUE)
+                    b.addView(text("⭐ ${m.shownName}$tag", 12f, STAFF_BLUE, fHead))
+                }
+                else -> {
+                    if (modNote) b.background = round(PANEL2, 16, 4, Color.rgb(255, 226, 70))
+                    b.addView(text(m.name + tag, 12f, if (m.mine || modNote) Color.rgb(255, 222, 130) else PINK, fHead))
+                }
+            }
             b.addView(text(m.text, 15f, TEXT))
             if (!m.mine) b.setOnLongClickListener {
                 val opts = if (GlobalChat.v2) arrayOf("mute ${m.name} (just for u)", "report to staff 🚩") else arrayOf("mute ${m.name} (just for u)")
@@ -1485,6 +1525,7 @@ class MainActivity : Activity() {
         chip(gr, "save name", true) { s.gchatName = GlobalChat.cleanName(nm.text.toString()) }
         chip(gr, if (s.gchatOn) "chat on" else "chat off", s.gchatOn) { s.gchatOn = !s.gchatOn }
         chip(gr, if (s.gchatNotify) "notify me ✓" else "notify me", s.gchatNotify) { s.gchatNotify = !s.gchatNotify }
+        chip(gr, if (s.gchatModSounds) "ban + mute sounds ✓" else "ban + mute sounds", s.gchatModSounds) { s.gchatModSounds = !s.gchatModSounds }
         if (s.gchatMuted.isNotEmpty()) chip(gr, "unmute ${s.gchatMuted.size}", false) { s.gchatMuted = emptySet() }
 
         val up = card(body, "🔄 updates")

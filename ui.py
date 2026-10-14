@@ -22,6 +22,52 @@ FONT_DIR = os.path.join(HERE, "fonts")
 from logo import sticker_frames, ERROR_ART, THANKS_ART
 from themes import (mix, get_theme, theme_key, from_key, PRESETS, ACCENTS, BACKGROUNDS,
                     EAR_STYLES, preset_preview)
+import gchat as gchat_names
+
+OWNER_GOLD = (255, 205, 70)       # the owner's chat bubble + name (global chat)
+STAFF_BLUE = (120, 180, 255)
+
+
+def _role_badge(d, cx, cy, role):
+    """lil crown for the owner, star for staff (next to their name in global chat)"""
+    if role == "owner":
+        pts = [(cx - 9, cy + 6), (cx - 9, cy - 3), (cx - 5, cy + 1), (cx, cy - 7), (cx + 5, cy + 1), (cx + 9, cy - 3),
+               (cx + 9, cy + 6)]
+        d.polygon(pts, fill=OWNER_GOLD, outline=(150, 100, 20))
+        for px in (cx - 9, cx, cx + 9):
+            d.ellipse([px - 2, cy - (9 if px == cx else 5) - 1, px + 2, cy - (9 if px == cx else 5) + 3], fill=(255, 120, 170))
+    else:
+        pts = []
+        for i in range(10):
+            a = -math.pi / 2 + i * math.pi / 5
+            r = 9 if i % 2 == 0 else 4
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+        d.polygon(pts, fill=STAFF_BLUE, outline=(40, 80, 160))
+
+
+def _owner_name_fx(img, slot):
+    """the owner's name in global chat: a rainbow that slowly slides through the letters + twinkly sparkles"""
+    import colorsys
+    _, (x, y), name, size, bb = slot
+    d = ImageDraw.Draw(img)
+    f = font("body", size)
+    now = time.time()
+    for i, ch in enumerate(name):
+        r, g, b = colorsys.hsv_to_rgb((i * 0.06 - now * 0.25) % 1.0, 0.55, 1.0)
+        d.text((x, y), ch, font=f, fill=(int(r * 255), int(g * 255), int(b * 255)), anchor="lm")
+        x += f.getlength(ch)
+    for k in range(4):                                      # sparkles pop in + out around the bubble
+        ph = (now * 0.9 + k * 0.27) % 1.0
+        a = math.sin(ph * math.pi)
+        if a < 0.15:
+            continue
+        sx = bb[0] + (bb[2] - bb[0]) * ((k * 0.37 + int(now * 0.9 + k * 0.27) * 0.61) % 1.0)
+        sy = bb[1] if k % 2 == 0 else bb[3]
+        s = 2 + 5 * a
+        c = mix((255, 255, 255), OWNER_GOLD, 0.4)
+        d.polygon([(sx, sy - s * 1.6), (sx + s * 0.4, sy - s * 0.4), (sx + s * 1.6, sy), (sx + s * 0.4, sy + s * 0.4),
+                   (sx, sy + s * 1.6), (sx - s * 0.4, sy + s * 0.4), (sx - s * 1.6, sy), (sx - s * 0.4, sy - s * 0.4)],
+                  fill=c)
 
 
 # ----------------------------------------------------------------- fonts ---
@@ -1342,9 +1388,11 @@ def render_hud(state):
             d.text((x + 40, y + 20), "global chat", font=font("body2", 13), fill=t["sub"], anchor="lm")
             for i, mm in enumerate(row[2]):
                 ly = y + 42 + i * 25
-                nm = mm["name"] + ":"
+                nm = gchat_names.shown_name(mm) + ":"
                 fn = font("body", 15)
-                d.text((x + 16, ly), nm, font=fn, fill=t["primary"], anchor="lm")
+                role = mm.get("role")
+                d.text((x + 16, ly), nm, font=fn, fill=OWNER_GOLD if role == "owner" else STAFF_BLUE if role == "staff"
+                       else t["primary"], anchor="lm")
                 d.text((x + 22 + fn.getlength(nm), ly), ellipsize(mm["text"], font("body2", 15), R - x - 40 - fn.getlength(nm)),
                        font=font("body2", 15), fill=t["text"], anchor="lm")
         elif kind == "buttons":
@@ -1388,6 +1436,8 @@ def add_logo(base, frame_idx, slots=()):
                 if frames:
                     y = pos[1] + (round(math.sin(frame_idx * 0.35) * 6) if bob else 0)
                     img.alpha_composite(frames[frame_idx % len(frames)], (pos[0], y))
+            elif kind == "owner_name":   # the owner's rainbow name in global chat
+                _owner_name_fx(img, slot)
             elif kind == "hearts":       # little hearts floating up after a floof pat
                 _, start, (hx, hy), t = slot
                 k = time.time() - start
@@ -1944,19 +1994,33 @@ def _tab_global(d, hit, box, state, t):
             break
         y -= hgt
         shown += 1
-        w = max(fn.getlength(mm["name"]) + 60, max(fb.getlength(ln) for ln in wr) + 32)
+        role = mm.get("role")
+        name = gchat_names.shown_name(mm)
+        w = max(fn.getlength(name) + 60 + (22 if role else 0), max(fb.getlength(ln) for ln in wr) + 32)
         w = min(bubble_w, w)
         mine = mm["mine"]
         bx0 = cx1 - 18 - w if mine else x0 + 18
         bb = [bx0, y + 4, bx0 + w, y + hgt - 6]
-        d.rounded_rectangle(bb, radius=16, fill=mix(t["panel2"], t["primary"], 0.35) if mine else t["panel2"],
-                            outline=t["line"], width=3)
+        modnote = mm.get("sid") == "fluffmod"
+        edge = OWNER_GOLD if role == "owner" else STAFF_BLUE if role == "staff" else t["warn"] if modnote else t["line"]
+        fill = mix(t["panel2"], t["primary"], 0.35) if mine else t["panel2"]
+        if role == "owner":
+            fill = mix(fill, OWNER_GOLD, 0.12)
+        d.rounded_rectangle(bb, radius=16, fill=fill, outline=edge, width=4 if (role or modnote) else 3)
         tx_ = bb[2] - 22 if mine else bb[0] + 22                  # lil speech tail
         d.polygon([(tx_ - 7, bb[3] - 2), (tx_ + 7, bb[3] - 2), (tx_ + (8 if mine else -8), bb[3] + 8)],
-                  fill=t["line"])
-        d.text((bb[0] + 14, bb[1] + 15), mm["name"], font=fn, fill=t["warn"] if mine else t["primary"], anchor="lm")
+                  fill=edge)
+        nx = bb[0] + 14
+        if role:                                                   # crown (owner) / star (staff) badge
+            _role_badge(d, nx + 8, bb[1] + 15, role)
+            nx += 22
+        ncol = (OWNER_GOLD if role == "owner" else STAFF_BLUE if role == "staff" else t["warn"] if mine or modnote
+                else t["primary"])
+        d.text((nx, bb[1] + 15), name, font=fn, fill=ncol, anchor="lm")
+        if role == "owner":                                        # rainbow shimmer + sparkles, animated
+            state.anim_slots.append(("owner_name", (nx, bb[1] + 15), name, 14, tuple(bb)))
         tag = _client_tag(mm.get("client"))
-        tx = bb[0] + 20 + fn.getlength(mm["name"])
+        tx = nx + 6 + fn.getlength(name)
         if tag:
             d.text((tx, bb[1] + 15), tag, font=font("body2", 11), fill=t["sub"], anchor="lm")
         ago = max(0, time.time() - mm["time"])
@@ -1964,7 +2028,7 @@ def _tab_global(d, hit, box, state, t):
                font=font("body2", 11), fill=t["sub"], anchor="rm")
         for i, ln in enumerate(wr):
             d.text((bb[0] + 14, bb[1] + 38 + i * 22), ln, font=fb, fill=t["text"], anchor="lm")
-        if not mine and mm.get("sid"):
+        if not mine and mm.get("sid") and not modnote:
             mx = bb[2] + 16
             if mx + 12 < cx1:
                 cyb = (bb[1] + bb[3]) / 2
@@ -2000,11 +2064,15 @@ def _tab_global(d, hit, box, state, t):
     d.text((sx + 20, y0 + 142), "new msgs on wrist", font=font("body", 15), fill=t["text"], anchor="lm")
     switch(d, x1 - 70, y0 + 128, on_hud, t, scale=0.85)
     hit.add([sx, y0 + 124, x1, y0 + 160], "set", "gchat.hud", not on_hud)
-    d.text((sx + 20, y0 + 186), "house rules", font=font("head", 19), fill=t["text"])
+    on_fx = cfg.get("gchat", {}).get("mod_sounds", True)
+    d.text((sx + 20, y0 + 182), "ban + mute sounds", font=font("body", 15), fill=t["text"], anchor="lm")
+    switch(d, x1 - 70, y0 + 168, on_fx, t, scale=0.85)
+    hit.add([sx, y0 + 164, x1, y0 + 200], "set", "gchat.mod_sounds", not on_fx)
+    d.text((sx + 20, y0 + 222), "house rules", font=font("head", 19), fill=t["text"])
     rules = ["be nice, no hate", "no links (anti-scam)", "never share personal info", "slow mode: 1 msg / 3s",
              "mute anyone just for u"]
     for i, r in enumerate(rules):
-        ry = y0 + 220 + i * 24
+        ry = y0 + 256 + i * 24
         paw(d, sx + 28, ry + 1, 5, t["primary"])
         d.text((sx + 42, ry), r, font=font("body2", 14), fill=t["sub"], anchor="lm")
     d.text((sx + 20, y1 - 46), "also in our Discord #global-chat", font=font("body2", 13), fill=t["sub"], anchor="lm")

@@ -50,12 +50,15 @@ class _FakeChat:
     unread, status, error = 2, "live", ""
     def __init__(self):
         n = time.time()
-        self.msgs = [dict(id=str(i), name=nm, text=tx, time=n - 60 + i * 9, sid=nm, client=c, mine=nm == "me")
-                     for i, (nm, tx, c) in enumerate([("Kitsu", "anyone in the black cat rn?", "pc"),
-                                                     ("me", "omw!! saving u a spot", "pc"),
-                                                     ("Bunbun", "hiii from my quest :3", "quest"),
-                                                     ("Sable", "the new wrist buttons are so cute", "discord"),
-                                                     ("Mochi", "headpat count 40 today lets gooo", "desktop")])]
+        self.msgs = [dict(id=str(i), name=nm, text=tx, time=n - 60 + i * 9, sid="fluffmod" if nm == "Fluff Mod" else nm,
+                          client=c, mine=nm == "me", role=r)
+                     for i, (nm, tx, c, r) in enumerate([("Kitsu", "anyone in the black cat rn?", "pc", None),
+                                                        ("me", "omw!! saving u a spot", "pc", None),
+                                                        ("wolfie", "new update is out!! go restart ur app :3", "pc", "owner"),
+                                                        ("Bunbun", "hiii from my quest :3", "quest", None),
+                                                        ("Fluff Mod", "trolly was banned from global chat · spam", "sys", None),
+                                                        ("Sable", "the new wrist buttons are so cute", "discord", "staff"),
+                                                        ("Mochi", "headpat count 40 today lets gooo", "desktop", None)])]
     def visible(self, n=None):
         return self.msgs[-n:] if n else list(self.msgs)
     def name(self):

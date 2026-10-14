@@ -53,10 +53,41 @@ def clean_name(name):
     return _BAD.sub("fluff", name)
 
 
+_RESERVED_WORD = re.compile(r"^\W*(owner|staff|admin|mod|moderator|system)\b", re.I)
+
+
 def reserved_name(name):
-    """names only Fluff Bot / the mods post as (so nobody can fake a ban notice)"""
+    """names only Fluff Bot / the mods / the owner get (so nobody can fake a ban notice or "(Owner) ...")"""
     n = re.sub(r"[^a-z]", "", str(name or "").lower())
-    return n in ("fluffmod", "fluffbot", "fluffstaff", "fluffowner", "mod", "admin", "staff", "owner", "system")
+    return (n in ("fluffmod", "fluffbot", "fluffstaff", "fluffowner", "mod", "admin", "staff", "owner", "system")
+            or bool(_RESERVED_WORD.match(str(name or ""))))
+
+
+ROLES = ("owner", "staff")
+FX = {"ban": "banhammer.wav", "mute": "mute.wav", "kick": "kick.wav"}
+FX_FRESH_S = 30                     # only play sounds for brand new notices, not ones from before u opened the app
+
+
+def shown_name(msg):
+    """'(Owner) wolfie' for the owner, '(Staff) name' for staff, otherwise just the name"""
+    r = msg.get("role")
+    return f"({r.title()}) {msg['name']}" if r in ROLES else msg["name"]
+
+
+def play_fx(fx):
+    """ban hammer / mute / kick sound (Windows), quietly does nothing anywhere else"""
+    fn = FX.get(fx)
+    if not fn:
+        return
+    import os
+    import sys
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", fn)
+    if sys.platform == "win32" and os.path.exists(path):
+        try:
+            import winsound
+            winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+        except Exception:
+            pass
 
 
 class GlobalChat:
@@ -184,9 +215,11 @@ class GlobalChat:
         if m.get("t") != "msg":
             return None
         sid = str(m.get("s", ""))[:16]
+        role, fx = m.get("r"), m.get("fx")
         return {"id": str(m.get("id") or ev.get("id")), "name": clean_name(m.get("n")) or "fluff",
                 "text": str(m.get("m", ""))[:MAX_LEN], "time": float(m.get("ts") or ev.get("time") or time.time()),
-                "sid": sid, "client": str(m.get("c", "pc"))[:8], "mine": sid == self.sid}
+                "sid": sid, "client": str(m.get("c", "pc"))[:8], "mine": sid == self.sid,
+                "role": role if role in ROLES else None, "fx": fx if fx in FX else None}
 
     def parse(self, line):
         """One line from ntfy's JSON stream -> message dict (or None)."""

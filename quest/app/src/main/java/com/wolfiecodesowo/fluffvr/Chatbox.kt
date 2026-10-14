@@ -80,6 +80,7 @@ class Settings(ctx: Context) {
     var gchatName: String get() = p.getString("gc_name", "")!!; set(v) = p.edit().putString("gc_name", v).apply()
     var gchatOn: Boolean get() = p.getBoolean("gc_on", true); set(v) = p.edit().putBoolean("gc_on", v).apply()
     var gchatNotify: Boolean get() = p.getBoolean("gc_notify", false); set(v) = p.edit().putBoolean("gc_notify", v).apply()
+    var gchatModSounds: Boolean get() = p.getBoolean("gc_mod_sounds", true); set(v) = p.edit().putBoolean("gc_mod_sounds", v).apply()
     val gchatSid: String get() = p.getString("gc_sid", null) ?: (1..10).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }
         .joinToString("").also { p.edit().putString("gc_sid", it).apply() }
     var gchatMuted: Set<String> get() = p.getStringSet("gc_muted", emptySet())!!.toSet(); set(v) = p.edit().putStringSet("gc_muted", v).apply()

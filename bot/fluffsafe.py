@@ -264,23 +264,43 @@ def install(bot, env):
                     await give_role(uid, "badges", "10+ app badges")
 
     # --------------------------------------------------------- chat relay ---
-    async def relay(msg_id, name, text, sid, client, uid=None, to_discord=True, to_v1=True):
-        """the ONE way messages get into the v2 room: signed by us"""
+    def chat_role(uid):
+        """"owner" (the server owner) / "staff" / None: the app shows these names with special effects"""
+        g = bot.guild()
+        if not g or not uid or not str(uid).isdigit():
+            return None
+        if str(uid) == str(g.owner_id):
+            return "owner"
+        m = member(uid)
+        return "staff" if m and bot.is_staff(m) else None
+
+    async def relay(msg_id, name, text, sid, client, uid=None, to_discord=True, to_v1=True, fx=None):
+        """the ONE way messages get into the v2 room: signed by us.
+        fx: a sound every updated app plays with the message (ban / mute / kick notices)"""
         ts = time.time()
-        await signed(G.ROOM2, {"t": "msg", "id": msg_id, "n": name, "m": text, "s": sid, "c": client, "ts": ts})
+        role = chat_role(uid)
+        payload = {"t": "msg", "id": msg_id, "n": name, "m": text, "s": sid, "c": client, "ts": ts}
+        if role:
+            payload["r"] = role
+        if fx:
+            payload["fx"] = fx
+        await signed(G.ROOM2, payload)
         state["recent"][msg_id] = {"uid": uid, "sid": sid, "name": name, "text": text, "ts": ts, "c": client}
         if len(state["recent"]) > 400:
             for k in list(state["recent"])[:100]:
                 state["recent"].pop(k, None)
+        label = f"({role.title()}) {name}" if role else name
         if to_v1:       # Quest Edition + old apps still read the v1 room
-            await ntfy_post(G.TOPIC, {"v": 1, "n": name, "m": text, "s": sid, "c": client, "r": 1})
+            await ntfy_post(G.TOPIC, {"v": 1, "n": f"{role.title()} {name}"[:20] if role else name, "m": text,
+                                      "s": sid, "c": client, "r": 1})
         if to_discord:
             c = bot.ch("gchat")
             if c:
                 tag = {"quest": " · quest", "desktop": " · desktop", "phone": " · phone"}.get(client, "")
+                crown = "👑 " if role == "owner" else "⭐ " if role == "staff" else ""
                 safe = discord.utils.escape_mentions(discord.utils.escape_markdown(text))
                 try:
-                    await c.send(f"**{discord.utils.escape_markdown(name)}**{tag}: {safe}",
+                    await c.send(f"{crown}**{discord.utils.escape_markdown(label)}**{tag}: {safe}",
                                  allowed_mentions=discord.AllowedMentions.none())
                 except discord.HTTPException:
                     pass
@@ -409,10 +429,12 @@ def install(bot, env):
                 return f"{k} {unit}" + ("s" if k != 1 and unit != "min" else "")
         return f"{mins} min"
 
-    async def notice(text):
-        """public in the app's global chat only (every version, old v1 apps too), not in Discord"""
+    async def notice(text, fx=None):
+        """public in the app's global chat only (every version, old v1 apps too), not in Discord.
+        No emoji: the PC app's chat font can't draw them.
+        fx = "ban" / "mute" / "kick": everyone's app plays that sound with it"""
         await relay(uuid.uuid4().hex[:16], G.MOD_NAME, str(text)[:G.MAX_LEN], "fluffmod", "sys", None,
-                    to_discord=False, to_v1=True)
+                    to_discord=False, to_v1=True, fx=fx)
 
     async def on_mod(p):
         who = mod_signer(p)
@@ -478,17 +500,17 @@ def install(bot, env):
                         if m.get("sid") in sids or (uid and m.get("uid") == uid)][-30:]
                 for mid in gone:
                     await signed(G.ROOM2, {"t": "del", "id": mid, "ts": now})
-                await notice(f"👢 {name} was kicked from global chat ({KICK_MIN} min){tail}")
+                await notice(f"{name} was kicked from global chat ({KICK_MIN} min){tail}", "kick")
                 done = f"kicked {name} ({len(gone)} msg{'' if len(gone) == 1 else 's'} removed, back in {KICK_MIN} min)"
             else:
-                await notice(f"🔇 {name} was muted " + (f"for {mins_txt(mins)}" if mins else "until further notice") + tail)
+                await notice(f"{name} was muted " + (f"for {mins_txt(mins)}" if mins else "until further notice") + tail, "mute")
                 done = f"muted {name}" + (f" for {mins_txt(mins)}" if mins else " (no end)")
         elif a == "unmute":
             n = sum(1 for k in keys if D["mutes"].pop(k, None))
             save_data(D)
             if not n:
                 return await ack(False, f"{name} wasn't muted or kicked")
-            await notice(f"🔊 {name} can chat again")
+            await notice(f"{name} can chat again")
             done = f"unmuted {name}"
         elif a == "ban":
             if uid and uid not in D["bans"]["uids"]:
@@ -498,7 +520,7 @@ def install(bot, env):
                     D["bans"]["sids"].append(s)
                 await signed(G.ROOM2, {"t": "ban", "s": s, "ts": now})
             save_data(D)
-            await notice(f"🔨 {name} was banned from global chat{tail}")
+            await notice(f"{name} was banned from global chat{tail}", "ban")
             done = f"banned {name} ({len(sids)} installs)"
         else:                                                   # unban
             was = (uid in D["bans"]["uids"]) or any(s in D["bans"]["sids"] for s in sids)
@@ -510,7 +532,7 @@ def install(bot, env):
             save_data(D)
             if not was:
                 return await ack(False, f"{name} wasn't banned")
-            await notice(f"✅ {name} was unbanned and can chat again")
+            await notice(f"{name} was unbanned and can chat again")
             done = f"unbanned {name}"
         await bot.modlog(f"🛡️ **dev panel** ({by}): {done}" + (f" · <@{uid}>" if uid and uid.isdigit() else "")
                          + (f" · reason: {why}" if why else ""), 0xFF6B6B if a in ("ban", "kick") else C.GOLD)

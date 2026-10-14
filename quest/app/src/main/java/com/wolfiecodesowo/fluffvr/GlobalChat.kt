@@ -24,7 +24,14 @@ object GlobalChat {
     const val MAX_LEN = 200
     const val SLOW_MS = 3000L
 
-    data class Msg(val id: String, val name: String, val text: String, val time: Long, val sid: String, val client: String, val mine: Boolean)
+    /** role: "owner" / "staff" / null (signed by Fluff Bot, shows "(Owner) name" with effects). fx: "ban" / "mute" / "kick" sound */
+    data class Msg(val id: String, val name: String, val text: String, val time: Long, val sid: String, val client: String, val mine: Boolean,
+                   val role: String? = null, val fx: String? = null) {
+        val shownName: String get() = if (role != null) "(${role.replaceFirstChar { it.uppercase() }}) $name" else name
+    }
+    private const val FX_FRESH_MS = 30_000L      // only play sounds for brand new notices, not old ones from history
+    private var appCtx: Context? = null
+    private var fxPlayer: android.media.MediaPlayer? = null
 
     val msgs = CopyOnWriteArrayList<Msg>()
     @Volatile var status = "off"
@@ -57,6 +64,7 @@ object GlobalChat {
         if (running) return
         running = true
         val app = ctx.applicationContext
+        appCtx = app
         Thread {
             var backoff = 2000L
             var lastId: String? = null
@@ -114,9 +122,11 @@ object GlobalChat {
                 "del" -> { val id = m.optString("id"); msgs.removeAll { it.id == id }; version++ }
                 "msg" -> {
                     val sid = m.optString("s").take(16)
+                    val role = m.optString("r").takeIf { it == "owner" || it == "staff" }
+                    val fx = m.optString("fx").takeIf { it == "ban" || it == "mute" || it == "kick" }
                     add(Msg(m.optString("id").ifEmpty { ev.optString("id") }, cleanName(m.optString("n")).ifEmpty { "fluff" },
                         m.optString("m").take(MAX_LEN), m.optLong("ts", ev.optLong("time")) * 1000, sid,
-                        m.optString("c", "pc").take(8), sid == s.gchatSid), s)
+                        m.optString("c", "pc").take(8), sid == s.gchatSid, role, fx), s)
                 }
             }
         } catch (_: Exception) {}
@@ -129,7 +139,20 @@ object GlobalChat {
         while (msgs.size > 80) msgs.removeAt(0)
         if (!m.mine) unread++
         version++
+        if (m.fx != null && s.gchatModSounds && System.currentTimeMillis() - m.time < FX_FRESH_MS) playFx(m.fx)
         onMessage?.invoke(m)
+    }
+
+    /** ban hammer / mute / kick sound: everyone in global chat hears it when a mod does it */
+    private fun playFx(fx: String) {
+        val ctx = appCtx ?: return
+        val res = when (fx) { "ban" -> R.raw.banhammer; "mute" -> R.raw.mute; else -> R.raw.kick }
+        try {
+            fxPlayer?.release()
+            fxPlayer = android.media.MediaPlayer.create(ctx, res)?.apply {
+                setOnCompletionListener { it.release(); if (fxPlayer === it) fxPlayer = null }; start()
+            }
+        } catch (_: Exception) {}
     }
 
     fun mute(s: Settings, sid: String) {
