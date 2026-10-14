@@ -63,6 +63,14 @@ class ModsTest {
     @Test
     fun standablePlantsFeetAndSteps() {
         val s = Settings(ctx); s.trackHeight = 1.7f
+        // real VRChat: standing can read Upright ~0.73 (it's measured against the avatar) -> legs must still be straight
+        Standable.upMax = 0f
+        var st = emptyMap<String, FloatArray>()
+        repeat(60) { st = Standable.compute(s, 0f, 0f, 0.73f, 0.033f) }
+        assertTrue("standing at Upright 0.73 = straight legs (hip ${st["hip"]!![1]})", st["hip"]!![1] > 0.85f)
+        assertTrue("knees not pushed forward", st["knee_l"]!![2] - st["hip"]!![2] < 0.2f)
+        assertTrue("feet not touching", st["foot_r"]!![0] - st["foot_l"]!![0] > 0.2f)
+        Standable.upMax = 0f
         var out = emptyMap<String, FloatArray>()
         repeat(30) { out = Standable.compute(s, 0f, 0f, 1f, 0.033f) }
         val l0 = out["foot_l"]!!.copyOf()

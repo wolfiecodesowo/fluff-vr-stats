@@ -225,14 +225,14 @@ object Trackers {
 }
 
 /** planted feet that take a step when the body moves away from them (the "standable" bit) */
-class Legs(private val stepDist: Float = 0.22f) {
+class Legs(private val stepDist: Float = 0.16f) {
     private class Foot(var x: Float, var z: Float) { var fx = x; var fz = z; var tx = x; var tz = z; var t = 1f; var lift = 0f }
     private var feet: Array<Foot>? = null
     val ANKLE = 0.07f
 
     /** hip (x, y, z) in, foot_l / foot_r / knee_l / knee_r out. facing +Z */
     fun update(hx: Float, hy: Float, hz: Float, dt: Float, legLen: Float): Map<String, FloatArray> {
-        val stance = 0.11f
+        val stance = 0.13f                     // feet ~26 cm apart (they were touching)
         val tgt = arrayOf(floatArrayOf(hx - stance, hz + 0.03f), floatArrayOf(hx + stance, hz + 0.03f))
         val f = feet
         if (f == null || f.indices.any { hypot(f[it].x - tgt[it][0], f[it].z - tgt[it][1]) > 1.2f }) {
@@ -242,7 +242,7 @@ class Legs(private val stepDist: Float = 0.22f) {
         for (i in 0..1) {
             val ft = ff[i]; val other = ff[1 - i]
             if (ft.t < 1f) {
-                ft.t = min(1f, ft.t + dt / 0.3f)
+                ft.t = min(1f, ft.t + dt / 0.22f)       // quicker steps = less lag
                 val k = ft.t * ft.t * (3 - 2 * ft.t)
                 ft.x = ft.fx + (ft.tx - ft.fx) * k; ft.z = ft.fz + (ft.tz - ft.fz) * k
                 ft.lift = sin(Math.PI * ft.t).toFloat() * 0.07f
@@ -310,7 +310,9 @@ object Standable {
                 if (hearing && QuestMods.seated) { status = "sitting ~ resting till u stand up"; Thread.sleep(250); continue }
                 val vx = if (hearing) QuestMods.velX.coerceIn(-8f, 8f) else 0f
                 val vz = if (hearing) QuestMods.velZ.coerceIn(-8f, 8f) else 0f
-                if (abs(vx) + abs(vz) > 0.05f) { px += vx * dt; pz += vz * dt }
+                // VRChat's velocity is in avatar meters; the tracker space is real meters
+                val scale = QuestMods.heightM?.takeIf { it > 0.3 }?.let { (s.trackHeight * 0.93f / it.toFloat()).coerceIn(0.3f, 3f) } ?: 1f
+                if (abs(vx) + abs(vz) > 0.05f) { px += vx * scale * dt; pz += vz * scale * dt }
                 val out = compute(s, px, pz, if (hearing) QuestMods.upright else 1f, dt, now, abs(vx) + abs(vz) > 0.3f)
                 last = out
                 try {
@@ -338,6 +340,8 @@ object Standable {
     fun stop() { running = false }
 
     @Volatile var sitting = false
+    @Volatile var upMax = 0f
+    private var upAvatar = ""
     private var lowSince = 0L
 
     /**
@@ -348,7 +352,11 @@ object Standable {
     fun compute(s: Settings, hx: Float, hz: Float, upright: Float, dt: Float, now: Long = System.currentTimeMillis(),
                 moving: Boolean = false): Map<String, FloatArray> {
         val eye = s.trackHeight * 0.93f
-        val up = upright.coerceIn(0.25f, 1.05f)
+        // VRChat's Upright is measured against the avatar, so standing can read ~0.7: learn what 'standing'
+        // reads for u + this avatar (slowly fading max) and measure crouching against that
+        if (QuestMods.avatarId != upAvatar) { upAvatar = QuestMods.avatarId; upMax = 0f }
+        upMax = max(upMax * 0.99998f, upright)
+        val up = (upright / max(upMax, 0.4f)).coerceIn(0.25f, 1.05f)
         val headY = eye * up                       // VRChat pins our head to ur real head, so this has to be ur real height
         val legLen = max(0.3f, eye * 0.57f - 0.07f)
         if (up < 0.68f && !moving) { if (lowSince == 0L) lowSince = now } else lowSince = 0L
