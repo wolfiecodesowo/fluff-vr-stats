@@ -48,6 +48,8 @@ class MainActivity : Activity() {
     private var remoteSig = ""
     private var modsSig = ""
     private var bodyLive: TextView? = null
+    private var trackLine: TextView? = null
+    private var camLine: TextView? = null
     private var camView: ImageView? = null
     private var camHint: TextView? = null
     private var camShown: android.graphics.Bitmap? = null
@@ -114,6 +116,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Net.init(this)
         s = Settings(this)
         window.statusBarColor = BG
         window.navigationBarColor = BG
@@ -183,6 +186,8 @@ class MainActivity : Activity() {
             stateView?.setTextColor(if (ChatboxService.sending(this@MainActivity)) PINK else SUB)
             startBtn?.let { styleButton(it, s.chatboxOn) ; it.text = if (s.chatboxOn) "stop chatbox" else "start chatbox" }
             bodyLive?.text = bodyText()
+            trackLine?.text = trackLineText()
+            camLine?.let { it.text = camLineText(); it.setTextColor(if (TrackRelay.live) GOOD else SUB) }
             if (ytList != null && YouTube.version != ytSig) fillYouTube()
             musicView?.let { mv ->
                 val m = MusicState.snapshot()
@@ -1072,7 +1077,9 @@ class MainActivity : Activity() {
     private fun remoteText(): String {
         val r = RemoteLink.last
         if (RemoteLink.badCode) return "❌ wrong pair code. check the code on ur Quest's Remote tab"
-        if (r == null || !RemoteLink.connected()) return if (RemoteLink.questIp.isEmpty()) "not paired yet" else "⏳ looking for ur Quest at ${RemoteLink.questIp}…"
+        if (r == null || !RemoteLink.connected()) return if (RemoteLink.questIp.isEmpty()) "not paired yet" else
+            "⏳ looking for ur Quest at ${RemoteLink.questIp}…\n" + (if (!Net.onWifi()) "this phone isn't on Wi-Fi ~ join the same Wi-Fi as ur Quest"
+                else "make sure Fluff is open on the Quest, both are on the same Wi-Fi, and any VPN is off") + "\nthis phone: ${RemoteLink.myIp()}"
         phoneAlert(r)
         val sb = StringBuilder("🟢 connected to ur Quest\n")
         sb.append(if (r.optBoolean("running")) "💜 chatbox is on" else "⏸ chatbox is off (start it on the Quest)").append("\n")
@@ -1111,7 +1118,11 @@ class MainActivity : Activity() {
         if (RemoteLink.found.isNotEmpty()) {
             ph.addView(text("found:", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
             val fr = row(ph)
-            RemoteLink.found.forEach { (ip, name) -> chip(fr, "$name ($ip)", ip == RemoteLink.questIp) { RemoteLink.questIp = ip; s.remoteIp = ip } }
+            RemoteLink.found.forEach { (ip, name) -> chip(fr, "$name ($ip)", ip == RemoteLink.questIp) {
+                RemoteLink.questIp = ip; s.remoteIp = ip
+                if (RemoteLink.code.isEmpty()) RemoteLink.code = s.remoteCode
+                if (RemoteLink.code.isEmpty()) android.widget.Toast.makeText(this, "now type the pair code from ur Quest + tap connect", android.widget.Toast.LENGTH_LONG).show()
+            } }
         }
         val ipEd = edit(RemoteLink.questIp.ifEmpty { s.remoteIp }, "Quest IP (only if find doesn't work)")
         val codeEd = edit(RemoteLink.code.ifEmpty { s.remoteCode }, "pair code from the Quest").apply { inputType = InputType.TYPE_CLASS_NUMBER }
@@ -1121,6 +1132,7 @@ class MainActivity : Activity() {
         chip(cr, "connect", true) {
             RemoteLink.questIp = ipEd.text.toString().trim(); RemoteLink.code = codeEd.text.toString().trim()
             s.remoteIp = RemoteLink.questIp; s.remoteCode = RemoteLink.code; RemoteLink.badCode = false
+            Thread { RemoteLink.poll(); ui.post { remoteView?.text = remoteText() } }.start()
         }
         remoteView = text(remoteText(), 15f, TEXT).apply { setPadding(0, dp(10), 0, 0) }
         ph.addView(remoteView)
@@ -1295,6 +1307,23 @@ class MainActivity : Activity() {
         return sb.toString()
     }
 
+    private fun trackLineText(): String = when (s.trackMode) {
+        "standable" -> "🦴 " + Standable.status
+        "camera" -> when {
+            TrackRelay.live && !TrackRelay.blocked -> "📸 phone camera connected ~ ${TrackRelay.rate.toInt()} msgs/s"
+            client == "phone" -> "📸 tap start tracking below"
+            TrackRelay.badCodeLive -> "❌ ur phone is sending with pair code ${TrackRelay.badCode}, this Quest's code is ${s.pairCode} ~ fix it in the phone's Remote tab"
+            else -> "📸 waiting for ur phone ~ start tracking in its Body tab (pair code ${s.pairCode}, Quest IP ${RemoteLink.myIp()})"
+        }
+        else -> "tracking is off"
+    }
+
+    private fun camLineText(): String = when {
+        TrackRelay.live -> "🟢 phone tracker connected"
+        TrackRelay.badCodeLive -> "❌ phone has the wrong pair code (${TrackRelay.badCode})"
+        else -> "⚪ no phone tracker yet · pair code ${s.pairCode}"
+    }
+
     private val PERM_CAMERA = 41
     private val PERM_BT = 42
     private fun need(perm: String, code: Int): Boolean {
@@ -1322,12 +1351,8 @@ class MainActivity : Activity() {
         val mr = row(st); mr.setPadding(0, dp(4), 0, dp(4))
         for ((k, lab) in listOf("off" to "off", "standable" to "better standable", "camera" to "phone camera"))
             chip(mr, lab, s.trackMode == k) { s.trackMode = k; if (k != "camera" && client == "phone" && TrackerService.running) TrackerService.stop(this) }
-        st.addView(text(when (s.trackMode) {
-            "standable" -> "🦴 " + Standable.status
-            "camera" -> if (TrackRelay.live && !TrackRelay.blocked) "📸 phone camera connected ~ ${TrackRelay.rate.toInt()} msgs/s"
-                else if (client == "phone") "📸 tap start tracking below" else "📸 waiting for ur phone ~ start tracking in its Body tab (pair code ${s.pairCode})"
-            else -> "tracking is off"
-        }, 14f, if (s.trackMode == "off") SUB else PINK, fHead).apply { setPadding(0, 0, 0, dp(6)) })
+        trackLine = text(trackLineText(), 14f, if (s.trackMode == "off") SUB else PINK, fHead).apply { setPadding(0, 0, 0, dp(6)) }
+        st.addView(trackLine)
         switchRow(st, "+ knees + chest", "more trackers (hips + feet is best for most)", s.trackFull) { s.trackFull = !s.trackFull }
         val hr = row(st)
         hr.addView(text("ur height  ", 16f, TEXT, fHead))
@@ -1366,8 +1391,8 @@ class MainActivity : Activity() {
         } else {
             cam.addView(text("ur phone is the camera! install this same app on an Android phone, pair it in the Remote tab, then open " +
                 "Body → camera body tracking on the phone. it sends ur legs to VRChat through this app.", 14f, SUB, fBody2))
-            cam.addView(text(if (TrackRelay.live) "🟢 phone tracker connected" else "⚪ no phone tracker yet · pair code ${s.pairCode}", 15f,
-                if (TrackRelay.live) GOOD else SUB, fHead).apply { setPadding(0, dp(6), 0, 0) })
+            camLine = text(camLineText(), 15f, if (TrackRelay.live) GOOD else SUB, fHead).apply { setPadding(0, dp(6), 0, 0) }
+            cam.addView(camLine)
         }
 
         // heart rate

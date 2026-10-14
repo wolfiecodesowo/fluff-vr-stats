@@ -44,11 +44,28 @@ class TrackerService : Service() {
     private var math: PoseMath? = null
     private var frames = 0
     private var rateT = System.currentTimeMillis()
+    private var lastAsk = 0L
+    private var calibratedAt = 0L
+
+    /** what the Quest says about our tracking (it answers the Remote link) */
+    private fun questHears(): String {
+        val r = RemoteLink.last
+        return when {
+            RemoteLink.badCode -> "❌ wrong pair code ~ fix it in the Remote tab"
+            r == null || !RemoteLink.connected() -> if (Net.onWifi()) "⚠ ur Quest isn't answering ~ is Fluff open on it? same Wi-Fi? turn off VPN"
+                else "⚠ this phone isn't on Wi-Fi ~ join the same Wi-Fi as ur Quest"
+            r.optBoolean("trk") -> "🟢 ur Quest is getting ur tracking!!"
+            r.optBoolean("trkBlocked") -> "⚠ Quest gets it, but phone camera isn't picked on the Quest"
+            r.optBoolean("trkBadCode") -> "❌ Quest says the pair code is wrong"
+            else -> "⏳ Quest is connected, waiting for it to get the tracking…"
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        Net.init(this)
         running = true
         status = "starting the camera…"
         startForeground(3, notification())
@@ -190,13 +207,17 @@ class TrackerService : Service() {
             pts[name] = floatArrayOf(p.x, p.y, p.z)      // raw camera frames aren't mirrored (front or back)
         }
         val m = math ?: PoseMath(s.trackHeight).also { math = it }
-        if (recalibrate) { if (m.calibrate(pts)) { recalibrate = false; status = "calibrated!! now calibrate FBT in VRChat :3" } }
+        if (recalibrate) { if (m.calibrate(pts)) { recalibrate = false; calibratedAt = System.currentTimeMillis(); status = "calibrated!! now calibrate FBT in VRChat :3" } }
         val res = m.trackers(pts, s.trackFull)
         if (res == null) { if (pts.size < 6) status = "can't see ur body ~ step back so ur feet are in view"; return }
-        val code = s.remoteCode; val ip = RemoteLink.questIp.ifEmpty { s.remoteIp }
-        if (ip.isEmpty() || code.isEmpty()) { status = "pair with ur Quest in the Remote tab first"; return }
+        val code = s.remoteCode.ifEmpty { RemoteLink.code }; val ip = RemoteLink.questIp.ifEmpty { s.remoteIp }
+        if (ip.isEmpty()) { status = "pair with ur Quest in the Remote tab first (no Quest IP yet)"; return }
+        if (code.isEmpty()) { status = "type the pair code from ur Quest in the Remote tab + tap connect"; return }
+        if (RemoteLink.questIp.isEmpty()) { RemoteLink.questIp = ip; RemoteLink.code = code }
+        val now0 = System.currentTimeMillis()
+        if (now0 - lastAsk > 2000) { lastAsk = now0; Thread { RemoteLink.poll() }.start() }   // does the Quest hear us?
         try {
-            val sk = sock ?: DatagramSocket().also { sock = it }
+            val sk = sock ?: Net.udp().also { sock = it }
             val addr = InetAddress.getByName(ip)
             for (msg in Trackers.messages(res.first, res.second, null)) {
                 val b = TrackRelay.wrap(code, msg)
@@ -205,7 +226,7 @@ class TrackerService : Service() {
             frames++
             val now = System.currentTimeMillis()
             if (now - rateT >= 1000) { fps = frames * 1000f / (now - rateT); frames = 0; rateT = now }
-            if (!status.startsWith("calibrated")) status = "tracking :3 · ${fps.toInt()} fps → $ip"
+            if (!status.startsWith("calibrated") || now - calibratedAt > 4000) status = "tracking :3 · ${fps.toInt()} fps → $ip\n" + questHears()
             last = res.first
         } catch (e: Exception) { status = "couldn't reach ur Quest (${e.message})" }
     }

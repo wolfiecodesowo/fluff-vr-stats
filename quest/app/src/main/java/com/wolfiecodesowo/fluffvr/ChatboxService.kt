@@ -31,6 +31,7 @@ class ChatboxService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Net.init(this)
         running = true
         Chatbox.sessionStart = System.currentTimeMillis()
         startForeground(1, notification())

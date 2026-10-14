@@ -97,6 +97,8 @@ object RemoteLink {
         val now = System.currentTimeMillis()
         val mu = MusicState.snapshot()
         val o = JSONObject().put("t", "status").put("trackMode", s.trackMode)
+            .put("trk", TrackRelay.live && !TrackRelay.blocked).put("trkBlocked", TrackRelay.blocked && TrackRelay.live)
+            .put("trkBadCode", TrackRelay.badCodeLive)
             .put("running", ChatboxService.running)
             .put("osc", QuestMods.oscSeen > 0 && now - QuestMods.oscSeen < 10_000)
             .put("preview", ChatboxService.preview)
@@ -146,7 +148,7 @@ object RemoteLink {
     val found = ConcurrentHashMap<String, String>()        // ip -> name
 
     private fun exchange(ip: String, msg: JSONObject, timeout: Int = 900): JSONObject? = try {
-        DatagramSocket().use { sock ->
+        Net.udp().use { sock ->
             sock.soTimeout = timeout
             val out = msg.toString().toByteArray(Charsets.UTF_8)
             sock.send(DatagramPacket(out, out.size, InetAddress.getByName(ip), PORT))
@@ -161,7 +163,7 @@ object RemoteLink {
     fun discover() {
         found.clear()
         try {
-            DatagramSocket().use { sock ->
+            Net.udp().use { sock ->
                 sock.broadcast = true; sock.soTimeout = 400
                 val out = JSONObject().put("t", "hello").toString().toByteArray(Charsets.UTF_8)
                 val targets = mutableListOf(InetAddress.getByName("255.255.255.255"))

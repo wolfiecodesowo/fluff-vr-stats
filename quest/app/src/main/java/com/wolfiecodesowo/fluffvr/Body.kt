@@ -477,6 +477,9 @@ object TrackRelay {
     @Volatile var from = ""
     @Volatile var rate = 0f
     @Volatile var blocked = false            // the phone is sending but "phone camera" isn't the picked mode
+    @Volatile var badCodeAt = 0L             // a phone is sending with a different pair code
+    @Volatile var badCode = ""
+    val badCodeLive get() = System.currentTimeMillis() - badCodeAt < 3000
     @Volatile private var running = false
 
     val live get() = System.currentTimeMillis() - lastAt < 2000
@@ -498,7 +501,12 @@ object TrackRelay {
                     try { sock.receive(pk) } catch (_: java.net.SocketTimeoutException) { continue }
                     if (pk.length < 8 || buf[0] != 'F'.code.toByte() || buf[1] != 'L'.code.toByte() || buf[2] != 'T'.code.toByte()) continue
                     val s = Settings(app)
-                    if (String(buf, 3, 4, Charsets.US_ASCII) != s.pairCode) continue
+                    val code = String(buf, 3, 4, Charsets.US_ASCII)
+                    if (code != s.pairCode) {
+                        if (System.currentTimeMillis() - badCodeAt > 5000) android.util.Log.w("FluffTrack", "phone ${pk.address.hostAddress} uses code $code, ours is ${s.pairCode}")
+                        badCodeAt = System.currentTimeMillis(); badCode = code; continue
+                    }
+                    if (!live) android.util.Log.i("FluffTrack", "phone tracker connected from ${pk.address.hostAddress} (mode ${s.trackMode})")
                     lastAt = System.currentTimeMillis(); from = pk.address.hostAddress ?: ""
                     if (s.trackMode != "camera") { blocked = true; continue }   // standable (or off) is picked: don't mix them
                     blocked = false
