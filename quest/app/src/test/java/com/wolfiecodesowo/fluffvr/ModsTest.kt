@@ -162,5 +162,11 @@ class ModsTest {
             "ownerText":{"runs":[{"text":"Lofi Girl"}]},"lengthText":{"simpleText":"3:21"},"shortViewCountText":{"simpleText":"1M views"}}}]}}"""
         val r = YouTube.parse(json)
         assertEquals(1, r.size); assertEquals("lofi", r[0].title); assertEquals("3:21", r[0].length)
+        // YouTube's newer layout (Shorts only) used to give 0 results
+        val shorts = """{"a":[{"shortsLockupViewModel":{"accessibilityText":"fox dance, 1 thousand views - play Short",
+            "onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"xyz123"}}},
+            "overlayMetadata":{"primaryText":{"content":"fox dance"},"secondaryText":{"content":"1K views"}}}}]}"""
+        val rs = YouTube.parse(shorts)
+        assertEquals(1, rs.size); assertEquals("xyz123", rs[0].id); assertEquals("fox dance", rs[0].title); assertEquals("SHORT", rs[0].length)
     }
 }

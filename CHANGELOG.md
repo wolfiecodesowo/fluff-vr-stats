@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.2 + Quest Edition v0.10.1: REAL full-body estimation on Quest + natural sitting
+- 🦴 **Quest better standable uses ur REAL moves now:** walk around ur room (no thumbstick!), crouch + sit and ur legs follow. VRChat streams ur headset position to Fluff, so the Quest works just like the PC version
+- 🪑 **natural chair sitting (PC + Quest):** sit in a chair and ur avatar sits like a person: chair-height seat, level thighs, shins hanging down, feet apart + turned out. sitting down + standing up blend smoothly, no more robot snapping
+- 🦵 **fixed bent legs + touching feet on Quest:** VRChat's "Upright" reads ~0.7 even when u stand (it's measured against the avatar), so Fluff thought u were crouching. it learns ur own standing height now
+- 📸 **camera tracking live view (phone):** see urself + ur skeleton before u calibrate, with a green/red frame + tips like "step back, ur feet need to be in the shot"
+- 🔧 **Quest finds VRChat properly now:** fixed Android blocking Fluff from reading VRChat's info, and fixed the network announcement so VRChat sends its data to Fluff. counters + standable get VRChat's data for real
+- 🔎 **YouTube search fix (PC + Quest):** about 1 in 4 searches came back empty when YouTube sent its newer layout (Shorts). both layouts work now
+- on Quest v0.8.0+? it updates by itself
+
 ## v0.5.1: sitting + every language
 - 🪑 **better standable can sit now (PC):** stay low + still for 2 secs and ur legs go out in front, stand up and ur back on ur feet (Quest already had it)
 - 🌍 **all the v0.5 stuff is translated** into all 12 languages: Body, VCam, YouTube, OVR Toolkit + the new alerts

@@ -40,6 +40,40 @@ def _walk(obj, key):
             stack.extend(reversed(o))
 
 
+def _dig(o, *keys):
+    for k in keys:
+        if isinstance(o, dict):
+            o = o.get(k)
+        elif isinstance(o, list) and isinstance(k, int) and len(o) > k:
+            o = o[k]
+        else:
+            return None
+    return o
+
+
+def _newer_layouts(data):
+    """YouTube A/B tests newer layouts (~1 in 4 searches): Shorts lockups + lockupViewModel videos"""
+    out = []
+    for v in _walk(data, "shortsLockupViewModel"):
+        vid = _dig(v, "onTap", "innertubeCommand", "reelWatchEndpoint", "videoId")
+        title = _dig(v, "overlayMetadata", "primaryText", "content") or (v.get("accessibilityText") or "").split(", ")[0]
+        if vid and title:
+            out.append({"id": vid, "title": title, "channel": "Shorts", "length": "SHORT",
+                        "views": _dig(v, "overlayMetadata", "secondaryText", "content") or "",
+                        "thumb": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", "url": f"https://www.youtube.com/watch?v={vid}"})
+    for v in _walk(data, "lockupViewModel"):
+        vid = v.get("contentId")
+        if not vid or "VIDEO" not in str(v.get("contentType", "VIDEO")):
+            continue
+        md = _dig(v, "metadata", "lockupMetadataViewModel") or {}
+        rows = _dig(md, "metadata", "contentMetadataViewModel", "metadataRows") or []
+        parts = [p.get("text", {}).get("content", "") for r in rows for p in (r.get("metadataParts") or [])]
+        out.append({"id": vid, "title": _dig(md, "title", "content") or "", "channel": parts[0] if parts else "",
+                    "length": "", "views": parts[1] if len(parts) > 1 else "",
+                    "thumb": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg", "url": f"https://www.youtube.com/watch?v={vid}"})
+    return out
+
+
 def parse_results(data, limit=12):
     out = []
     for v in _walk(data, "videoRenderer"):
@@ -58,10 +92,20 @@ def parse_results(data, limit=12):
         })
         if len(out) >= limit:
             break
+    for r in _newer_layouts(data):          # fill up from the newer layouts (or use only them if that's all we got)
+        if len(out) >= limit:
+            break
+        if r["title"] and not any(x["id"] == r["id"] for x in out):
+            out.append(r)
     return out
 
 
 def search(query, limit=12, timeout=10):
+    res = _search_once(query, limit, timeout)
+    return res or _search_once(query, limit, timeout)       # rare empty answer: ask once more
+
+
+def _search_once(query, limit=12, timeout=10):
     body = json.dumps({"context": {"client": {"clientName": "WEB", "clientVersion": "2.20240101.00.00",
                                               "hl": "en", "gl": "US"}},
                        "query": query}).encode("utf-8")

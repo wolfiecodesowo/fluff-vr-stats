@@ -620,14 +620,20 @@ object YouTube {
         return (0 until runs.length()).joinToString("") { runs.optJSONObject(it)?.optString("text") ?: "" }
     }
 
-    private fun walk(any: Any?, out: MutableList<JSONObject>) {
+    private fun walk(any: Any?, out: MutableList<JSONObject>, key: String = "videoRenderer") {
         when (any) {
             is JSONObject -> {
-                any.optJSONObject("videoRenderer")?.let { out += it }
-                for (k in any.keys()) if (k != "videoRenderer") walk(any.opt(k), out)
+                any.optJSONObject(key)?.let { out += it }
+                for (k in any.keys()) if (k != key) walk(any.opt(k), out, key)
             }
-            is JSONArray -> for (i in 0 until any.length()) walk(any.opt(i), out)
+            is JSONArray -> for (i in 0 until any.length()) walk(any.opt(i), out, key)
         }
+    }
+
+    private fun dig(o: JSONObject?, vararg keys: String): JSONObject? {
+        var c = o
+        for (k in keys) c = c?.optJSONObject(k)
+        return c
     }
 
     fun parse(json: String, limit: Int = 12): List<Video> {
@@ -641,6 +647,26 @@ object YouTube {
             out += Video(id, txt(v.optJSONObject("title")), txt(v.optJSONObject("ownerText") ?: v.optJSONObject("longBylineText")),
                 len.ifEmpty { "LIVE" }, txt(v.optJSONObject("shortViewCountText") ?: v.optJSONObject("viewCountText")))
             if (out.size >= limit) break
+        }
+        // YouTube A/B tests newer layouts (~1 in 4 searches): Shorts + lockupViewModel videos
+        val root = JSONObject(json)
+        val shorts = ArrayList<JSONObject>(); walk(root, shorts, "shortsLockupViewModel")
+        for (v in shorts) {
+            if (out.size >= limit) break
+            val id = dig(v, "onTap", "innertubeCommand", "reelWatchEndpoint")?.optString("videoId") ?: continue
+            val title = dig(v, "overlayMetadata", "primaryText")?.optString("content")?.ifEmpty { null }
+                ?: v.optString("accessibilityText").substringBefore(", ")
+            if (id.isEmpty() || title.isEmpty() || out.any { it.id == id }) continue
+            out += Video(id, title, "Shorts", "SHORT", dig(v, "overlayMetadata", "secondaryText")?.optString("content") ?: "")
+        }
+        val locks = ArrayList<JSONObject>(); walk(root, locks, "lockupViewModel")
+        for (v in locks) {
+            if (out.size >= limit) break
+            val id = v.optString("contentId")
+            if (id.isEmpty() || !v.optString("contentType", "VIDEO").contains("VIDEO") || out.any { it.id == id }) continue
+            val md = dig(v, "metadata", "lockupMetadataViewModel")
+            val title = dig(md, "title")?.optString("content") ?: continue
+            out += Video(id, title, "", "", "")
         }
         return out
     }
@@ -659,6 +685,14 @@ object YouTube {
                     .put("clientVersion", "2.20240101.00.00").put("hl", "en"))).put("query", query)
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
                 results = parse(c.inputStream.bufferedReader().readText())
+                if (results.isEmpty()) {                            // rare empty answer: ask once more
+                    val c2 = URL("https://www.youtube.com/youtubei/v1/search?prettyPrint=false").openConnection() as HttpURLConnection
+                    c2.requestMethod = "POST"; c2.doOutput = true; c2.connectTimeout = 8000; c2.readTimeout = 10000
+                    c2.setRequestProperty("Content-Type", "application/json")
+                    c2.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
+                    c2.outputStream.use { it.write(body.toString().toByteArray()) }
+                    results = parse(c2.inputStream.bufferedReader().readText())
+                }
                 status = if (results.isEmpty()) "no results ~ try other words" else "${results.size} results"
             } catch (_: Exception) { results = emptyList(); status = "couldn't reach YouTube (offline?)" }
             busy = false; version++
