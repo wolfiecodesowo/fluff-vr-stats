@@ -376,6 +376,8 @@ def tab_settings(d, hit, box, state, t):
              "for apps that need port 9001 too (classic mode)"),
             ("Forward to ports", ", ".join(str(p) for p in fw) or "none", ("mod_edit", "osc_forward"), None,
              "like 9002, 9003"),
+            ("OVR Toolkit buddy", None, ("ovrtk_set", "buddy"), (cfg.get("ovrtk") or {}).get("buddy", True),
+             "works with OVR Toolkit: hops off its watch"),
         ]
         rows_r = [
             ("Chatbox on/off", None, ("toggle", "chatbox_status"), cfg["modules"].get("chatbox_status", False),
@@ -386,6 +388,8 @@ def tab_settings(d, hit, box, state, t):
             ("Rotate statuses", None, ("cb_set", "rotate", not cfg["chatbox"].get("rotate", True)),
              cfg["chatbox"].get("rotate", True), "the status line changes by itself"),
             ("Open Chatbox tab", "open", ("tab", "Chatbox"), None, "pick lines + edit ur status"),
+            ("OVR Toolkit watch on", tr((cfg.get("ovrtk") or {}).get("watch_hand", "left") + " wrist"),
+             ("ovrtk_set", "hand"), None, "Fluff uses ur other wrist while it runs"),
         ]
         note = state.extras.get("note_osc_router") or (
             "auto works for almost everyone: VRChat finds Fluff by itself, and other OSC apps (MagicChatbox, VRCOSC...) "

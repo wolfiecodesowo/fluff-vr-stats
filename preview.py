@@ -96,6 +96,43 @@ class _FakeEvents:
 
 
 st.access, st.friends, st.cevents = _FakeAccess(), _FakeFriends(), _FakeEvents()
+# v0.5 bits: full-body estimation, heart rate, YouTube
+import fbt as _fbt
+cfg["fbt"].update(mode="standable", height=1.62)
+_est = _fbt.Estimator(cfg["fbt"])
+for _i in range(120):
+    _pose = _est.update((0.0, 1.62 - min(0.25, _i * 0.004), _i * 0.004), 0.0, 0.02)
+
+
+class _FakeFBT:
+    installing = False
+    status = {"state": "on", "rate": 50.0, "real_trackers": 0, "apps": ["Amethyst"], "msg": "standing, walking + crouching all estimated :3",
+              "last": _pose}
+
+
+class _FakeHeart:
+    connected, bpm, status, found, installing = True, 92, "live (Pulsoid)", [], False
+    history = [(time.time() - 60 + i, 84 + int(8 * __import__("math").sin(i / 6))) for i in range(60)]
+    session = {"min": 71, "max": 128, "sum": 0, "n": 0}
+    def avg(self): return 94
+
+
+class _FakeYT:
+    query, status, page, busy, changed = "lofi hip hop", "12 results", 0, False, False
+    history = ["lofi hip hop", "furry dance mix", "vrchat world music"]
+    results = [{"id": f"v{i}", "title": tt, "channel": ch, "length": ln, "views": vw, "url": "https://youtu.be/x"}
+               for i, (tt, ch, ln, vw) in enumerate([
+                   ("lofi hip hop radio 📚 beats to relax/study to", "Lofi Girl", "LIVE", "14M views"),
+                   ("Best of lofi hip hop 2021 ✨ beats to relax/study to", "Lofi Girl", "6:10:58", "58M views"),
+                   ("late night vibes radio - calm lofi / dreamy beats", "Chillhop Music", "LIVE", "592K views"),
+                   ("Night Drive ~ lofi hip hop mix ~ beats to chill", "Mimi Lofi Chill", "24:37", "6.2M views"),
+                   ("cozy rainy day lofi for studying + sleeping", "Cozy Cat", "1:02:14", "1.1M views"),
+                   ("synthwave fox beats for VR nights", "Fox Radio", "45:10", "88K views")])]
+    thumbs = {}
+
+
+st.fbt, st.heart, st.yt = _FakeFBT(), _FakeHeart(), _FakeYT()
+st.extras["heart"] = 92
 st.world["world_id"] = "wrld_x"
 _k = _kitty.Kitty(cfg)
 _k.outfit = st.fun.closet()
@@ -112,6 +149,10 @@ for tab in ui.TABS:
     if tab == "Home":
         st.gchat.unread = 2
     img.save(os.path.join(out, f"preview_dash_{name}.png"))
+st.tab, st.music_page = "Music", "youtube"
+img, _ = ui.render_dashboard(st)
+ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_dash_youtube.png"))
+st.music_page = "player"
 for page, _ in __import__("ui_fun").FUN_PAGES:
     st.tab, st.fun_page = "Fun", page
     img, _ = ui.render_dashboard(st)

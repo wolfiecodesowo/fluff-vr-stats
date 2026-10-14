@@ -170,6 +170,11 @@ DEFAULT_CFG = {
     "play_limit_h": 3,
     "pat_goal_n": 50,
     "mood": "😊 happy",
+    # v0.5: Body tab (full-body estimation + heart rate), Cam tab (VRChat camera), OVR Toolkit buddy mode
+    "fbt": json.loads(json.dumps(__import__("fbt").DEFAULT_CFG)),
+    "heart": json.loads(json.dumps(__import__("heartrate").DEFAULT_CFG)),
+    "vcam": __import__("vcam").defaults(),
+    "ovrtk": {"buddy": True, "watch_hand": "left"},   # OVR Toolkit: auto-move our wrist HUD off its watch
     "dev_mode": False,                 # unlocks the hidden Dev tab (local toys only, for testing ur own client)
     "dev": {"fake_stats": False, "fps": 90, "gpu_temp": 70, "battery": 80, "fake_world": False,
             "spikes": False, "gold_skin": False},
@@ -367,6 +372,8 @@ PRIVATE_KEYS = ("access", "gchat", "link")       # never exported (ur key + chat
 def export_cfg(cfg):
     os.makedirs(EXPORT_DIR, exist_ok=True)
     out = {k: v for k, v in cfg.items() if k not in PRIVATE_KEYS and not k.startswith("_")}
+    if isinstance(out.get("heart"), dict):          # ur Pulsoid token stays on this PC too
+        out["heart"] = {k: v for k, v in out["heart"].items() if k not in ("pulsoid_token", "ble_device")}
     path = os.path.join(EXPORT_DIR, time.strftime("fluff-settings-%Y%m%d-%H%M%S.json"))
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
@@ -388,6 +395,9 @@ def import_cfg(cfg, path):
         raise ValueError("that file isn't Fluff VR Stats settings")
     for k, v in data.items():
         if k in PRIVATE_KEYS or k.startswith("_"):
+            continue
+        if k == "heart" and isinstance(v, dict) and isinstance(cfg.get("heart"), dict):
+            cfg["heart"].update({hk: hv for hk, hv in v.items() if hk not in ("pulsoid_token", "ble_device")})
             continue
         cfg[k] = v
     _merge(cfg, DEFAULT_CFG)
@@ -757,6 +767,16 @@ class App:
         st0 = self.state
         st0.fun, st0.access, st0.friends, st0.cevents = self.fun, self.access, self.friends, self.cevents
         st0.safe_mode = bool(self.cfg.get("safe_mode"))
+        # v0.5: full-body estimation, heart rate, YouTube search, VCam
+        import fbt as fbt_mod, heartrate, ytsearch, vcam
+        vcam.ensure(self.cfg)
+        self.fbt = fbt_mod.FullBody(self.cfg, self.fbt_pose, self.fbt_real_trackers, log)
+        self.heart = heartrate.Heart(self.cfg, log)
+        self.yt = ytsearch.YouTube(log)
+        st0.fbt, st0.heart, st0.yt = self.fbt, self.heart, self.yt
+        st0.music_page = "player"
+        self.ovr_moved = False
+        self.last_ovr = 0
         self.last_fun = 0
         self.started_at = time.time()
         self.launch_marked = False
@@ -1184,7 +1204,8 @@ class App:
                 pass
         if st.checklist and now - self.__dict__.get("_conf_t", 0) > 10:
             self._conf_t = now
-            st.conflicts = conflicting_apps()
+            buddy = (self.cfg.get("ovrtk") or {}).get("buddy", True)   # v0.5: we get along with OVR Toolkit now
+            st.conflicts = [c for c in conflicting_apps() if not (buddy and c == "OVR Toolkit")]
             st.dash_dirty = True
         if st.tab == "Fun" and getattr(st, "fun_page", "") == "closet" and now - self.__dict__.get("_kimg_t", 0) > 2:
             self._kimg_t = now
@@ -1350,7 +1371,8 @@ class App:
                    "countdown_date": cfg.get("countdown", {}).get("date", ""),
                    "osc_forward": ", ".join(str(p) for p in ((cfg.get("osc") or {}).get("router") or {}).get("forward_to", [])),
                    "second_clock": f"{cfg.get('second_clock', {}).get('name', 'Tokyo')} {float(cfg.get('second_clock', {}).get('offset', 9)):+g}",
-                   "quiet_hours": f"{cfg.get('quiet', {}).get('from', '23:00')}-{cfg.get('quiet', {}).get('to', '08:00')}"
+                   "quiet_hours": f"{cfg.get('quiet', {}).get('from', '23:00')}-{cfg.get('quiet', {}).get('to', '08:00')}",
+                   "pulsoid_token": cfg.get("heart", {}).get("pulsoid_token", ""),
                    }.get(key, str(cfg.get(key, "")))
             desc = {"headpat_param": "Headpat parameter name (blank = auto)", "boop_param": "Boop parameter name (blank = auto)",
                     "countdown_name": "Countdown to what?", "countdown_date": "Date (YYYY-MM-DD)",
@@ -1358,7 +1380,8 @@ class App:
                     "gchat_name": "Ur name in global chat", "weather_location": "Weather city (blank = auto)",
                     "osc_forward": "OSC ports to forward to (like 9002, 9003)",
                     "second_clock": "2nd clock: name + hours from UTC (like Tokyo +9)",
-                    "quiet_hours": "Quiet hours (like 23:00-08:00)"}.get(key, key)
+                    "quiet_hours": "Quiet hours (like 23:00-08:00)",
+                    "pulsoid_token": "Paste ur Pulsoid token (pulsoid.net -> Keys)"}.get(key, key)
             self.open_keyboard(desc, cur, ("cfg", key))
         elif action == "kitty_color":
             cols = list(self.kitty_mod.COLORS)
@@ -1611,11 +1634,174 @@ class App:
         self.show_alert(lang.tr("tap again to confirm"), "warn", 5)
         return False
 
+    # ---- v0.5: Body tab (full-body estimation + heart rate), Cam tab, YouTube, OVR Toolkit buddy
+    def fbt_pose(self):
+        """headset + controllers for the full-body estimator (runs in its thread). None = no headset"""
+        if getattr(self.state, "desktop", False):
+            return None
+        poses = self.vr.getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0,
+                                                        openvr.k_unMaxTrackedDeviceCount)
+        hp = poses[openvr.k_unTrackedDeviceIndex_Hmd]
+        if not hp.bPoseIsValid:
+            return None
+        ctrls = []
+        for role in (openvr.TrackedControllerRole_LeftHand, openvr.TrackedControllerRole_RightHand):
+            idx = self.vr.getTrackedDeviceIndexForControllerRole(role)
+            if idx != openvr.k_unTrackedDeviceIndexInvalid and poses[idx].bPoseIsValid:
+                ctrls.append([list(r) for r in poses[idx].mDeviceToAbsoluteTracking.m])
+        return [list(r) for r in hp.mDeviceToAbsoluteTracking.m], ctrls
+
+    def fbt_real_trackers(self):
+        """real SteamVR trackers that are on (Vive, Tundra, SlimeVR, Amethyst/Kinect all show up here)"""
+        if getattr(self.state, "desktop", False):
+            return 0
+        n = 0
+        for i in range(1, openvr.k_unMaxTrackedDeviceCount):
+            if self.vr.getTrackedDeviceClass(i) == openvr.TrackedDeviceClass_GenericTracker \
+                    and self.vr.isTrackedDeviceConnected(i):
+                n += 1
+        return n
+
+    def tick_v05(self, now):
+        """runs every loop: heart rate -> chatbox/wrist, YouTube thumbnails, Body tab refresh, OVR Toolkit buddy"""
+        st, cfg = self.state, self.cfg
+        hr = self.heart
+        bpm = hr.bpm if hr.connected else None
+        st.extras["heart"] = bpm                 # (extras get swapped out by tick_extras, so set it every time)
+        if bpm != getattr(self, "_last_bpm", None):
+            self._last_bpm = bpm
+            st.hud_dirty = True
+        if now - getattr(self, "_v05_t", 0) < 0.5:
+            return
+        self._v05_t = now
+        msg = hr.zone_alert()
+        if msg:
+            self.show_alert(msg, "warn", 8)
+        if self.yt.changed:
+            self.yt.changed = False
+            st.dash_dirty = True
+        if st.tab == "Body":                     # live figure + bpm, 2x a second
+            st.dash_dirty = True
+        # OVR Toolkit buddy: its watch lives on one wrist, so our HUD hops to the other one while it runs
+        if now - self.last_ovr > 5:
+            self.last_ovr = now
+            ov = cfg.setdefault("ovrtk", {"buddy": True, "watch_hand": "left"})
+            running = "OVR Toolkit" in conflicting_apps()
+            watch = ov.get("watch_hand", "left")
+            other = "right" if watch == "left" else "left"
+            if ov.get("buddy", True) and running and not self.ovr_moved and cfg["wrist"]["hand"] == watch:
+                self.ovr_moved = True
+                cfg["wrist"]["hand"] = other
+                self.ctrl_index = -1
+                self.safe("controller", self.find_controller)
+                self.show_alert(f"OVR Toolkit found ~ moved Fluff to ur {other} wrist so ur watches don't overlap :3",
+                                secs=8)
+            elif self.ovr_moved and (not running or not ov.get("buddy", True)):
+                self.ovr_moved = False
+                cfg["wrist"]["hand"] = watch
+                self.ctrl_index = -1
+                self.safe("controller", self.find_controller)
+
+    def do_v05(self, action, args):
+        st, cfg = self.state, self.cfg
+        a0 = args[0] if args else None
+        port = cfg.get("osc_port", 9000)
+        if action == "fbt_mode":
+            self.fbt.set_mode(a0)
+            if a0 != "off" and getattr(st, "desktop", False):
+                self.show_alert("full-body estimation needs ur headset ~ switch to VR mode", "warn", 6)
+            elif a0 == "standable":
+                self.show_alert("standable on!! in VRChat: OSC on, then calibrate FBT like normal :3", secs=8)
+        elif action == "fbt_trackers":
+            cfg["fbt"]["trackers"] = a0
+        elif action == "fbt_calibrate":
+            h = self.fbt.calibrate_height()
+            self.show_alert(f"height saved: {h:.2f} m (eye level) :3" if h else "put ur headset on first ~ then stand up straight",
+                            "info" if h else "warn", 5)
+        elif action == "fbt_install":
+            self.fbt.install_camera_addon(lambda why: self.show_alert(why or "webcam add-on ready!! :3",
+                                                                      "warn" if why else "info", 10))
+        elif action == "fbt_cam_cal":
+            self.fbt.calibrate_camera()
+            self.show_alert("webcam calibrated ~ keep it where it is :3", secs=5)
+        elif action == "fbt_camera":
+            cfg["fbt"]["camera"] = int(a0)
+        elif action == "fbt_head":
+            cfg["fbt"]["send_head"] = not cfg["fbt"].get("send_head", True)
+        elif action == "fbt_step":
+            cfg["fbt"]["step"] = round(min(0.5, max(0.1, float(cfg["fbt"].get("step", 0.22)) + a0)), 2)
+        elif action == "hr_source":
+            cfg["heart"]["source"] = a0
+            if a0 == "pulsoid" and not cfg["heart"].get("pulsoid_token"):
+                self.do("mod_edit", ("pulsoid_token",))
+        elif action == "hr_install":
+            self.heart.install_ble_addon()
+        elif action == "hr_scan":
+            self.heart.scan_now()
+        elif action == "hr_pick":
+            cfg["heart"]["ble_device"] = a0
+        elif action == "open_url":
+            try:
+                import webbrowser
+                webbrowser.open(a0)
+                self.show_alert("opened on ur desktop ~ check ur PC screen", secs=5)
+            except Exception:
+                pass
+        elif action in ("vcam", "vcam_mode", "vcam_toggle", "vcam_slide"):
+            import vcam
+            what = {"vcam_mode": "mode", "vcam_toggle": "toggle", "vcam_slide": "slide"}.get(action, a0)
+            arg = a0 if action in ("vcam_mode", "vcam_toggle") else (tuple(args) if action == "vcam_slide" else None)
+            msg = vcam.action(cfg, what, arg, port=port)
+            if msg:
+                self.show_alert(msg, secs=3)
+        elif action == "ovrtk_set":
+            ov = cfg.setdefault("ovrtk", {"buddy": True, "watch_hand": "left"})
+            if a0 == "buddy":
+                ov["buddy"] = not ov.get("buddy", True)
+            else:
+                ov["watch_hand"] = "right" if ov.get("watch_hand", "left") == "left" else "left"
+            self.last_ovr = 0                     # re-check right away
+        elif action == "music_page":
+            st.music_page = a0
+        elif action == "yt_search":
+            self.open_keyboard("Search YouTube", self.yt.query, ("yt",))
+        elif action == "yt_again":
+            self.yt.search(a0)
+        elif action == "yt_page":
+            import ui_body
+            pages = max(1, -(-len(self.yt.results) // ui_body.PER_PAGE))
+            self.yt.page = (self.yt.page + a0) % pages
+        elif action in ("yt_copy", "yt_open", "yt_chat"):
+            r = next((r for r in self.yt.results if r["id"] == a0), None)
+            if not r:
+                return True
+            if action == "yt_copy":
+                ok = copy_to_clipboard(r["url"])
+                self.show_alert("link copied!! click a video player's URL box in VRChat + Ctrl+V :3" if ok
+                                else "couldn't copy the link", "info" if ok else "warn", 7)
+            elif action == "yt_open":
+                try:
+                    import webbrowser
+                    webbrowser.open(r["url"])
+                    self.show_alert("playing on ur desktop ~ see it in the Screen tab", secs=5)
+                except Exception:
+                    pass
+            else:
+                osc.chatbox("🎥 watching: " + r["title"][:120], port)   # (VRChat's chatbox can show emoji)
+                self.last_chatbox = time.time() + 15      # let it show before the stats come back
+                self.show_alert("sent to ur chatbox :3", secs=3)
+        else:
+            return False
+        st.dirty_cfg = True
+        return True
+
     def do_more(self, action, args):
         """v0.4 actions: Fun tab, app key, language, privacy, comfy settings, profiles, backups, logs"""
         st, cfg, f = self.state, self.cfg, self.fun
         a0 = args[0] if args else None
         if action == "noop":
+            return True
+        if self.do_v05(action, args):
             return True
         if action == "set_page":
             st.set_page = a0
@@ -1985,8 +2171,22 @@ class App:
                 self.show_alert(why, "warn", 5)
             st.dash_dirty = True
             return
+        if isinstance(target, tuple) and target[0] == "yt":
+            st.music_page = "youtube"
+            if self.yt is not None and text.strip():
+                self.yt.search(text)
+            st.dash_dirty = True
+            return
         if isinstance(target, tuple) and target[0] == "cfg":
             key, text = target[1], text.strip()
+            if key == "pulsoid_token":
+                tok = text.replace("Bearer", "").strip()
+                self.cfg["heart"]["pulsoid_token"] = tok
+                if tok:
+                    self.cfg["heart"]["source"] = "pulsoid"
+                    self.show_alert("Pulsoid token saved ~ connecting :3", secs=5)
+                st.dirty_cfg = st.dash_dirty = True
+                return
             if key == "app_key":
                 why = self.access.start(text)
                 self.show_alert(why or lang.tr("checking ur key…"), "warn" if why else "info", 6)
@@ -2201,6 +2401,7 @@ class App:
         self.safe("new mods", self.tick_new_mods, now)
         import mods2
         self.safe("v0.4.2 mods", mods2.tick, self, now)
+        self.safe("v0.5", self.tick_v05, now)
         # VR time today + streak (every minute)
         if now - self.last_vr_tick >= 60:
             self.update_vr_days(now - self.last_vr_tick)

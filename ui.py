@@ -972,6 +972,9 @@ def hud_chips(state):
         out.append(("pat goal", f"{g_}/{n_}", "good" if g_ >= n_ else None))
     if m.get("mood_line") and x.get("mood"):
         out.append(("", x["mood"], None))
+    if x.get("heart"):                       # v0.5 heart rate (Body tab)
+        b_ = x["heart"]
+        out.append(("bpm", str(b_), "bad" if b_ >= 170 else "warn" if b_ >= 140 else None))
     if getattr(state, "power_saving", False):
         out.append(("", "power saver", "warn"))
     if m.get("afk_detect") and state.afk:
@@ -1399,8 +1402,8 @@ def add_logo(base, frame_idx, slots=()):
         except Exception:
             pass
     return img
-TABS = ["Home", "Fun", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "World", "Screen", "Mods", "Style",
-        "Wrist", "Settings", "<3"]
+TABS = ["Home", "Fun", "Stats", "Boost", "Global", "Music", "Chatbox", "Avatar", "Body", "Cam", "World", "Screen",
+        "Mods", "Style", "Wrist", "Settings", "<3"]
 
 
 def visible_tabs(cfg):
@@ -1607,11 +1610,13 @@ def render_dashboard(state):
     body = [SIDE_X1 + 20, top + 96, DASH_W - 36, DASH_H - 38]
     state.anim_slots = []
     import ui_fun
-    {"Home": _tab_home, "Global": _tab_global, "Settings": ui_fun.tab_settings, "Dev": _tab_dev,
+    import ui_body
+    {"Body": ui_body.tab_body, "Cam": ui_body.tab_cam,
+     "Home": _tab_home, "Global": _tab_global, "Settings": ui_fun.tab_settings, "Dev": _tab_dev,
      "Fun": ui_fun.tab_fun,
      "Stats": _tab_stats,
      "Screen": _tab_screen, "Mods": _tab_mods, "Style": _tab_style,
-     "Music": _tab_music, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
+     "Music": _music_page, "Chatbox": _tab_chatbox, "Avatar": _tab_avatar, "World": _tab_world,
      "Boost": _tab_boost,
      "Wrist": _tab_wrist, "<3": _tab_thanks}.get(state.tab, _tab_home)(d, hit, body, state, t)
     ui_fun.overlay_card(d, hit, state, t, body)
@@ -1620,7 +1625,16 @@ def render_dashboard(state):
     return img, hit
 
 
-TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox", "Fun": "fun stuff"}
+def _music_page(d, hit, body, state, t):
+    """Music tab: the player, or the YouTube search page (v0.5)"""
+    import ui_body
+    if getattr(state, "music_page", "player") == "youtube":
+        return ui_body.tab_youtube(d, hit, body, state, t)
+    _tab_music(d, hit, body, state, t)
+    ui_body.music_switch(d, hit, body, state, t)
+
+
+TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox", "Fun": "fun stuff", "Body": "body", "Cam": "vcam"}
 
 
 def _sidebar(d, hit, state, t):
@@ -2152,6 +2166,16 @@ def tab_icon(d, name, cx, cy, col, t):
             d.rounded_rectangle([x, cy + 9 - hgt, x + 4, cy + 9], radius=2, fill=col)
     elif name == "Music":
         note_icon(d, cx - 2, cy + 1, 6, col)
+    elif name == "Body":     # lil stick figure
+        d.ellipse([cx - 4, cy - 12, cx + 4, cy - 4], outline=col, width=lw)
+        d.line([(cx, cy - 4), (cx, cy + 4)], fill=col, width=lw)
+        d.line([(cx - 8, cy - 1), (cx + 8, cy - 1)], fill=col, width=lw)
+        d.line([(cx, cy + 4), (cx - 6, cy + 12)], fill=col, width=lw)
+        d.line([(cx, cy + 4), (cx + 6, cy + 12)], fill=col, width=lw)
+    elif name == "Cam":      # camera
+        d.rounded_rectangle([cx - 12, cy - 7, cx + 12, cy + 9], radius=4, outline=col, width=lw)
+        d.rectangle([cx - 5, cy - 11, cx + 3, cy - 7], fill=col)
+        d.ellipse([cx - 5, cy - 4, cx + 5, cy + 6], outline=col, width=lw)
     elif name == "Chatbox":
         d.rounded_rectangle([cx - 12, cy - 9, cx + 12, cy + 6], radius=6, outline=col, width=lw)
         d.polygon([(cx + 2, cy + 5), (cx + 8, cy + 5), (cx + 9, cy + 11)], fill=col)

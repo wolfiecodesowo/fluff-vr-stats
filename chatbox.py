@@ -10,7 +10,7 @@ import time
 
 LINE_KEYS = ["status", "afk", "time", "date", "song", "song_bar", "world", "fps", "pc", "gpu_temp", "session",
              "today", "streak", "distance", "headpats", "boops", "jumps", "yap", "height", "countdown", "quote",
-             "combo", "vibe", "goal", "fortune", "mood", "water", "steps", "avatars", "compliment", "kaomoji"]
+             "combo", "vibe", "goal", "fortune", "mood", "water", "steps", "avatars", "compliment", "heart", "kaomoji"]
 LINE_LABELS = {
     "status": "Status text", "time": "Time", "song": "Song", "song_bar": "Song progress",
     "fps": "FPS", "pc": "CPU / GPU %", "gpu_temp": "GPU temp", "session": "Time in VR",
@@ -19,6 +19,7 @@ LINE_LABELS = {
     "yap": "Yap meter", "height": "Avi height", "countdown": "Countdown", "quote": "Cute quote",
     "kaomoji": "Kaomoji", "combo": "Pat combo", "vibe": "Vibe meter", "goal": "Daily goal", "fortune": "Lucky paw",
     "mood": "Mood", "water": "Water", "steps": "Steps", "avatars": "Avi swaps", "compliment": "Compliment",
+    "heart": "Heart rate",
 }
 QUOTES = ["u are so loved <3", "stay hydrated, stay fluffy", "be the headpat u wish to see", "tail wags only",
           "chaos but make it cute", "small steps still count", "u matter more than u know", "nap later, vibe now",
@@ -45,7 +46,7 @@ ICONS = {
                "session": "⏱️", "headpats": "🐾", "afk": "💤", "world": "🌍", "distance": "👣",
                "date": "📅", "today": "🥽", "streak": "🔥", "boops": "👃", "jumps": "🐇", "yap": "🗣️",
                "height": "📏", "countdown": "🎉", "quote": "💭", "combo": "💥", "vibe": "🕺", "goal": "🎯",
-               "fortune": "🍀", "water": "💧", "steps": "👟", "avatars": "👗", "compliment": "💖"},
+               "fortune": "🍀", "water": "💧", "steps": "👟", "avatars": "👗", "compliment": "💖", "heart": "💓"},
     "simple": {"status": "♡", "time": "", "song": "♪", "fps": "", "pc": "", "gpu_temp": "",
                "session": "", "headpats": "", "afk": "zzz", "world": "@", "distance": ""},
 }
@@ -214,6 +215,8 @@ def compose(cfg, stats, extras, music, now=None):
         lines.append("  ".join(row))
     if on.get("fortune") and extras.get("fortune"):
         lines.append(tag("fortune", _short(extras["fortune"], 44)))
+    if on.get("heart") and extras.get("heart"):
+        lines.append(tag("heart", f"{extras['heart']} bpm"))
     if on.get("mood") and extras.get("mood"):
         lines.append(_short(extras["mood"], 30))
     row = []
