@@ -34,7 +34,11 @@ object QuestMods {
     @Volatile private var listening = false
     @Volatile private var gen = 0                     // each start gets a new number, so an old thread can't stop a new one
     @Volatile var listenErr = ""
-    @Volatile var udpSeen = 0L                        // last time VRChat's OSC actually arrived on 9001
+    @Volatile var udpSeen = 0L
+    @Volatile var headPose: FloatArray? = null        // x y z (Unity meters) + euler degrees, from VRChat's /tracking/vrsystem
+    @Volatile var headPoseAt = 0L
+    @Volatile var leftWrist: FloatArray? = null
+    @Volatile var rightWrist: FloatArray? = null                        // last time VRChat's OSC actually arrived on 9001
 
     /** VrcQuery feeds what it reads from VRChat's OSCQuery through the same code as real OSC */
     fun inject(ctx: Context, addr: String, v: Any) { try { handle(ctx.applicationContext, addr to listOf(v)) } catch (_: Exception) {} }                      // shown in the Mods tab if port 9001 can't be opened
@@ -212,6 +216,15 @@ object QuestMods {
             }
             avatarId = v.toString(); params.clear(); contact.clear(); grounded = null
             patParam = null; boopParam = null; heightM = null; velX = 0f; velZ = 0f; return
+        }
+        if (addr.startsWith("/tracking/vrsystem/") && args.size >= 6) {      // ur real headset / wrist poses
+            val pose = FloatArray(6) { (args[it] as? Float) ?: 0f }
+            when (addr) {
+                "/tracking/vrsystem/head/pose" -> { headPose = pose; headPoseAt = now }
+                "/tracking/vrsystem/leftwrist/pose" -> leftWrist = pose
+                "/tracking/vrsystem/rightwrist/pose" -> rightWrist = pose
+            }
+            return
         }
         if (!addr.startsWith("/avatar/parameters/")) return
         val name = addr.removePrefix("/avatar/parameters/")

@@ -48,17 +48,27 @@ object OscQuery {
         val mgr = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
         nsd = mgr
         val inst = "Fluff VR Stats-$httpPort"
-        for ((type, port) in listOf("_osc._udp" to udpPort, "_oscjson._tcp" to httpPort)) {
+        // one at a time, OSCQuery info first: registering both at once made Android never finish the second one,
+        // so VRChat never found us (it needs _oscjson._tcp to learn where to send)
+        fun register(type: String, port: Int, then: (() -> Unit)?) {
             val info = NsdServiceInfo().apply { serviceName = inst; serviceType = type; this.port = port }
             val l = object : NsdManager.RegistrationListener {
-                override fun onServiceRegistered(i: NsdServiceInfo) {}
-                override fun onRegistrationFailed(i: NsdServiceInfo, code: Int) { status = "couldn't announce $type (error $code)" }
+                override fun onServiceRegistered(i: NsdServiceInfo) {
+                    android.util.Log.i("FluffStandable", "announced $type as ${i.serviceName}")
+                    then?.invoke()
+                }
+                override fun onRegistrationFailed(i: NsdServiceInfo, code: Int) {
+                    status = "couldn't announce $type (error $code)"
+                    android.util.Log.w("FluffStandable", status)
+                    then?.invoke()
+                }
                 override fun onServiceUnregistered(i: NsdServiceInfo) {}
                 override fun onUnregistrationFailed(i: NsdServiceInfo, code: Int) {}
             }
-            mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, l)
             regs += l
+            mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, l)
         }
+        register("_oscjson._tcp", httpPort) { register("_osc._udp", udpPort, null) }
     }
 
     private fun node(path: String, type: String? = null, desc: String = "", contents: JSONObject? = null) = JSONObject().apply {
@@ -68,9 +78,15 @@ object OscQuery {
         if (contents != null) put("CONTENTS", contents)
     }
 
-    fun tree(): JSONObject = node("/", null, "Fluff VR Stats :3", JSONObject().put("avatar", node("/avatar", null, "avatar stuff",
-        JSONObject().put("change", node("/avatar/change", "s", "which avatar you just switched to"))
-            .put("parameters", node("/avatar/parameters", null, "your avatar's parameters", JSONObject())))))
+    // what we want VRChat to send us: avatar stuff + ur real head / wrist positions (for standable walking)
+    fun tree(): JSONObject = node("/", null, "Fluff VR Stats :3", JSONObject()
+        .put("avatar", node("/avatar", null, "avatar stuff",
+            JSONObject().put("change", node("/avatar/change", "s", "which avatar you just switched to"))
+                .put("parameters", node("/avatar/parameters", null, "your avatar's parameters", JSONObject()))))
+        .put("tracking", node("/tracking", null, "tracking", JSONObject().put("vrsystem", node("/tracking/vrsystem", null, "ur headset + hands",
+            JSONObject().put("head", node("/tracking/vrsystem/head", null, "", JSONObject().put("pose", node("/tracking/vrsystem/head/pose", "ffffff", "head pose"))))
+                .put("leftwrist", node("/tracking/vrsystem/leftwrist", null, "", JSONObject().put("pose", node("/tracking/vrsystem/leftwrist/pose", "ffffff", "left wrist"))))
+                .put("rightwrist", node("/tracking/vrsystem/rightwrist", null, "", JSONObject().put("pose", node("/tracking/vrsystem/rightwrist/pose", "ffffff", "right wrist")))))))))
 
     fun hostInfo(udpPort: Int): JSONObject = JSONObject().put("NAME", "Fluff VR Stats").put("OSC_IP", "127.0.0.1")
         .put("OSC_PORT", udpPort).put("OSC_TRANSPORT", "UDP")

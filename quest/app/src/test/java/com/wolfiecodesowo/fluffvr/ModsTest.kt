@@ -99,6 +99,39 @@ class ModsTest {
     }
 
     @Test
+    fun realHeadPoseEstimator() {
+        val e = HeadEstimator(); val dt = 0.025f
+        fun run(n: Int, head: (Int) -> FloatArray, yaw: (Int) -> Float = { 0f }): Map<String, FloatArray> {
+            var o = emptyMap<String, FloatArray>(); repeat(n) { o = e.update(head(it), yaw(it), dt, 1.55f) }; return o
+        }
+        var o = run(100, { floatArrayOf(0f, 1.6f, 0f) })
+        val l0 = o["foot_l"]!!.copyOf()
+        assertTrue("standing: straight legs", o["hip"]!![1] > 0.85f)
+        o = run(60, { floatArrayOf(0.04f * kotlin.math.sin(it / 6f), 1.6f, 0f) })
+        assertEquals("sway: feet stay planted", l0[0], o["foot_l"]!![0], 0.01f)
+        o = run(100, { floatArrayOf(0f, 1.6f, it * 0.012f) }); o = run(30, { floatArrayOf(0f, 1.6f, 1.2f) })
+        assertTrue("walking around the room: feet follow", o["foot_l"]!![2] > 1.0f)
+        o = run(100, { floatArrayOf(0f, 1.6f, 1.2f) }, { it * 0.9f }); o = run(150, { floatArrayOf(0f, 1.6f, 1.2f) }, { 90f })
+        assertEquals("turning: hips face the head", 90f, o["hip"]!![3], 6f)
+        o = run(40, { floatArrayOf(0f, 1.0f, 1.2f) }, { 90f })
+        assertTrue("crouch: hip down, feet on floor", o["hip"]!![1] < 0.6f && o["foot_l"]!![1] < 0.15f && !e.sitting)
+        o = run(120, { floatArrayOf(0f, 1.0f, 1.2f) }, { 90f })
+        assertTrue("sit after 2s low + still", e.sitting)
+        o = run(10, { floatArrayOf(0f, 1.6f, 1.2f) }, { 90f })
+        assertTrue("stand up again", !e.sitting)
+        for ((k, v) in o) assertTrue("no NaN in $k", v.all { it.isFinite() })
+    }
+
+    @Test
+    fun headPoseArrivesOverOsc() {
+        QuestMods.startListener(ctx); Thread.sleep(300)
+        val b = Osc.message("/tracking/vrsystem/head/pose", 0.5f, 1.6f, 2.0f, 10f, 200f, 5f)
+        DatagramSocket().use { it.send(DatagramPacket(b, b.size, InetAddress.getByName("127.0.0.1"), 9001)) }
+        waitFor("head pose parsed") { QuestMods.headPose?.let { it[1] == 1.6f && it[4] == 200f } == true }
+        QuestMods.stopListener()
+    }
+
+    @Test
     fun cameraMathMakesTrackers() {
         val m = PoseMath(1.7f)
         // a person standing facing the camera (image pixels, y down)

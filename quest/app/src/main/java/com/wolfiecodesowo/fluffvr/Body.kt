@@ -308,6 +308,35 @@ object Standable {
                 // VRChat's own OSC (if we hear it) adds walking, crouching + sitting on top
                 val hearing = now - QuestMods.oscSeen < 4000
                 if (hearing && QuestMods.seated) { status = "sitting ~ resting till u stand up"; Thread.sleep(250); continue }
+                // best mode: VRChat streams ur REAL head position -> walking around ur room, crouching + sitting for real
+                val hp = QuestMods.headPose
+                if (hp != null && now - QuestMods.headPoseAt < 600) {
+                    val head = floatArrayOf(hp[0], hp[1], hp[2])
+                    val yaw = hp[4]
+                    val out = headEst.update(head, yaw, dt, s.trackHeight * 0.93f)
+                    last = out
+                    try {
+                        if (sock == null) sock = DatagramSocket()
+                        val addr = InetAddress.getByName(s.host)
+                        val parts = out.filterKeys { s.trackFull || it in setOf("hip", "foot_l", "foot_r") }
+                        val r = Math.toRadians(yaw.toDouble())
+                        // VRChat lines the space up with the head BONE: a lil below + behind ur eyes
+                        val bone = floatArrayOf(head[0] - sin(r).toFloat() * 0.06f, head[1] - 0.09f, head[2] - kotlin.math.cos(r).toFloat() * 0.06f)
+                        for (m in Trackers.messages(parts, bone, yaw)) sock.send(DatagramPacket(m, m.size, addr, s.port))
+                        sitting = headEst.sitting
+                        mode = "real"
+                        status = if (headEst.sitting) "live (real moves) ~ sitting :3" else "live (real moves) ~ walk around, crouch + sit :3"
+                    } catch (e: Exception) { status = "couldn't send (${e.message})" }
+                    count++
+                    if (now - rateT >= 1000) {
+                        rate = count * 1000f / (now - rateT); count = 0; rateT = now
+                        if ((now / 1000) % 5 == 0L) android.util.Log.i("FluffStandable", "real head ${"%.2f".format(head[0])} ${"%.2f".format(head[1])} ${"%.2f".format(head[2])} yaw ${yaw.toInt()} · " +
+                            "hip y ${"%.2f".format(out["hip"]!![1])} · sending ${rate.toInt()}/s · $status")
+                    }
+                    Thread.sleep(25)
+                    continue
+                }
+                mode = "velocity"
                 val vx = if (hearing) QuestMods.velX.coerceIn(-8f, 8f) else 0f
                 val vz = if (hearing) QuestMods.velZ.coerceIn(-8f, 8f) else 0f
                 // VRChat's velocity is in avatar meters; the tracker space is real meters
@@ -340,6 +369,8 @@ object Standable {
     fun stop() { running = false }
 
     @Volatile var sitting = false
+    @Volatile var mode = "velocity"           // "real" = VRChat streams ur head position, "velocity" = fallback
+    private val headEst = HeadEstimator()
     @Volatile var upMax = 0f
     private var upAvatar = ""
     private var lowSince = 0L
@@ -596,5 +627,129 @@ object YouTube {
                 } catch (_: Exception) {}
             }
         }.apply { isDaemon = true; start() }
+    }
+}
+
+// ========================================================== real-position estimator (port of PC fbt.py) ===
+/**
+ * Ur real head position (from VRChat's /tracking/vrsystem/head/pose) in, hip / planted feet / knees / chest out.
+ * Same logic as the PC app: body faces where ur head points (glances don't twist it), feet stay planted and take
+ * a step when u really walk around ur room, crouching bends the knees, low + still for 2s = sitting.
+ */
+class HeadEstimator {
+    private class Foot(var x: Float, var y: Float, var z: Float, var yaw: Float) {
+        var fx = x; var fz = z; var tx = x; var tz = z; var fyaw = yaw; var tyaw = yaw; var t = 1f
+        val stepping get() = t < 1f
+    }
+    var bodyYaw: Float? = null
+    private val seenH = ArrayList<Float>()
+    private var feet: Array<Foot>? = null
+    private var hip: FloatArray? = null
+    private val yawHist = ArrayDeque<Float>()
+    private var lastHead: FloatArray? = null
+    private var lowT = 0f
+    var sitting = false
+    val ANKLE = 0.07f
+
+    private fun wrap(a: Float): Float { var x = (a + 180f) % 360f; if (x < 0) x += 360f; return x - 180f }
+    private fun fwd(y: Float) = Math.toRadians(y.toDouble()).let { floatArrayOf(sin(it).toFloat(), 0f, kotlin.math.cos(it).toFloat()) }
+    private fun right(y: Float) = Math.toRadians(y.toDouble()).let { floatArrayOf(kotlin.math.cos(it).toFloat(), 0f, -sin(it).toFloat()) }
+    private fun dxz(ax: Float, az: Float, bx: Float, bz: Float) = hypot(ax - bx, az - bz)
+    private fun smooth(t: Float) = t.coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+
+    /** eye height: the tall end of the head heights we've seen (people stand most of the time) */
+    fun eyeHeight(headY: Float, fallback: Float): Float {
+        seenH.add(headY); if (seenH.size > 3000) seenH.subList(0, 1000).clear()
+        if (seenH.size < 60) return max(fallback, headY)
+        val srt = seenH.sorted()
+        return srt[(srt.size * 0.9f).toInt()].coerceIn(1.0f, 2.1f)
+    }
+
+    fun update(head: FloatArray, headYaw: Float, dt: Float, fallbackEye: Float, step: Float = 0.16f): Map<String, FloatArray> {
+        val eye = eyeHeight(head[1], fallbackEye)
+        val by0 = bodyYaw ?: headYaw
+        var by = by0
+        var diff = wrap(headYaw - by)
+        if (abs(diff) > 35f) by += (abs(diff) - 35f) * Math.signum(diff) * min(1f, dt * 8)
+        diff = wrap(headYaw - by)
+        if (abs(diff) > 12f) by = wrap(by + (abs(diff) - 12f) * Math.signum(diff) * min(1f, dt * 1.2f))
+        yawHist.addLast(headYaw); while (yawHist.size > (1f / max(dt, 0.005f)).toInt()) yawHist.removeFirst()
+        if (yawHist.all { abs(wrap(it - headYaw)) < 6f }) by = wrap(by + wrap(headYaw - by) * min(1f, dt * 1.5f))
+        bodyYaw = by
+        val f = fwd(by); val r = right(by); val hf = fwd(headYaw)
+
+        // sitting: head low (< 68% of eye height) + not walking for 2s; stand up (> 80%) = standing again
+        val lh = lastHead
+        val speed = if (lh != null) dxz(head[0], head[2], lh[0], lh[2]) / max(dt, 1e-3f) else 0f
+        lastHead = head.copyOf()
+        lowT = if (head[1] < eye * 0.68f && speed < 0.3f) lowT + dt else 0f
+        if (head[1] > eye * 0.8f) sitting = false else if (lowT > 2f) sitting = true
+        val legLen = max(0.3f, eye * 0.57f - ANKLE)
+        val out = HashMap<String, FloatArray>()
+        if (sitting) {
+            val hp = floatArrayOf(head[0] - f[0] * 0.12f, max(0.15f, head[1] - eye * 0.36f), head[2] - f[2] * 0.12f)
+            hip = hp; feet = null
+            val kneeY = max(0.1f, hp[1] + 0.04f)
+            for ((side, sgn) in listOf("l" to -1f, "r" to 1f)) {
+                val kx = hp[0] + r[0] * 0.12f * sgn + f[0] * legLen * 0.5f
+                val kz = hp[2] + r[2] * 0.12f * sgn + f[2] * legLen * 0.5f
+                val push = max(0f, legLen * 0.5f - kneeY) * 0.6f
+                out["knee_$side"] = floatArrayOf(kx, kneeY, kz, by)
+                out["foot_$side"] = floatArrayOf(kx + f[0] * push, ANKLE, kz + f[2] * push, by)
+            }
+            out["hip"] = floatArrayOf(hp[0], hp[1], hp[2], by)
+            out["chest"] = floatArrayOf((hp[0] + head[0]) / 2, hp[1] + (head[1] - hp[1]) * 0.55f, (hp[2] + head[2]) / 2, by)
+            return out
+        }
+        // hip: under the head, a bit back. crouch -> legs bend, hip sinks + goes back
+        val crouch = (1f - head[1] / eye).coerceIn(0f, 1f)
+        val hipY = max(0.18f, head[1] - eye * 0.40f * (1f - crouch * 0.35f))
+        val back = 0.07f + crouch * 0.22f
+        val target = floatArrayOf(head[0] - hf[0] * back, hipY, head[2] - hf[2] * back)
+        val hp = hip?.let { h -> FloatArray(3) { h[it] + (target[it] - h[it]) * min(1f, dt * 20) } } ?: target
+        hip = hp
+        // feet: planted until the body really moves, then one foot at a time takes a step
+        val stance = 0.10f + eye * 0.012f
+        val tg = arrayOf(floatArrayOf(hp[0] - r[0] * stance + f[0] * 0.03f, hp[2] - r[2] * stance + f[2] * 0.03f),
+                         floatArrayOf(hp[0] + r[0] * stance + f[0] * 0.03f, hp[2] + r[2] * stance + f[2] * 0.03f))
+        val ff = feet
+        if (ff == null || (0..1).any { dxz(ff[it].x, ff[it].z, tg[it][0], tg[it][1]) > 1.2f })
+            feet = arrayOf(Foot(tg[0][0], ANKLE, tg[0][1], by), Foot(tg[1][0], ANKLE, tg[1][1], by))
+        val fs = feet!!
+        for (i in 0..1) {
+            val ft = fs[i]; val other = fs[1 - i]
+            if (ft.stepping) {
+                ft.t = min(1f, ft.t + dt / 0.24f)
+                val k = smooth(ft.t)
+                ft.x = ft.fx + (ft.tx - ft.fx) * k; ft.z = ft.fz + (ft.tz - ft.fz) * k
+                ft.y = ANKLE + sin(Math.PI * ft.t).toFloat() * 0.07f
+                ft.yaw = ft.fyaw + wrap(ft.tyaw - ft.fyaw) * k
+            } else if (!other.stepping) {
+                val d = dxz(ft.x, ft.z, tg[i][0], tg[i][1])
+                val od = dxz(other.x, other.z, tg[1 - i][0], tg[1 - i][1])
+                if ((d > step || abs(wrap(by - ft.yaw)) > 30f) && d >= od - 0.02f) {
+                    ft.fx = ft.x; ft.fz = ft.z; ft.fyaw = ft.yaw; ft.tyaw = by; ft.t = 0f
+                    ft.tx = tg[i][0] + (tg[i][0] - ft.x) * 0.25f; ft.tz = tg[i][1] + (tg[i][1] - ft.z) * 0.25f
+                }
+            }
+        }
+        out["hip"] = floatArrayOf(hp[0], hp[1], hp[2], by)
+        for ((side, ft) in listOf("l" to fs[0], "r" to fs[1])) {
+            out["foot_$side"] = floatArrayOf(ft.x, ft.y, ft.z, ft.yaw)
+            // knee: halfway down the leg, pushed forward (square to the leg) as much as the leg is bent
+            val ax = ft.x - hp[0]; val ay = ft.y - hp[1]; val az = ft.z - hp[2]
+            val d = max(1e-3f, sqrt(ax * ax + ay * ay + az * az))
+            val bend = sqrt(max(0f, (legLen / 2) * (legLen / 2) - (min(d, legLen) / 2) * (min(d, legLen) / 2)))
+            val kf = fwd(ft.yaw)
+            val dot = (kf[0] * ax + kf[2] * az) / d
+            var px = kf[0] - ax / d * dot; var py = -ay / d * dot; var pz = kf[2] - az / d * dot
+            val pl = sqrt(px * px + py * py + pz * pz).takeIf { it > 1e-4f } ?: 1f
+            px /= pl; py /= pl; pz /= pl
+            out["knee_$side"] = floatArrayOf(hp[0] + ax / 2 + px * (bend + 0.03f), hp[1] + ay / 2 + py * (bend + 0.03f),
+                hp[2] + az / 2 + pz * (bend + 0.03f), ft.yaw)
+        }
+        out["chest"] = floatArrayOf(hp[0] + (head[0] - hp[0]) * 0.55f + hf[0] * 0.02f, hp[1] + (head[1] - hp[1]) * 0.55f,
+            hp[2] + (head[2] - hp[2]) * 0.55f + hf[2] * 0.02f, wrap(by + wrap(headYaw - by) * 0.4f))
+        return out
     }
 }
