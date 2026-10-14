@@ -72,7 +72,12 @@ def uid_hash(uid):
 
 
 def new_key():
-    return "-".join("".join(random.SystemRandom().choice(CODE_CHARS) for _ in range(4)) for _ in range(3))
+    """XXXX-XXXX-XXXX. Never contains KEY/FLUFF, because key_norm() strips those words out
+    (a key like ABKEY... would stop matching once someone typed it without the dashes)."""
+    while True:
+        k = "".join(random.SystemRandom().choice(CODE_CHARS) for _ in range(12))
+        if "KEY" not in k:
+            return "-".join(k[i:i + 4] for i in range(0, 12, 4))
 
 
 def key_norm(k):
@@ -392,23 +397,57 @@ def install(bot, env):
         return bool(CFG.get("gate"))
 
     async def unlock(user):
-        """gives the 🐾 Fluff role (= sees the whole server)"""
+        """gives the 🐾 Fluff role (= sees the whole server).
+        returns (opened, problem): problem is a short reason when the role couldn't be given"""
         g = bot.guild()
         m = g.get_member(user.id) if g else None
-        r = bot.role("member")
-        if m and r and r not in m.roles:
+        if m is None and g is not None:
             try:
-                await m.add_roles(r, reason="got their app key")
-                return True
+                m = await g.fetch_member(user.id)
             except discord.HTTPException:
-                pass
-        return False
+                m = None
+        r = bot.role("member")
+        if r is None:
+            return False, "the 🐾 Fluff role is missing (run /setup)"
+        if m is None:
+            return False, "couldn't find them in the server"
+        if r in m.roles:
+            return False, None                      # already in, nothing to do
+        me = g.me
+        if not me.guild_permissions.manage_roles:
+            return False, "Fluff Bot doesn't have **Manage Roles**"
+        if me.top_role <= r:
+            return False, ("Fluff Bot's role is **below** 🐾 Fluff in Server Settings → Roles. "
+                           "drag the bot's role above it")
+        try:
+            await m.add_roles(r, reason="got their app key")
+            return True, None
+        except discord.HTTPException as e:
+            return False, f"Discord said no: {e}"[:150]
 
     async def give_key(inter: discord.Interaction):
+        # answer Discord right away: it only waits 3 seconds, and giving the role + saving can take longer
+        # (that's the "This interaction failed" / "application did not respond" error)
+        try:
+            await inter.response.defer(ephemeral=True, thinking=True)
+        except discord.HTTPException:
+            return
+        try:
+            await _give_key(inter)
+        except Exception as e:
+            log.warning("give_key failed for %s: %s", inter.user, e)
+            try:
+                await inter.followup.send("oops, ur key hit a snag >w< try `/key` again in a sec, or open a "
+                                          "/ticket if it keeps happening", ephemeral=True)
+            except discord.HTTPException:
+                pass
+            await bot.modlog(f"⚠️ **/key broke** for {inter.user.mention}: `{str(e)[:300]}`", C.GOLD)
+
+    async def _give_key(inter: discord.Interaction):
         uid = str(inter.user.id)
         if uid in D["bans"]["uids"]:
-            return await inter.response.send_message("ur key was turned off by staff. open a /ticket if u think "
-                                                     "that's a mistake", ephemeral=True)
+            return await inter.followup.send("ur key was turned off by staff. open a /ticket if u think "
+                                             "that's a mistake", ephemeral=True)
         key = next((k for k, v in D["keys"].items() if v == uid), None)
         if not key:
             key = new_key()
@@ -418,15 +457,20 @@ def install(bot, env):
             save_data(D)
         else:
             key = "-".join(key[i:i + 4] for i in range(0, 12, 4))
-        opened = await unlock(inter.user)
+        opened, problem = await unlock(inter.user)
+        if problem:
+            log.warning("key gate: couldn't unlock %s: %s", inter.user, problem)
+            await bot.modlog(f"🔑 {inter.user.mention} got their key but the server **didn't open** for them: "
+                             f"{problem}", C.GOLD)
         app_note = ("put it in the app: **Settings → App key** (or the popup the first time u open it). "
                     "it works on up to 5 installs (PC, Quest, phone...), links the app to this server, gives u "
                     "**🧪 Beta Tester** and unlocks global chat + Fluff Friends." if keys_on() else
                     "the app doesn't ask for it yet, keep it for when it does (it'll ask soon!).")
         e = discord.Embed(title="🔑 ur Fluff VR Stats key", color=C.PINK,
                           description=f"# `{key}`\n\n" + ("🎉 **u're in! the rest of the server is open now.**\n\n" if opened else "")
+                          + ("⚠️ the server didn't open for u yet (staff got pinged, they'll fix it soon!)\n\n" if problem else "")
                           + app_note + "\n-# it's free + it's urs. don't share it ~ if it leaks, `/resetkey` makes a new one")
-        await inter.response.send_message(embed=e, ephemeral=True)
+        await inter.followup.send(embed=e, ephemeral=True)
         try:
             await inter.user.send(embed=e)
         except discord.HTTPException:
@@ -552,6 +596,112 @@ def install(bot, env):
         save_data(D)
         await inter.response.send_message(f"new key: `{key}` ~ the old one is dead now. put the new one in the app "
                                           "(Settings → App key)", ephemeral=True)
+
+    # ------------------------------------------------- owner: look up any key ---
+    def _ago(ts):
+        if not ts:
+            return "never"
+        s = int(time.time() - float(ts))
+        for n, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+            if s >= n:
+                return f"{s // n}{unit} ago"
+        return "just now"
+
+    def _fmt_key(k):
+        return "-".join(k[i:i + 4] for i in range(0, len(k), 4)) if k else "?"
+
+    @tree.command(name="keyinfo", description="(owner) look up anyone's app key, by user or by key")
+    @app_commands.describe(user="whose key to look up", key="or paste a key to see who owns it",
+                           make_one="give them a key if they don't have one yet")
+    async def keyinfo_cmd(inter: discord.Interaction, user: discord.Member = None, key: str = None,
+                          make_one: bool = False):
+        if inter.user.id != inter.guild.owner_id:
+            return await inter.response.send_message("only the server owner can do this", ephemeral=True)
+        if user is None and not key:
+            return await inter.response.send_message("pick a `user` or paste a `key`", ephemeral=True)
+        if key:
+            uid = D["keys"].get(key_norm(key))
+            if not uid:
+                return await inter.response.send_message(f"`{key}` isn't a real key (nobody owns it)", ephemeral=True)
+        else:
+            uid = str(user.id)
+        k = next((k for k, v in D["keys"].items() if v == uid), None)
+        made = False
+        if not k and make_one:
+            nk = new_key()
+            while key_norm(nk) in D["keys"]:
+                nk = new_key()
+            k = key_norm(nk)
+            D["keys"][k] = uid
+            save_data(D)
+            made = True
+        u = D["users"].get(uid, {})
+        m = member(uid)
+        member_r = bot.role("member")
+        status = []
+        status.append("🚫 **banned**" if uid in D["bans"]["uids"] else "✅ not banned")
+        if m:
+            status.append("🐾 has Fluff role (server open)" if member_r and member_r in m.roles
+                          else "🔒 **no 🐾 Fluff role** (server still locked for them)")
+        else:
+            status.append("👻 not in the server")
+        e = discord.Embed(title="🔑 key lookup", color=C.PINK)
+        e.add_field(name="who", value=f"<@{uid}> (`{uid}`)", inline=False)
+        e.add_field(name="key", value=(f"`{_fmt_key(k)}`" + (" ✨ just made" if made else "")) if k
+                    else "none yet ~ run again with `make_one: True` to give them one", inline=False)
+        e.add_field(name="app", value=(f"activated {_ago(u.get('activated'))} · last seen {_ago(u.get('last'))}\n"
+                                       f"version `{u.get('v') or '?'}` on **{u.get('c') or '?'}** · "
+                                       f"{len(u.get('sids', []))}/5 installs · reset {u.get('gen', 0)}×")
+                    if u.get("activated") else "never activated the app", inline=False)
+        e.add_field(name="status", value="\n".join(status), inline=False)
+        if not keys_on():
+            e.set_footer(text="⚠️ bot_key.pem isn't loaded, so the app can't activate keys right now")
+        await inter.response.send_message(embed=e, ephemeral=True)
+
+    @tree.command(name="fixkey", description="(owner) fix someone's key: open the server, reset it, or unban")
+    @app_commands.describe(user="who to fix", action="what to do")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="open the server for them (give 🐾 Fluff)", value="unlock"),
+        app_commands.Choice(name="reset their key (old one stops working)", value="reset"),
+        app_commands.Choice(name="clear their installs (if they hit 5)", value="installs"),
+        app_commands.Choice(name="unban their key", value="unban")])
+    async def fixkey_cmd(inter: discord.Interaction, user: discord.Member, action: app_commands.Choice[str]):
+        if inter.user.id != inter.guild.owner_id:
+            return await inter.response.send_message("only the server owner can do this", ephemeral=True)
+        await inter.response.defer(ephemeral=True, thinking=True)
+        uid, a = str(user.id), action.value
+        if a == "unlock":
+            opened, problem = await unlock(user)
+            msg = (f"🐾 opened the server for {user.mention}" if opened else
+                   f"couldn't: {problem}" if problem else f"{user.mention} already has the 🐾 Fluff role")
+        elif a == "reset":
+            for k in [k for k, v in D["keys"].items() if v == uid]:
+                D["keys"].pop(k, None)
+            u = D["users"].get(uid)
+            if u:
+                u["gen"] = u.get("gen", 0) + 1
+                u["sids"] = []
+            nk = new_key()
+            while key_norm(nk) in D["keys"]:
+                nk = new_key()
+            D["keys"][key_norm(nk)] = uid
+            save_data(D)
+            msg = f"new key for {user.mention}: `{nk}` (the old one is dead). it's only shown to u, send it to them"
+        elif a == "installs":
+            u = D["users"].get(uid)
+            if u:
+                u["sids"] = []
+                save_data(D)
+            msg = f"cleared {user.mention}'s installs. they can put their key in again on any device"
+        else:
+            if uid in D["bans"]["uids"]:
+                D["bans"]["uids"].remove(uid)
+                save_data(D)
+                msg = f"unbanned {user.mention}'s key"
+            else:
+                msg = f"{user.mention}'s key wasn't banned"
+        await bot.modlog(f"🔧 **{inter.user.display_name}** used /fixkey `{a}` on {user.mention}", C.GOLD)
+        await inter.followup.send(msg, ephemeral=True)
 
     @tree.command(name="testers", description="(staff) who's actually beta testing the app")
     @staff_only()
