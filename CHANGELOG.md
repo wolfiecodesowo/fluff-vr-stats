@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.0 + Quest Edition v0.10.0: full-body tracking, heart rate, VCam + a brand new Quest look
+- 🦴 **full-body estimation (new Body tab, PC + Quest):** no trackers needed. ur hip follows u, ur feet stay planted and take a step when u move, crouching works. turn on **standable**, then calibrate FBT in VRChat like normal (it uses VRChat's own OSC trackers, no SteamVR driver, nothing touches VRChat)
+  - PC: from ur headset + controllers · Quest: from how u move in VRChat (OSC on)
+  - real trackers (Vive, Tundra, SlimeVR, Amethyst/Kinect) always win: estimation steps aside by itself
+- 📸 **camera full-body tracking:** PC: any webcam (one-tap add-on). Quest: ur phone is the camera (same app, Body tab), it sends ur legs to VRChat through the Quest
+- 💓 **heart rate (PC + Quest):** Pulsoid or a Bluetooth strap/watch. bpm on ur wrist, in the chatbox and on ur avatar (HR, HeartRate, HeartRateFloat, HeartRatePercent, isHRConnected, HeartBeatToggle)
+- 🎥 **VCam tab:** VRChat's camera from the menu: photo / stream / drone, snap, timer photo, look-at-me, flying, green screen, zoom, focus... (VRChat 2025.3+)
+- 🔎 **YouTube search** in the Music tab: copy a link for a world's video player, open it, or show it in ur chatbox
+- 🧰 **OVR Toolkit buddy (PC):** Fluff hops to ur other wrist while OVR Toolkit runs, no more overlapping watches
+- 🥽 **Quest Edition v0.10.0 looks like the PC app now:** furry frame + pride stripe, PC fonts + icons, sidebar, 2-column panels
+- 🐛 **Quest fix:** counters (headpats, boops, jumps) + lots of mods turned on but did nothing unless the chatbox was started. they always run now, the chatbox button only turns the chatbox on/off
+- 🐛 **Quest fix:** counters could stop forever after the chatbox was stopped + started again
+
 ## Quest Edition v0.9.0
 
 - ✨ **status fix on Quest too:** tap a status and it shows right away, then rotates on from it. rotate on/off + 10s-2min speed, and "next status" on Home
