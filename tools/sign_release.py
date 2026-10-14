@@ -30,8 +30,10 @@ KEY = os.environ.get("RELEASE_KEY_FILE") or os.path.join(HERE, "keys", "release_
 def _zip_bytes(tag):
     """the release's files: from git if this is a git checkout, otherwise straight from GitHub"""
     try:
-        return subprocess.run(["git", "-C", HERE, "archive", "--format=zip", tag], capture_output=True,
-                              check=True).stdout, False
+        # core.autocrlf=false: on Windows git would turn LF into CRLF inside the archive, and then every
+        # hash differs from the zip GitHub serves (that's what made v0.4.2 refuse to install)
+        return subprocess.run(["git", "-C", HERE, "-c", "core.autocrlf=false", "archive", "--format=zip", tag],
+                              capture_output=True, check=True).stdout, False
     except Exception:
         import urllib.request
         url = f"https://github.com/wolfiecodesowo/fluff-vr-stats/archive/refs/tags/{tag}.zip"
