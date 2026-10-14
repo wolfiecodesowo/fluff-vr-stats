@@ -33,7 +33,11 @@ object QuestMods {
     private var listener: Thread? = null
     @Volatile private var listening = false
     @Volatile private var gen = 0                     // each start gets a new number, so an old thread can't stop a new one
-    @Volatile var listenErr = ""                      // shown in the Mods tab if port 9001 can't be opened
+    @Volatile var listenErr = ""
+    @Volatile var udpSeen = 0L                        // last time VRChat's OSC actually arrived on 9001
+
+    /** VrcQuery feeds what it reads from VRChat's OSCQuery through the same code as real OSC */
+    fun inject(ctx: Context, addr: String, v: Any) { try { handle(ctx.applicationContext, addr to listOf(v)) } catch (_: Exception) {} }                      // shown in the Mods tab if port 9001 can't be opened
 
     // ---- OSC listener (VRChat sends to 127.0.0.1:9001 by default)
     fun startListener(ctx: Context) {
@@ -50,6 +54,7 @@ object QuestMods {
                 while (listening && gen == my) {
                     val pk = DatagramPacket(buf, buf.size)
                     try { sock.receive(pk) } catch (_: java.net.SocketTimeoutException) { continue }
+                    udpSeen = System.currentTimeMillis()
                     try { for (msg in parseAll(pk.data, 0, pk.length)) handle(app, msg) } catch (_: Exception) {}
                 }
             } catch (e: Exception) {

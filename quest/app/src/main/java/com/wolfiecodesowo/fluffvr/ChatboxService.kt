@@ -43,6 +43,7 @@ class ChatboxService : Service() {
         QuestMods.startListener(this)
         RemoteLink.startServer(this)          // (also holds the Wi-Fi multicast lock mDNS needs)
         OscQuery.start(this)                  // tell VRChat where to send its OSC (newer VRChat looks us up)
+        VrcQuery.start(this)                  // ...and if it still won't, read ur avatar's values from VRChat's OSCQuery
         TrackRelay.start(this)
         Heart.start(this)
         Standable.start(this)
@@ -184,6 +185,7 @@ class ChatboxService : Service() {
         RemoteLink.stopServer()
         TrackRelay.stop()
         OscQuery.stop()
+        VrcQuery.stop()
         Standable.stop()
         handler.removeCallbacksAndMessages(null)
         thread.quitSafely()
