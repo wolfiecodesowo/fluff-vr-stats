@@ -476,6 +476,7 @@ object TrackRelay {
     @Volatile var lastAt = 0L
     @Volatile var from = ""
     @Volatile var rate = 0f
+    @Volatile var blocked = false            // the phone is sending but "phone camera" isn't the picked mode
     @Volatile private var running = false
 
     val live get() = System.currentTimeMillis() - lastAt < 2000
@@ -498,6 +499,9 @@ object TrackRelay {
                     if (pk.length < 8 || buf[0] != 'F'.code.toByte() || buf[1] != 'L'.code.toByte() || buf[2] != 'T'.code.toByte()) continue
                     val s = Settings(app)
                     if (String(buf, 3, 4, Charsets.US_ASCII) != s.pairCode) continue
+                    lastAt = System.currentTimeMillis(); from = pk.address.hostAddress ?: ""
+                    if (s.trackMode != "camera") { blocked = true; continue }   // standable (or off) is picked: don't mix them
+                    blocked = false
                     out.send(DatagramPacket(buf, 7, pk.length - 7, InetAddress.getByName(s.host), s.port))
                     lastAt = System.currentTimeMillis(); from = pk.address.hostAddress ?: ""
                     n++

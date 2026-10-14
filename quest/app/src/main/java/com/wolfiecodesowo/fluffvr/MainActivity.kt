@@ -1286,7 +1286,9 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- body ---
     private fun bodyText(): String {
         val sb = StringBuilder()
+        sb.append("mode: ${mapOf("off" to "off", "standable" to "better standable", "camera" to "phone camera")[s.trackMode]}\n")
         if (s.standable) sb.append("standable: ${Standable.status}" + if (Standable.rate > 0) " · ${Standable.rate.toInt()}/s" else "").append("\n")
+        if (TrackRelay.blocked && TrackRelay.live) sb.append("📸 ur phone is sending, but phone camera isn't picked ~ tap it above\n")
         if (TrackRelay.live) sb.append("📸 phone tracker connected (${TrackRelay.from}) · ${TrackRelay.rate.toInt()} msgs/s\n")
         if (TrackerService.running) sb.append("📸 ${TrackerService.status}\n")
         Heart.bpmNow()?.let { sb.append("💓 $it bpm · ${Heart.status}") } ?: sb.append("💓 ${Heart.status}")
@@ -1303,7 +1305,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(code, perms, res)
         if (res.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            if (code == PERM_CAMERA) TrackerService.start(this)
+            if (code == PERM_CAMERA) { TrackerService.start(this); rsend("trackmode", "mode" to "camera") }
             if (code == PERM_BT) Heart.scan(this)
         }
         build()
@@ -1315,9 +1317,17 @@ class MainActivity : Activity() {
         live.addView(bodyLive)
 
         // full-body estimation from VRChat's own OSC (works on the Quest by itself)
-        val st = card(body, "Full-body estimation")
-        st.addView(text("no trackers needed ~ ur feet stay planted + step when u move, crouching works too. needs OSC on in VRChat.", 14f, SUB, fBody2))
-        switchRow(st, "better standable", if (s.standable) Standable.status else "hip + feet from how u move in VRChat", s.standable) { s.standable = !s.standable }
+        val st = card(body, "Full-body tracking")
+        st.addView(text("pick one ~ only that one sends ur legs to VRChat. needs OSC on in VRChat, then calibrate FBT.", 14f, SUB, fBody2))
+        val mr = row(st); mr.setPadding(0, dp(4), 0, dp(4))
+        for ((k, lab) in listOf("off" to "off", "standable" to "better standable", "camera" to "phone camera"))
+            chip(mr, lab, s.trackMode == k) { s.trackMode = k; if (k != "camera" && client == "phone" && TrackerService.running) TrackerService.stop(this) }
+        st.addView(text(when (s.trackMode) {
+            "standable" -> "🦴 " + Standable.status
+            "camera" -> if (TrackRelay.live && !TrackRelay.blocked) "📸 phone camera connected ~ ${TrackRelay.rate.toInt()} msgs/s"
+                else if (client == "phone") "📸 tap start tracking below" else "📸 waiting for ur phone ~ start tracking in its Body tab (pair code ${s.pairCode})"
+            else -> "tracking is off"
+        }, 14f, if (s.trackMode == "off") SUB else PINK, fHead).apply { setPadding(0, 0, 0, dp(6)) })
         switchRow(st, "+ knees + chest", "more trackers (hips + feet is best for most)", s.trackFull) { s.trackFull = !s.trackFull }
         val hr = row(st)
         hr.addView(text("ur height  ", 16f, TEXT, fHead))
@@ -1333,8 +1343,9 @@ class MainActivity : Activity() {
                 "it tracks ur hips, knees, feet + elbows right on the phone.", 14f, SUB, fBody2))
             val cr = row(cam); cr.setPadding(0, dp(8), 0, 0)
             chip(cr, if (TrackerService.running) "stop tracking" else "start tracking", TrackerService.running) {
-                if (TrackerService.running) TrackerService.stop(this)
-                else if (!need(android.Manifest.permission.CAMERA, PERM_CAMERA)) TrackerService.start(this)
+                // the Quest switches modes with u: camera while u track, back to better standable when u stop
+                if (TrackerService.running) { TrackerService.stop(this); rsend("trackmode", "mode" to "standable") }
+                else if (!need(android.Manifest.permission.CAMERA, PERM_CAMERA)) { TrackerService.start(this); rsend("trackmode", "mode" to "camera") }
             }
             chip(cr, "calibrate (stand straight)", false) { TrackerService.calibrate() }
             // live camera view: see where to stand before u calibrate

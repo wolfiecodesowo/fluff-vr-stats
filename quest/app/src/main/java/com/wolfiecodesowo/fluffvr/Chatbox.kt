@@ -91,7 +91,11 @@ class Settings(ctx: Context) {
 
     // v0.10: the service runs whenever the app is open (mods, counters, OSC); this only says if the chatbox sends
     var chatboxOn: Boolean get() = p.getBoolean("chatbox_on", false); set(v) = p.edit().putBoolean("chatbox_on", v).apply()
-    var standable: Boolean get() = p.getBoolean("standable", false); set(v) = p.edit().putBoolean("standable", v).apply()
+    /** which tracking sends ur legs to VRChat: "off", "standable" (estimated) or "camera" (ur phone). only one at a time */
+    var trackMode: String
+        get() = p.getString("trk_mode", null) ?: if (p.getBoolean("standable", false)) "standable" else "off"
+        set(v) = p.edit().putString("trk_mode", v).apply()
+    var standable: Boolean get() = trackMode == "standable"; set(v) { trackMode = if (v) "standable" else if (trackMode == "standable") "off" else trackMode }
     // v0.10: heart rate, phone body tracker, VCam
     var heartSource: String get() = p.getString("hr_src", "off")!!; set(v) = p.edit().putString("hr_src", v).apply()
     var pulsoidToken: String get() = p.getString("hr_token", "")!!; set(v) = p.edit().putString("hr_token", v).apply()

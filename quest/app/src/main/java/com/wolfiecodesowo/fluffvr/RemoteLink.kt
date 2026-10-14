@@ -86,6 +86,7 @@ object RemoteLink {
             "reset_counts" -> { s.headpats = 0; s.boops = 0; s.jumps = 0; s.walkedM = 0f }
             "music" -> MusicState.command(m.optString("cmd"))
             "line" -> s.setLine(m.optString("key"), m.optBoolean("on"))
+            "trackmode" -> m.optString("mode").takeIf { it in setOf("off", "standable", "camera") }?.let { s.trackMode = it }
             "status" -> {}
             else -> return null
         }
@@ -95,7 +96,7 @@ object RemoteLink {
     private fun status(ctx: Context, s: Settings): JSONObject {
         val now = System.currentTimeMillis()
         val mu = MusicState.snapshot()
-        val o = JSONObject().put("t", "status")
+        val o = JSONObject().put("t", "status").put("trackMode", s.trackMode)
             .put("running", ChatboxService.running)
             .put("osc", QuestMods.oscSeen > 0 && now - QuestMods.oscSeen < 10_000)
             .put("preview", ChatboxService.preview)
