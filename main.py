@@ -1127,6 +1127,8 @@ class App:
         """shows us in SteamVR's 'startup overlay apps' list (Settings -> Startup / Shutdown)"""
         if type(self.ov).__name__ == "NullOverlay" or not hasattr(openvr, "VRApplications"):
             return                                   # desktop mode: no SteamVR
+        if os.path.exists(os.path.join(HERE, "DEV_TEST")):
+            return                                   # a dev test copy: leave SteamVR pointing at ur real install
         apps = openvr.VRApplications()
         path = os.path.join(HERE, "fluffvr_stats.vrmanifest")
         pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")

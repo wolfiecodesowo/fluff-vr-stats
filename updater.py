@@ -282,6 +282,8 @@ def check_and_update(cfg=None, restart=True, log=None):
     cfg = cfg or {}
     if os.path.isdir(os.path.join(HERE, ".git")):
         return None                       # a developer's git checkout
+    if os.path.exists(os.path.join(HERE, "DEV_TEST")):
+        return None                       # a dev test copy never updates itself
     if cfg.get("auto_update", True) is False and not required_update():
         return None                       # turned off (but a required update still installs)
     try:
