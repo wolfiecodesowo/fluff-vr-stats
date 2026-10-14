@@ -55,11 +55,13 @@ object VrcQuery {
                         QuestMods.inject(app, "/avatar/parameters/$name", v)
                     }
                     QuestMods.oscSeen = System.currentTimeMillis()
+                    if (polls == 0L) android.util.Log.i("FluffStandable", "VrcQuery reading VRChat at $host:$port (${params.size} params)")
                     lastOk = System.currentTimeMillis(); polls++; fails = 0
                     status = "reading VRChat (${params.size} params)"
                 } catch (e: Exception) {
                     fails++
                     status = "VRChat's OSCQuery stopped answering (${e.message})"
+                    if (fails == 1 || fails % 20 == 0) android.util.Log.w("FluffStandable", "VrcQuery $host:$port failed: $e")
                     if (fails > 10) { port = 0; host = ""; last.clear(); discover(app) }   // VRChat restarted? find it again
                     Thread.sleep(500)
                 }
