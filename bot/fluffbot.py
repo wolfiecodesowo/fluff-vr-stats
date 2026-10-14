@@ -39,9 +39,18 @@ CLIENT_CFG = os.path.join(os.path.dirname(HERE), "config.json")
 REPO_API = "https://api.github.com/repos/wolfiecodesowo/fluff-vr-stats/releases/latest"
 PRESENCE_NAMES = ("fluff vr stats",)
 THREAD_CHANNELS = {"support", "suggestions", "bugs"}
+CHANNEL_NAMES = {key: name for _cat, _acc, items in C.LAYOUT for _kind, key, name in items}
+
+
+def _plain_name(n):
+    """channel names without emoji / dots / dashes, so '📢・announcements' matches 'announcements'"""
+    return re.sub(r"[^a-z0-9]+", "", n.lower())
 INVITE_RE = re.compile(r"(discord\.gg/|discord(app)?\.com/invite/)\S+", re.I)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                    handlers=[logging.StreamHandler(),
+                              logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.log"),
+                                                  encoding="utf-8")])
 log = logging.getLogger("fluffbot")
 
 
@@ -213,8 +222,26 @@ class FluffBot(discord.Client):
         return self.get_guild(int(gid)) if gid else (self.guilds[0] if self.guilds else None)
 
     def ch(self, key):
+        """a channel by its key. if the saved id is gone (channel remade / server rebuilt), find it by its
+        name from content.py and remember the new id, so posts don't silently stop"""
         g = self.guild()
-        return g.get_channel(CFG["channels"].get(key, 0)) if g else None
+        if not g:
+            return None
+        c = g.get_channel(CFG["channels"].get(key) or 0)
+        if c is not None:
+            return c
+        name = CHANNEL_NAMES.get(key)
+        if not name:
+            return None
+        for pool in (g.text_channels, g.voice_channels):
+            c = discord.utils.get(pool, name=name) or discord.utils.find(
+                lambda x: x.name.lower() == name.lower() or _plain_name(x.name) == _plain_name(name), pool)
+            if c is not None:
+                CFG["channels"][key] = c.id
+                save_cfg(CFG)
+                log.info("found #%s again by name (new id %s)", key, c.id)
+                return c
+        return None
 
     def role(self, key):
         g = self.guild()
@@ -271,6 +298,11 @@ class FluffBot(discord.Client):
             self._synced_guild = True
             self.tree.copy_global_to(guild=g)
             await self.tree.sync(guild=g)
+        if g is not None:
+            missing = [k for k in CHANNEL_NAMES if self.ch(k) is None]
+            if missing:
+                log.warning("can't find %d channel(s): %s ~ run /setup (it keeps everything, only adds what's missing)",
+                            len(missing), ", ".join(missing))
         if g is None:
             perms = 8
             print(f"\n  invite me to your server:\n  https://discord.com/oauth2/authorize?client_id="
@@ -569,17 +601,21 @@ class FluffBot(discord.Client):
     async def _wait1(self):
         await self.wait_until_ready()
 
-    @tasks.loop(minutes=20)
+    @tasks.loop(minutes=5)
     async def release_loop(self):
-        rel = await asyncio.to_thread(fetch_release)
-        if not rel or not rel.get("tag_name"):
-            return
-        if rel["tag_name"] != CFG.get("last_release"):
-            first = CFG.get("last_release") is None
-            CFG["last_release"] = rel["tag_name"]
-            save_cfg(CFG)
-            if not first:          # don't announce the release that already existed
-                await self.post_release(rel, ping=True)
+        try:
+            rel = await asyncio.to_thread(fetch_release)
+            if not rel or not rel.get("tag_name") or rel.get("draft"):
+                return
+            if rel["tag_name"] != CFG.get("last_release"):
+                first = CFG.get("last_release") is None
+                # only remember it once it's really posted somewhere (else we'd never try again)
+                if first or await self.post_release(rel, ping=True):
+                    CFG["last_release"] = rel["tag_name"]
+                    save_cfg(CFG)
+        except Exception:
+            # never let one bad post kill the loop (that's why update posts stopped showing up)
+            log.exception("release loop")
 
     @release_loop.before_loop
     async def _wait2(self):
@@ -591,11 +627,21 @@ class FluffBot(discord.Client):
         e.add_field(name="download", value=rel.get("html_url", C.RELEASES))
         e.set_thumbnail(url=C.LOGO)
         pr = self.role("pings")
+        sent = 0
         for key in ("announcements", "changelog", "github"):
             c = self.ch(key)
-            if c:
+            if not c:
+                continue
+            try:
                 await c.send(content=pr.mention if (ping and pr and key == "announcements") else None,
                              embed=e, allowed_mentions=discord.AllowedMentions(roles=True))
+                sent += 1
+            except discord.HTTPException as err:
+                log.warning("couldn't post the release in #%s: %s", key, err)
+        if not sent:
+            log.warning("release %s wasn't posted anywhere (missing channels? run /setup, it won't delete anything now)",
+                        rel.get("tag_name"))
+        return sent
 
 
 def fetch_release():
@@ -674,12 +720,6 @@ async def build_server(guild: discord.Guild, status):
             except discord.HTTPException:
                 pass
 
-    await status("🧹 clearing old channels…")
-    for c in list(guild.channels):
-        try:
-            await c.delete(reason="Fluff Bot setup")
-        except discord.HTTPException:
-            pass
 
     staff_roles = [roles["owner"], roles["staff"]]
     def overwrites(access):
@@ -702,10 +742,20 @@ async def build_server(guild: discord.Guild, status):
             ow[everyone] = discord.PermissionOverwrite(view_channel=True, connect=False)
         return ow
 
-    await status("🏗️ building channels…")
-    chans = {}
+    # build OR repair: reuse every category + channel that's already there (by saved id, then by name),
+    # only create what's missing, fix permissions + topics. nothing ever gets deleted, chat history stays.
+    await status("🏗️ checking channels (keeps everything that's there)…")
+    chans, created = {}, set()
+    old_ids = dict(CFG.get("channels") or {})
     for cat_name, access, items in C.LAYOUT:
-        cat = await guild.create_category(cat_name, overwrites=overwrites(access), reason="Fluff Bot setup")
+        cat = discord.utils.get(guild.categories, name=cat_name)
+        if cat is None:
+            cat = await guild.create_category(cat_name, overwrites=overwrites(access), reason="Fluff Bot setup")
+        else:
+            try:
+                await cat.edit(overwrites=overwrites(access), reason="Fluff Bot setup (repair)")
+            except discord.HTTPException as e:
+                log.warning("category %s: %s", cat_name, e)
         for kind, key, name in items:
             ow = overwrites(access)
             if key in THREAD_CHANNELS:      # people can talk inside threads here (tickets, ideas, bugs)
@@ -713,13 +763,30 @@ async def build_server(guild: discord.Guild, status):
                                                            add_reactions=True, send_messages_in_threads=True,
                                                            create_public_threads=False, create_private_threads=False,
                                                            attach_files=True, embed_links=True)
-            if kind == "voice":
-                c = await guild.create_voice_channel(name, category=cat, overwrites=ow)
+            want_voice = kind == "voice"
+            c = guild.get_channel(old_ids.get(key) or 0)
+            if c is None:
+                pool = guild.voice_channels if want_voice else guild.text_channels
+                c = discord.utils.get(pool, name=name) or discord.utils.get(pool, name=name.lower().replace(" ", "-"))
+            if c is not None and isinstance(c, discord.VoiceChannel) != want_voice:
+                c = None                      # same name but the wrong kind: make the right one
+            if c is None:
+                if want_voice:
+                    c = await guild.create_voice_channel(name, category=cat, overwrites=ow)
+                else:
+                    c = await guild.create_text_channel(name, category=cat, overwrites=ow, topic=C.TOPICS.get(key))
+                created.add(key)
             else:
-                c = await guild.create_text_channel(name, category=cat, overwrites=ow,
-                                                    topic=C.TOPICS.get(key))
+                try:
+                    kw = {"category": cat, "overwrites": ow}
+                    if not want_voice and C.TOPICS.get(key):
+                        kw["topic"] = C.TOPICS.get(key)
+                    await c.edit(reason="Fluff Bot setup (repair)", **kw)
+                except discord.HTTPException as e:
+                    log.warning("channel %s: %s", key, e)
             chans[key] = c
     CFG["channels"] = {k: c.id for k, c in chans.items()}
+    await status(f"🏗️ {len(created)} new channel(s), {len(chans) - len(created)} kept")
     await chans["main"].edit(slowmode_delay=2)
     save_cfg(CFG)
 
@@ -738,14 +805,21 @@ async def build_server(guild: discord.Guild, status):
         log.warning("widget: %s", e)
 
     await status("✍️ writing the info channels…")
-    await post_info(chans)
+    # new channels get their posts; kept ones only swap the bot's OWN info posts (nobody else's messages)
+    for key, c in chans.items():
+        if key not in created and key in C.POSTS and isinstance(c, discord.TextChannel):
+            try:
+                await c.purge(limit=50, check=lambda m, k=key: is_info_post(m, k))
+            except discord.HTTPException as e:
+                log.warning("refresh %s: %s", key, e)
+    await post_info({k: c for k, c in chans.items() if isinstance(c, discord.TextChannel)})
 
     await status("🔗 making the invite + connecting the client…")
     inv = await chans["welcome"].create_invite(max_age=0, max_uses=0, unique=False, reason="main invite")
     CFG["invite"] = inv.url
     rel = await asyncio.to_thread(fetch_release)
-    if rel and rel.get("tag_name"):
-        CFG["last_release"] = rel["tag_name"]
+    if rel and rel.get("tag_name") and not CFG.get("last_release"):
+        CFG["last_release"] = rel["tag_name"]     # (don't skip announcing a release that's still waiting)
     save_cfg(CFG)
     update_client_cfg(app_id=str(bot.application_id), guild_id=str(guild.id), invite=inv.url)
     bot.stats_loop.restart()
@@ -774,7 +848,7 @@ class ConfirmSetup(discord.ui.View):
         super().__init__(timeout=60)
         self.author_id = author_id
 
-    @discord.ui.button(label="yes, build it (deletes current channels)", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="yes, build / repair it (keeps everything)", style=discord.ButtonStyle.primary)
     async def go(self, inter: discord.Interaction, _):
         if inter.user.id != self.author_id:
             return await inter.response.send_message("not ur button :3", ephemeral=True)
@@ -827,7 +901,8 @@ async def setup_cmd(inter: discord.Interaction):
     save_cfg(CFG)
     await inter.response.send_message(
         "this builds roles, channels, permissions and all the info posts.\n"
-        "⚠️ **it deletes every channel that's here right now.** ready?",
+        "🐾 **nothing gets deleted:** channels that are already here are kept (chat history too), missing ones get "
+        "made, permissions get fixed and only the bot's own info posts get refreshed. ready?",
         view=ConfirmSetup(inter.user.id), ephemeral=True)
 
 
@@ -879,7 +954,7 @@ async def refresh_cmd(inter: discord.Interaction):
     for key, cid in CFG["channels"].items():
         c = inter.guild.get_channel(cid)
         if c and key in C.POSTS and isinstance(c, discord.TextChannel):
-            await c.purge(limit=50, check=lambda m: is_info_post(m, key))
+            await c.purge(limit=50, check=lambda m, k=key: is_info_post(m, k))
             chans[key] = c
     await post_info(chans)
 

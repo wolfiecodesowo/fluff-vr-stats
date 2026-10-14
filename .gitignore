@@ -37,3 +37,6 @@ exports/
 # installer build output
 build/
 dist/
+
+# Fluff Bot log
+bot/bot.log
