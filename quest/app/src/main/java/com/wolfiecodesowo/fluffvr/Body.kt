@@ -327,7 +327,7 @@ object Standable {
                     rate = count * 1000f / (now - rateT); count = 0; rateT = now
                     // shows up in `adb logcat -s FluffStandable` (helps when VRChat won't show Calibrate FBT)
                     if ((now / 1000) % 5 == 0L) android.util.Log.i("FluffStandable", "sending ${rate.toInt()}/s to ${s.host}:${s.port} · " +
-                        "hearing VRChat=${now - QuestMods.oscSeen < 4000} · $status")
+                        "hearing VRChat=${now - QuestMods.oscSeen < 4000} (${QuestMods.oscMsgs} msgs) · oscquery: ${OscQuery.status} · $status")
                 }
                 Thread.sleep(33)
             }
