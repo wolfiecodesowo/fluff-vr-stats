@@ -22,6 +22,9 @@
 > Starting **October 15, 2026**, PC versions before **v0.4.1** lose global chat + online features and the app asks u to update (the Quest Edition isn't affected yet).
 > The app updates itself when u restart it, so most people only need to grab their key :3
 
+> ### 🦴 NEW in v0.5 + Quest v0.10: the BIGGEST update yet!!
+> 🦴 **full-body tracking with no trackers** (better standable, PC + Quest): planted feet that step when u move, crouching + sitting · 📸 **camera full-body tracking** (any webcam on PC, ur phone on Quest) · 💓 **heart rate** (Pulsoid / Bluetooth) on ur wrist, chatbox + avatar · 🎥 **VCam**: VRChat's camera from the menu · 🔎 **YouTube search** in the Music tab · 🧰 **OVR Toolkit buddy** · 🥽 **a whole new Quest app** that looks like the PC one, with mods + counters that always work. Beta, so tell us what breaks in the Discord! Full list in the [changelog](CHANGELOG.md).
+
 > ### ✨ New in v0.4: the big safety + fun update
 > 🔐 **way safer:** global chat now goes through Fluff Bot (bans + reports actually work, nobody can skip the rules), and **every update is signed + checked** before it installs · 🔑 **free app key** from our Discord (`/key`) links you up + gets you **🧪 Beta Tester** · 🎁 **Fluff Wrapped** monthly recap cards · 🏅 **37 badges** · 🎩 **kitty closet** · 🎃 **spooky season** event · 🎨 **theme codes** · 👋 **Fluff Friends** · 🎪 **community nights** · 🌍 **12 languages** · 🛟 safe mode, copy logs, profiles, backups, left-handed mode, colorblind-safe colors, reduced motion. Full list in the [changelog](CHANGELOG.md).
 
