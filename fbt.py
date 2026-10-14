@@ -170,6 +170,19 @@ class Estimator:
         fwd, right = fwd_of(self.body_yaw), right_of(self.body_yaw)
         hfwd = fwd_of(head_yaw)
 
+        # sitting: head low (< 68% of eye height) + not walking for 2s. stand up (> 80%) = back to standing
+        last = getattr(self, "_last_head", None)
+        speed = dist_xz(head, last) / max(dt, 1e-3) if last else 0.0
+        self._last_head = head
+        self._low_t = getattr(self, "_low_t", 0.0)
+        self._low_t = self._low_t + dt if (head[1] < eye * 0.68 and speed < 0.3) else 0.0
+        if head[1] > eye * 0.8:
+            self.sitting = False
+        elif self._low_t > 2.0:
+            self.sitting = True
+        if getattr(self, "sitting", False):
+            return self._sit(head, head_yaw, eye, fwd, right, hfwd)
+
         # hip: under the head, a bit back. crouch -> legs bend, hip sinks + goes back
         crouch = min(1.0, max(0.0, 1.0 - head[1] / eye))          # 0 standing, 1 on the floor
         torso = eye * 0.40
@@ -217,6 +230,24 @@ class Estimator:
             pl = math.sqrt(sum(c * c for c in perp)) or 1.0
             out["knee_" + side] = (add(vlerp(hip, f.pos, 0.5), mul(perp, (bend + 0.03) / pl)), (0.0, f.yaw, 0.0))
         out["chest"] = (add(vlerp(hip, head, 0.55), mul(hfwd, 0.02)), (0.0, wrap180(lerp(self.body_yaw, head_yaw, 0.4)), 0.0))
+        return out
+
+    def _sit(self, head, head_yaw, eye, fwd, right, hfwd):
+        """seat under ur hips, thighs forward, shins down to the floor (same pose as the Quest version)"""
+        hip = (head[0] - fwd[0] * 0.12, max(0.15, head[1] - eye * 0.36), head[2] - fwd[2] * 0.12)
+        self.hip = hip
+        self.feet = None                       # feet re-plant under u when u stand up
+        leg = max(0.3, eye * 0.57 - self.ANKLE)
+        knee_y = max(0.1, hip[1] + 0.04)
+        out = {"hip": (hip, (0.0, self.body_yaw, 0.0))}
+        for side, s in (("l", -1), ("r", 1)):
+            side_off = mul(right, 0.12 * s)
+            knee = add(hip, side_off, mul(fwd, leg * 0.5))
+            knee = (knee[0], knee_y, knee[2])
+            foot = add(knee, mul(fwd, max(0.0, leg * 0.5 - knee_y) * 0.6))
+            out["knee_" + side] = (knee, (0.0, self.body_yaw, 0.0))
+            out["foot_" + side] = ((foot[0], self.ANKLE, foot[2]), (0.0, self.body_yaw, 0.0))
+        out["chest"] = (add(vlerp(hip, head, 0.55), mul(hfwd, 0.02)), (0.0, self.body_yaw, 0.0))
         return out
 
 
