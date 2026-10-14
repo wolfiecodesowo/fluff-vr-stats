@@ -139,6 +139,7 @@ class MainActivity : Activity() {
         super.onResume()
         // back from the "allow installs" screen -> try the install again
         if (Updater.state == "need_permission" && packageManager.canRequestPackageInstalls()) { Updater.state = "ready"; Updater.install(this) }
+        if (::body.isInitialized && tab in listOf("Home", "Settings", "Music")) build()   // back from a permission screen: show the new ✓
     }
 
     override fun onDestroy() {
@@ -470,6 +471,7 @@ class MainActivity : Activity() {
 
     private fun buildHome() {
         updateBanner()
+        if (!s.p.getBoolean("perms_done", false) && missingPerms().isNotEmpty()) permsCard()
         val top = card(body, greeting())
         val r = row(top, wrap = false)
         stateView = text("paused", 15f, SUB)
@@ -532,6 +534,67 @@ class MainActivity : Activity() {
             kittyView?.let { kittyFrame = (kittyFrame + 1) % kittyFrames.size; it.setImageResource(kittyFrames[kittyFrame]) }
             ui.postDelayed(this, if (System.currentTimeMillis() < kittyHappyUntil) 80 else 160)
         }
+    }
+
+    // ---- permissions, all in one place (first launch + Settings)
+    private fun runtimePerms(): List<String> {
+        val out = ArrayList<String>()
+        if (Build.VERSION.SDK_INT >= 31) { out += android.Manifest.permission.BLUETOOTH_SCAN; out += android.Manifest.permission.BLUETOOTH_CONNECT }
+        if (client == "phone") out += android.Manifest.permission.CAMERA
+        return out.filter { checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+    }
+
+    /** (label, why, granted, action) for every permission Fluff can use */
+    private fun permList(): List<Triple<String, String, Pair<Boolean, () -> Unit>>> {
+        val bt = Build.VERSION.SDK_INT < 31 || listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
+            .all { checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+        val list = mutableListOf(
+            Triple("song info", "shows ur song here + in the chatbox (Android calls it notification access)",
+                MusicState.hasAccess(this) to { openSongAccess() }),
+            Triple("Bluetooth", "for heart rate straps + watches", bt to {
+                if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_SCAN,
+                    android.Manifest.permission.BLUETOOTH_CONNECT), PERM_BT) }),
+            Triple("updates", "lets Fluff install its own updates (u still tap Update)",
+                packageManager.canRequestPackageInstalls() to {
+                    try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+                    catch (_: Exception) { open("package:$packageName") } }),
+        )
+        if (client == "phone") list += Triple("camera", "for camera body tracking (stays on ur phone)",
+            (checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) to {
+                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), PERM_CAMERA) })
+        return list
+    }
+
+    private fun missingPerms() = permList().filter { !it.third.first }
+
+    /** song info can't be a pop-up on Android: open Fluff's own switch (falls back to the list) */
+    private fun openSongAccess() {
+        val comp = android.content.ComponentName(this, MusicListener::class.java).flattenToString()
+        val tries = listOf(
+            Intent("android.settings.NOTIFICATION_LISTENER_DETAIL_SETTINGS").putExtra("android.provider.extra.NOTIFICATION_LISTENER_COMPONENT_NAME", comp),
+            Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+        for (i in tries) try { startActivity(i); return } catch (_: Exception) {}
+    }
+
+    private fun permsCard() {
+        val c = card(body, "✨ quick setup", fill = FluffDrawable.blend(PANEL, PINK, 0.14f), full = true)
+        c.addView(text("Fluff works without these, but they turn on the extras. tap each one (or allow all):", 14f, SUB, fBody2))
+        for ((label, why, st) in permList()) {
+            val (ok, act) = st
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                background = round(PANEL2, 18); setPadding(dp(14), dp(8), dp(10), dp(8))
+            }
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(text(label, 18f, TEXT, fHead)); col.addView(text(why, 13f, SUB, fBody2))
+            r.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            r.addView(if (ok) text("✓ allowed", 15f, GOOD, fHead) else button("allow", true) { act() })
+            c.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        }
+        val br = row(c); br.setPadding(0, dp(8), 0, 0)
+        val rt = runtimePerms()
+        if (rt.isNotEmpty()) chip(br, "allow all pop-ups", true) { requestPermissions(rt.toTypedArray(), PERM_BT) }
+        chip(br, "done for now", false) { s.p.edit().putBoolean("perms_done", true).apply() }
     }
 
     private fun kittyCard() {
@@ -1147,9 +1210,7 @@ class MainActivity : Activity() {
             acc.addView(text("✓ allowed! songs from Spotify / YouTube Music / anything with media controls show up here and in ur chatbox.", 14f, SUB))
         } else {
             acc.addView(text("to show ur song, Android needs \"notification access\" for this app. tap below, find Fluff VR Stats and turn it on.", 14f, SUB))
-            acc.addView(button("allow song info", true) {
-                try { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) } catch (_: Exception) {}
-            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
+            acc.addView(button("allow song info", true) { openSongAccess() }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
         }
         // YouTube search (same as the PC Music tab's YouTube page)
         val yt = card(body, "YouTube", full = true)
@@ -1333,6 +1394,7 @@ class MainActivity : Activity() {
 
     private fun buildSettings() {
         if (Trust.on) buildKey(false)
+        permsCard()
         val c = card(body, "where to send (OSC)")
         c.addView(text("on the Quest itself, keep 127.0.0.1. running this on ur phone instead? put ur Quest's Wi-Fi IP here.", 14f, SUB))
         val host = edit(s.host, "127.0.0.1")
