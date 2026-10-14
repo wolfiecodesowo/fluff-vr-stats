@@ -9,6 +9,15 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- auto-updates: lets the app hand a new version of itself to Android's installer (u still tap "Update") -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v0.10 Body tab: phone camera body tracker + Bluetooth heart rate straps -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <!-- a normal 2D panel app on Quest, not a VR app -->
     <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" />
@@ -32,6 +41,12 @@
         </activity>
 
         <receiver android:name=".InstallReceiver" android:exported="false" />
+
+        <!-- phone camera body tracker (v0.10) -->
+        <service
+            android:name=".TrackerService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
 
         <!-- keeps sending chatbox stats while VRChat is open -->
         <service

@@ -27,7 +27,7 @@ import android.widget.TextView
 /** Fluff VR Stats :3 Quest Edition. The whole UI is built in code (no XML) to keep it tiny. */
 class MainActivity : Activity() {
     private lateinit var s: Settings
-    private lateinit var body: LinearLayout
+    private lateinit var body: android.view.ViewGroup
     private val ui = Handler(Looper.getMainLooper())
     private var tab = "Home"
     private var gchatList: LinearLayout? = null
@@ -47,13 +47,16 @@ class MainActivity : Activity() {
     private var remoteView: TextView? = null
     private var remoteSig = ""
     private var modsSig = ""
+    private var bodyLive: TextView? = null
+    private var ytList: LinearLayout? = null
+    private var ytSig = -1
     @Volatile private var polling = false
 
     // ---- themes: the first 5 are the classic Pride Pastel look with a different accent, the rest match the PC presets
     private class Th(val name: String, val bg: Int, val accent: Int, val stripe: IntArray? = null)
     private val PRIDE_BG = Color.rgb(34, 22, 46)
     private val THEMES = listOf(
-        Th("pink", PRIDE_BG, Color.rgb(255, 143, 199)), Th("purple", PRIDE_BG, Color.rgb(181, 140, 255)),
+        Th("pink", PRIDE_BG, Color.rgb(255, 150, 202)), Th("purple", PRIDE_BG, Color.rgb(181, 140, 255)),
         Th("mint", PRIDE_BG, Color.rgb(123, 224, 181)), Th("orange", PRIDE_BG, Color.rgb(255, 170, 90)),
         Th("sky", PRIDE_BG, Color.rgb(110, 200, 255)),
         Th("Midnight Fox", Color.rgb(14, 12, 30), Color.rgb(255, 140, 90), intArrayOf(Color.rgb(255, 120, 80), Color.rgb(255, 170, 110), Color.rgb(120, 110, 220), Color.rgb(60, 50, 140))),
@@ -71,10 +74,15 @@ class MainActivity : Activity() {
     private fun lum(c: Int) = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255
     private val light get() = lum(th.bg) > 0.6
     private val BG get() = th.bg
-    private val PANEL get() = if (light) FluffDrawable.blend(th.bg, Color.BLACK, 0.06f) else FluffDrawable.blend(th.bg, Color.WHITE, 0.07f)
-    private val PANEL2 get() = if (light) FluffDrawable.blend(th.bg, th.accent, 0.22f) else FluffDrawable.blend(FluffDrawable.blend(th.bg, Color.WHITE, 0.12f), th.accent, 0.12f)
-    private val TEXT get() = if (light) Color.rgb(48, 30, 36) else Color.rgb(246, 238, 252)
-    private val SUB get() = if (light) Color.rgb(120, 90, 96) else FluffDrawable.blend(Color.rgb(201, 182, 218), th.accent, 0.15f)
+    // same recipe as the PC themes: panel = bg + 9% white, panel2 = bg + 17% white (Pride Pastel = the PC's exact colors)
+    private val PANEL get() = if (light) FluffDrawable.blend(th.bg, Color.BLACK, 0.06f) else FluffDrawable.blend(th.bg, Color.WHITE, 0.09f)
+    private val PANEL2 get() = if (light) FluffDrawable.blend(th.bg, th.accent, 0.22f) else FluffDrawable.blend(th.bg, Color.WHITE, 0.17f)
+    private val TEXT get() = if (light) Color.rgb(48, 30, 36) else Color.rgb(255, 246, 252)
+    private val SUB get() = if (light) Color.rgb(120, 90, 96) else FluffDrawable.blend(Color.rgb(189, 179, 190), th.accent, 0.06f)
+    private val GOOD = Color.rgb(150, 236, 176)
+    private val WARN = Color.rgb(255, 222, 130)
+    private val BAD = Color.rgb(255, 118, 142)
+    private val wide get() = resources.configuration.screenWidthDp >= 720
     private val PINK get() = th.accent
     private val INK = Color.rgb(14, 9, 18)
     private val INNER_EAR = Color.rgb(255, 166, 210)
@@ -83,9 +91,11 @@ class MainActivity : Activity() {
     private val STRIPE get() = th.stripe?.let { it + it.first() + th.accent } ?: PRIDE
     private val client by lazy { if ((Build.MANUFACTURER ?: "").lowercase().let { "oculus" in it || "meta" in it }) "quest" else "phone" }
 
-    private val fTitle by lazy { resources.getFont(R.font.lilita) }
-    private val fHead by lazy { resources.getFont(R.font.fredoka_bold) }
+    // the PC menu's fonts: Gochi Hand for titles + headings + buttons, Nunito for text
+    private val fTitle by lazy { resources.getFont(R.font.gochi) }
+    private val fHead by lazy { resources.getFont(R.font.gochi) }
     private val fBody by lazy { resources.getFont(R.font.nunito) }
+    private val fBody2 by lazy { resources.getFont(R.font.nunito_semi) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +103,7 @@ class MainActivity : Activity() {
         window.statusBarColor = BG
         window.navigationBarColor = BG
         GlobalChat.start(this)
+        if (!ChatboxService.running) try { ChatboxService.start(this) } catch (_: Exception) {}   // mods + counters run from here
         AppKey.onChange = { ui.post { build() } }
         AppKey.heartbeat(this, client)
         build()
@@ -139,7 +150,7 @@ class MainActivity : Activity() {
         override fun run() {
             MusicState.refresh(this@MainActivity)
             previewView?.text = Chatbox.compose(this@MainActivity, s).ifEmpty { "(nothing to show - turn on a line)" }
-            stateView?.text = (if (ChatboxService.running) "💜 sending to VRChat" else "paused") +
+            stateView?.text = (if (ChatboxService.sending(this@MainActivity)) "💜 sending to VRChat" else "chatbox off ~ mods + counters still run") +
                 (if (QuestMods.saving(this@MainActivity, s)) " · 🪫 battery saver" else "") +
                 (if (QuestMods.isQuiet(s)) " · 🌙 quiet hours" else "")
             statusNow?.let { sv ->      // rotation moved on: just restyle the buttons (a rebuild would wipe what u're typing)
@@ -152,8 +163,10 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            stateView?.setTextColor(if (ChatboxService.running) PINK else SUB)
-            startBtn?.let { styleButton(it, ChatboxService.running) ; it.text = if (ChatboxService.running) "stop" else "start chatbox" }
+            stateView?.setTextColor(if (ChatboxService.sending(this@MainActivity)) PINK else SUB)
+            startBtn?.let { styleButton(it, s.chatboxOn) ; it.text = if (s.chatboxOn) "stop chatbox" else "start chatbox" }
+            bodyLive?.text = bodyText()
+            if (ytList != null && YouTube.version != ytSig) fillYouTube()
             musicView?.let { mv ->
                 val m = MusicState.snapshot()
                 mv.text = if (m.title.isEmpty()) "nothing playing" else "${m.title}\n${m.artist}"
@@ -193,50 +206,78 @@ class MainActivity : Activity() {
         FluffDrawable(fill, INK, INNER_EAR, dp(radius).toFloat(), resources.displayMetrics.density,
             if (ears) s.ears else "none", tufts, (fill and 0xff) + radius, PINK, glow)
 
-    private fun card(parent: LinearLayout, title: String? = null, ears: Boolean = title != null, fill: Int = PANEL): LinearLayout {
-        val bg = fluff(fill, ears)
+    /** an inner panel like the PC's: inked velvet card, Gochi title (no emoji, the PC draws those as icons) */
+    private val EMOJI_LEAD = Regex("^[^\\p{L}\\p{N}(]+")
+    private fun card(parent: android.view.ViewGroup, title: String? = null, ears: Boolean = false, fill: Int = PANEL,
+                     full: Boolean = false): LinearLayout {
+        val bg = FluffDrawable(fill, INK, INNER_EAR, dp(20).toFloat(), resources.displayMetrics.density,
+            if (ears) s.ears else "none", false, (fill and 0xff) + 20, PINK, false, 13f, true)
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = bg
-            setPadding(bg.insetSide + dp(16), bg.insetTop + dp(12), bg.insetSide + dp(16), bg.insetBottom + dp(14))
+            setPadding(bg.insetSide + dp(16), bg.insetTop + dp(10), bg.insetSide + dp(16), bg.insetBottom + dp(14))
         }
-        if (title != null) c.addView(text(title, 20f, TEXT, fHead).apply { setPadding(0, 0, 0, dp(8)) })
-        parent.addView(c, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
+        if (title != null) c.addView(text(title.replace(EMOJI_LEAD, "").replaceFirstChar { it.uppercase() }, 22f, TEXT, fTitle)
+            .apply { setPadding(0, 0, 0, dp(6)) })
+        c.setTag(R.id.masonry_full, full)
+        parent.addView(c, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(10) })
         return c
     }
 
+    /** the PC's buttons: flat pills, pink when picked */
     private fun styleButton(b: Button, active: Boolean) {
-        b.background = fluff(if (active) PINK else PANEL2, tufts = false, radius = 30)
+        b.background = round(if (active) PINK else PANEL2, 30)
         b.setTextColor(if (active) INK else TEXT)
         b.stateListAnimator = null
     }
 
     private fun button(label: String, active: Boolean = false, onClick: (Button) -> Unit): Button =
         Button(this).apply {
-            text = label; isAllCaps = false; typeface = fHead; textSize = 15f
-            setPadding(dp(22), dp(8), dp(22), dp(10)); minHeight = dp(50); minimumHeight = dp(50)
+            text = label; isAllCaps = false; typeface = fHead; textSize = 17f
+            setPadding(dp(18), dp(4), dp(18), dp(6)); minHeight = dp(42); minimumHeight = dp(42); minWidth = 0; minimumWidth = 0
             styleButton(this, active)
             setOnClickListener { onClick(this) }
         }
 
-    private fun row(parent: LinearLayout, wrap: Boolean = true): LinearLayout {
-        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        if (wrap) {
-            val sc = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(r) }
-            parent.addView(sc)
-        } else parent.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    /** wrap = chips flow onto the next line (FlowRow); wrap = false = one LinearLayout row (weights work) */
+    private fun row(parent: android.view.ViewGroup, wrap: Boolean = true): android.view.ViewGroup {
+        val r: android.view.ViewGroup = if (wrap) FlowRow(this)
+            else LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.setTag(R.id.masonry_full, true)
+        parent.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return r
+    }
+
+    /** a PC-style setting row: name + lil description on the left, heart switch on the right */
+    private fun switchRow(parent: android.view.ViewGroup, label: String, desc: String, on: Boolean, badge: String? = null, onTap: () -> Unit) {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = round(if (on) FluffDrawable.blend(PANEL2, PINK, 0.12f) else PANEL2, 18, if (on) 2 else 0, PINK)
+            setPadding(dp(14), dp(8), dp(12), dp(9))
+            setOnClickListener { onTap(); build() }
+        }
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        tl.addView(text(label, 18f, TEXT, fHead))
+        if (badge != null) tl.addView(text(" $badge ", 11f, INK, fHead).apply { background = round(WARN, 8); setPadding(dp(6), 0, dp(6), dp(1)) },
+            LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
+        col.addView(tl)
+        col.addView(text(desc, 13f, SUB, fBody2))
+        item.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        item.addView(View(this).apply { background = HeartSwitch(on, PINK, FluffDrawable.blend(PANEL, BG, 0.4f), resources.displayMetrics.density) },
+            LinearLayout.LayoutParams(dp(46), dp(26)).apply { leftMargin = dp(10) })
+        parent.addView(item, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
     }
 
     private fun gap(v: View) = (v.layoutParams as? LinearLayout.LayoutParams)?.apply { rightMargin = dp(8) }
 
-    private fun chip(parent: LinearLayout, label: String, active: Boolean, onClick: () -> Unit) {
+    private fun chip(parent: android.view.ViewGroup, label: String, active: Boolean, onClick: () -> Unit) {
         val b = button(label, active) { onClick(); build() }
         parent.addView(b, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(8); bottomMargin = dp(6) })
     }
 
     /** a theme pick: lil preview of its background + accent */
-    private fun swatch(parent: LinearLayout, i: Int, t: Th) {
+    private fun swatch(parent: android.view.ViewGroup, i: Int, t: Th) {
         val on = s.theme == i
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -251,59 +292,85 @@ class MainActivity : Activity() {
 
     private fun edit(value: String, hint: String, multi: Boolean = false) = EditText(this).apply {
         setText(value); this.hint = hint; setHintTextColor(SUB); setTextColor(TEXT); typeface = fBody
-        background = round(PANEL2, 16, 3, INK); setPadding(dp(14), dp(10), dp(14), dp(10))
+        background = round(PANEL2, 22, 3, INK); setPadding(dp(16), dp(10), dp(16), dp(10))
         if (multi) { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 3 }
     }
 
     // --------------------------------------------------------------- build ---
-    private val TABS = listOf("Home" to "🏠", "Chatbox" to "💬", "Mods" to "🧩", "Global" to "🌐",
-        "Avatar" to "🐱", "Music" to "🎵", "Remote" to "📱", "Settings" to "⚙️")
+    // same tabs + order as the PC sidebar (Quest-only: remote)
+    private val TABS = listOf("Home", "Chatbox", "Mods", "Body", "Cam", "Global", "Avatar", "Music", "Remote", "Settings", "Thanks")
+    private val TAB_LABEL = mapOf("Thanks" to "thanks <3", "Cam" to "vcam", "Body" to "body")
+
+    private fun greetingWord(): String {
+        val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return if (h in 5..11) "good morning" else if (h in 12..16) "good afternoon" else if (h in 17..21) "good evening" else "hiii night owl"
+    }
+
+    /** lil header pill like the PC's (in VR 1h 23m · chat live · v0.10.0) */
+    private fun pill(parent: LinearLayout, label: String, dot: Int? = null, fill: Int = PANEL2, col: Int = TEXT, onClick: (() -> Unit)? = null) {
+        val v = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = round(fill, 16, 2, INK); setPadding(dp(12), dp(4), dp(12), dp(5))
+            if (dot != null) addView(View(context).apply { background = round(dot, 6) }, LinearLayout.LayoutParams(dp(9), dp(9)).apply { rightMargin = dp(6) })
+            addView(text(label, 13f, col, fBody))
+            onClick?.let { c -> setOnClickListener { c(); build() } }
+        }
+        parent.addView(v, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) })
+    }
 
     private fun build() {
         updView = null
         statusNow = null
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
-        gchatList = null; kittyView = null; kittyText = null; gchatSig = -1
+        gchatList = null; kittyView = null; kittyText = null; gchatSig = -1; bodyLive = null; ytList = null
+        val d = resources.displayMetrics.density
+        val wideNow = wide
+        // the window: a big furry card with ears + the pride stripe across its top (the PC menu's frame)
+        val outer = android.widget.FrameLayout(this).apply { setBackgroundColor(FluffDrawable.blend(BG, Color.BLACK, 0.45f)) }
+        val frameCard = FluffDrawable(BG, INK, INNER_EAR, dp(30).toFloat(), d, s.ears, false, 3, PINK, false, if (wideNow) 34f else 24f, false)
+        val frameBg = FrameDrawable(frameCard, STRIPE, dp(30).toFloat(), d, PawBackground(PINK, STRIPE[4], TEXT, d))
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(8))
-            background = android.graphics.drawable.LayerDrawable(arrayOf(
-                android.graphics.drawable.ColorDrawable(BG),
-                GradientDrawable().apply {          // soft accent glow in the top corner
-                    gradientType = GradientDrawable.RADIAL_GRADIENT; gradientRadius = dp(420).toFloat()
-                    setGradientCenter(0.1f, 0.05f); colors = intArrayOf((PINK and 0x00FFFFFF) or (0x30 shl 24), 0x00000000)
-                },
-                GradientDrawable().apply {
-                    gradientType = GradientDrawable.RADIAL_GRADIENT; gradientRadius = dp(380).toFloat()
-                    setGradientCenter(0.95f, 0.95f); colors = intArrayOf((STRIPE[4] and 0x00FFFFFF) or (0x22 shl 24), 0x00000000)
-                }))
+            orientation = LinearLayout.VERTICAL; background = frameBg
+            setPadding(frameCard.insetSide + dp(14), frameCard.insetTop + frameBg.stripeH + dp(8), frameCard.insetSide + dp(14), frameCard.insetBottom + dp(10))
         }
-        // header: sticker logo + hand-lettered name + version
+        outer.addView(root, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT).apply { setMargins(dp(4), dp(2), dp(4), dp(4)) })
+
+        // header: sticker logo + hand-lettered name :3 + tagline, greeting + pills on the right
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(58), dp(58)))
-        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
-        val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        tl.addView(text("Fluff VR Stats", 26f, TEXT, fTitle))
-        tl.addView(text(" :3", 26f, PINK, fTitle))
+        head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) },
+            LinearLayout.LayoutParams(dp(if (wideNow) 78 else 54), dp(if (wideNow) 78 else 54)).apply { if (wideNow) { leftMargin = dp(36); rightMargin = dp(42) } })
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(if (wideNow) 0 else 10), 0, 0, 0) }
+        val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
+        tl.addView(text("Fluff VR Stats", if (wideNow) 32f else 26f, TEXT, fTitle))
+        tl.addView(text(" :3", if (wideNow) 32f else 26f, PINK, fTitle))
+        tl.addView(text(" ///", 16f, FluffDrawable.blend(PINK, Color.rgb(255, 120, 160), 0.4f), fTitle).apply { setPadding(0, 0, 0, dp(6)) })
         titles.addView(tl)
-        titles.addView(text("Quest Edition · v${myVersion()} · ${th.name}", 13f, SUB))
+        titles.addView(text(if (client == "phone") "stats + mods + cozy vibes · phone remote" else "stats + mods + cozy vibes for VRChat on Quest", 14f, SUB, fBody2))
         head.addView(titles, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        if (GlobalChat.unread > 0 && tab != "Global") head.addView(text(" 🌐 ${GlobalChat.unread} new ", 13f, INK, fHead).apply {
-            background = fluff(PINK, tufts = false, radius = 16); setPadding(dp(12), dp(6), dp(12), dp(8))
-            setOnClickListener { tab = "Global"; build() }
-        })
-        root.addView(head)
-        // pride stripe "collar" with stitches
-        val stripe = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; background = round(INK, 6); setPadding(dp(2), dp(2), dp(2), dp(2)) }
-        STRIPE.forEach { c -> stripe.addView(View(this).apply { setBackgroundColor(c) }, LinearLayout.LayoutParams(0, dp(6), 1f)) }
-        root.addView(stripe, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(8) })
-        // body
-        val scroll = ScrollView(this)
-        body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(body)
-        root.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
-        if (Updater.mustUpdate(this)) { buildMustUpdate(); setContentView(root); return }
-        if (AppKey.locked(this)) { buildKey(true); setContentView(root); return }
-        when (tab) {
+        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
+        if (wideNow) right.addView(text(greetingWord() + (s.gchatName.takeIf { it.isNotEmpty() }?.let { ", $it" } ?: "") + " ~", 22f, TEXT, fHead)
+            .apply { gravity = Gravity.END })
+        val pills = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(4), 0, 0) }
+        if (wideNow) {
+            val mins = (System.currentTimeMillis() - Chatbox.sessionStart) / 60000
+            pill(pills, "in VR " + if (mins >= 60) "${mins / 60}h ${mins % 60}m" else "${mins}m")
+        }
+        if (s.gchatOn) pill(pills, if (GlobalChat.unread > 0) "${GlobalChat.unread} new msg" else if (GlobalChat.status == "live") "chat live" else "chat…",
+            if (GlobalChat.status == "live") GOOD else SUB) { tab = "Global"; GlobalChat.unread = 0 }
+        pill(pills, if (Updater.hasUpdate(this)) "update ${Updater.latestName}!" else "v${myVersion()}",
+            fill = if (Updater.hasUpdate(this)) PINK else PANEL2, col = if (Updater.hasUpdate(this)) INK else TEXT)
+        if (wideNow) { right.addView(pills); head.addView(right); root.addView(head) }
+        else { root.addView(head); root.addView(pills, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)) }
+
+        // content: 2 columns of panels on the Quest (like the PC), 1 on a phone
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
+        val m = Masonry(this, 2, dp(12))
+        body = m
+        scroll.addView(m)
+        val content: View = scroll
+        if (Updater.mustUpdate(this)) buildMustUpdate()
+        else if (AppKey.locked(this)) buildKey(true)
+        else when (tab) {
             "Home" -> buildHome()
             "Chatbox" -> buildChatbox()
             "Global" -> buildGlobal()
@@ -311,34 +378,80 @@ class MainActivity : Activity() {
             "Music" -> buildMusic()
             "Mods" -> buildMods()
             "Remote" -> buildRemote()
+            "Body" -> buildBody()
+            "Cam" -> buildCam()
+            "Thanks" -> buildThanks()
             else -> buildSettings()
         }
-        // bottom nav: icon + name, open tab gets ears
-        val navBg = fluff(FluffDrawable.blend(PANEL, BG, 0.35f), tufts = false, radius = 26)
-        val nav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; background = navBg
-            setPadding(navBg.insetSide + dp(4), navBg.insetTop + dp(2), navBg.insetSide + dp(4), navBg.insetBottom + dp(2))
+        if (wideNow) {
+            val bodyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            bodyRow.addView(sidebar(), LinearLayout.LayoutParams(dp(176), MATCH_PARENT))
+            bodyRow.addView(content, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { leftMargin = dp(16) })
+            root.addView(bodyRow, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
+        } else {
+            root.addView(content, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
+            root.addView(dock(), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         }
-        for ((t, icon) in TABS) {
-            val on = t == tab
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                val bg = if (on) fluff(PINK, ears = true, tufts = false, radius = 18, glow = true) else null
-                background = bg
-                setPadding(0, (bg?.insetTop ?: dp(14)) - dp(2), 0, (bg?.insetBottom ?: dp(4)) + dp(2))
-                addView(text(icon, 18f, TEXT).apply { gravity = Gravity.CENTER })
-                addView(text(t.lowercase(), 10f, if (on) INK else SUB, fHead).apply { gravity = Gravity.CENTER; maxLines = 1 })
-                setOnClickListener { tab = t; if (t == "Global") GlobalChat.unread = 0; build() }
-            }
-            nav.addView(item, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        }
-        root.addView(nav, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
-        setContentView(root)
+        root.addView(text("mrrp~", 15f, SUB, fTitle).apply { setPadding(dp(8), dp(2), 0, 0) })
+        setContentView(outer)
         refresher.run()
     }
 
+    private fun tabIcon(name: String, active: Boolean): android.graphics.drawable.Drawable =
+        TabIcon(name, if (active) INK else TEXT, if (active) PINK else PANEL2, resources.displayMetrics.density)
+
+    /** left nav like the PC: every tab as a sleek row, the open one glows pink */
+    private fun sidebar(): View {
+        val bg = FluffDrawable(FluffDrawable.blend(PANEL, BG, 0.45f), INK, INNER_EAR, dp(22).toFloat(), resources.displayMetrics.density,
+            "none", false, 5, PINK, false, 13f, true)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = bg
+            setPadding(bg.insetSide + dp(6), bg.insetTop + dp(6), bg.insetSide + dp(6), bg.insetBottom + dp(6))
+        }
+        val sc = ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col) }
+        for (t in TABS) {
+            val on = t == tab
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                background = if (on) FluffDrawable(PINK, INK, INNER_EAR, dp(18).toFloat(), resources.displayMetrics.density, "none", false, 9, PINK, true) else null
+                setPadding(dp(12), dp(5), dp(8), dp(6))
+                setOnClickListener { tab = t; if (t == "Global") GlobalChat.unread = 0; build() }
+            }
+            r.addView(View(this).apply { background = tabIcon(t, on) }, LinearLayout.LayoutParams(dp(24), dp(24)))
+            r.addView(text((TAB_LABEL[t] ?: t).lowercase(), 18f, if (on) INK else SUB, fHead).apply { setPadding(dp(10), 0, 0, dp(2)) },
+                LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            if (t == "Global" && GlobalChat.unread > 0 && !on) r.addView(text(" ${minOf(9, GlobalChat.unread)} ", 11f, Color.WHITE, fHead).apply { background = round(BAD, 10) })
+            col.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(2) })
+        }
+        return sc
+    }
+
+    /** app-style nav bar along the bottom (phones): icon + name, the open one is lit up */
+    private fun dock(): View {
+        val bg = FluffDrawable(FluffDrawable.blend(PANEL, BG, 0.35f), INK, INNER_EAR, dp(24).toFloat(), resources.displayMetrics.density,
+            "none", false, 5, PINK, false, 13f, true)
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; background = bg
+            setPadding(bg.insetSide + dp(4), bg.insetTop + dp(4), bg.insetSide + dp(4), bg.insetBottom + dp(4))
+        }
+        for (t in TABS.filter { it != "Thanks" }) {
+            val on = t == tab
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                background = if (on) round(PINK, 16) else null
+                setPadding(dp(8), dp(5), dp(8), dp(4))
+                addView(View(context).apply { background = tabIcon(t, on) }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+                addView(text((TAB_LABEL[t] ?: t).lowercase(), 13f, if (on) INK else SUB, fHead).apply { gravity = Gravity.CENTER; maxLines = 1 },
+                    LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+                setOnClickListener { tab = t; if (t == "Global") GlobalChat.unread = 0; build() }
+            }
+            nav.addView(item, LinearLayout.LayoutParams(dp(62), WRAP_CONTENT).apply { rightMargin = dp(2) })
+        }
+        return HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(nav) }
+    }
+
     // ---------------------------------------------------------------- home ---
-    private fun tile(parent: LinearLayout, label: String, value: String, color: Int = TEXT) {
+    private fun tile(parent: android.view.ViewGroup, label: String, value: String, color: Int = TEXT) {
         val bg = fluff(PANEL, tufts = true, radius = 18)
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; background = bg
@@ -361,8 +474,9 @@ class MainActivity : Activity() {
         val r = row(top, wrap = false)
         stateView = text("paused", 15f, SUB)
         r.addView(stateView, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        startBtn = button("start chatbox", ChatboxService.running) {
-            if (ChatboxService.running) ChatboxService.stop(this) else ChatboxService.start(this)
+        startBtn = button("start chatbox", s.chatboxOn) {
+            s.chatboxOn = !s.chatboxOn
+            if (!ChatboxService.running) ChatboxService.start(this)
             ui.postDelayed({ refresher.run() }, 300)
         }
         r.addView(startBtn)
@@ -375,15 +489,15 @@ class MainActivity : Activity() {
         tile(t2, "streak", "${s.vrStreak} days", Color.rgb(255, 222, 130))
         tile(t2, "battery", Chatbox.battery(this)?.let { "${it.first}%" } ?: "--")
 
-        if (s.seenNews < 14) {
+        if (s.seenNews < 15) {
             val nw = card(body, "✨ new in v${myVersion()}", fill = FluffDrawable.blend(PANEL, PINK, 0.18f))
-            nw.addView(text("• picking a status now shows it right away (no more jumping to another one)\n" +
-                "• 15 new mods: water tracker, mood, compliments, 2nd clock, steps, avatar swaps, headpat goal, speedometer, " +
-                "AFK recap, dance party, playtime check, charge reminder, quiet hours, battery saver, talking dot\n" +
-                "• 10 new themes (Settings → look) + a Mods tab with categories", 14f, TEXT))
+            nw.addView(text("• a whole new look that matches the PC app (sidebar, furry frame, PC fonts + icons)\n" +
+                "• mods + counters work without starting the chatbox now (headpats, boops, jumps... always count)\n" +
+                "• Body tab: standable full-body estimation, camera body tracking with ur phone, heart rate (Pulsoid / Bluetooth)\n" +
+                "• VCam tab: VRChat's camera from here · YouTube search in Music", 14f, TEXT))
             val nr = row(nw); nr.setPadding(0, dp(8), 0, 0)
-            chip(nr, "see the new mods", true) { s.seenNews = 14; s.modFilter = "new"; tab = "Mods" }
-            chip(nr, "got it", false) { s.seenNews = 14 }
+            chip(nr, "open the Body tab", true) { s.seenNews = 15; tab = "Body" }
+            chip(nr, "got it", false) { s.seenNews = 15 }
         }
 
         val qa = card(body, "quick actions")
@@ -556,8 +670,9 @@ class MainActivity : Activity() {
         stateView = text("paused", 15f, SUB)
         col.addView(stateView)
         r.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        startBtn = button("start chatbox", ChatboxService.running) {
-            if (ChatboxService.running) ChatboxService.stop(this) else ChatboxService.start(this)
+        startBtn = button("start chatbox", s.chatboxOn) {
+            s.chatboxOn = !s.chatboxOn
+            if (!ChatboxService.running) ChatboxService.start(this)
             ui.postDelayed({ refresher.run() }, 300)
         }
         r.addView(startBtn)
@@ -726,34 +841,14 @@ class MainActivity : Activity() {
         live.addView(liveView)
 
         val onCount = Settings.MODS.count { s.line(it.first) }
-        val list = card(body, "🧩 Quest mods · $onCount/${Settings.MODS.size} on")
+        val list = card(body, "🧩 Quest mods · $onCount/${Settings.MODS.size} on", full = true)
         list.addView(text("tap a mod to turn it on, most show up in ur chatbox.", 14f, SUB).apply { setPadding(0, 0, 0, dp(6)) })
         val fr = row(list)
         for ((k, label) in Settings.CATS) chip(fr, label, s.modFilter == k) { s.modFilter = k }
         val shown = Settings.MODS.filter { (k, _, _) ->
             when (s.modFilter) { "all" -> true; "new" -> k in Settings.NEW; else -> Settings.catOf(k) == s.modFilter }
         }
-        for ((k, label, desc) in shown) {
-            val on = s.line(k)
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                background = round(if (on) FluffDrawable.blend(PANEL2, PINK, 0.22f) else PANEL2, 18, if (on) 3 else 2, if (on) PINK else INK)
-                setPadding(dp(14), dp(10), dp(10), dp(10))
-                setOnClickListener { s.setLine(k, !s.line(k)); build() }
-            }
-            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            tl.addView(text(label, 17f, TEXT, fHead))
-            if (k in Settings.NEW) tl.addView(text(" NEW ", 10f, INK, fHead).apply { background = round(Color.rgb(255, 222, 130), 8); setPadding(dp(6), dp(1), dp(6), dp(2)) },
-                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
-            col.addView(tl)
-            col.addView(text(desc, 13f, SUB))
-            item.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-            item.addView(text(if (on) "ON" else "off", 14f, if (on) INK else SUB, fHead).apply {
-                background = round(if (on) PINK else PANEL, 14); setPadding(dp(14), dp(6), dp(14), dp(8))
-            })
-            list.addView(item, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(6) })
-        }
+        for ((k, label, desc) in shown) switchRow(list, label, desc, s.line(k), if (k in Settings.NEW) "NEW" else null) { s.setLine(k, !s.line(k)) }
         if (s.modFilter in listOf("all", "new", "chat", "comfy", "alert")) v9Settings()
 
         val tm = card(body, "⏳ timer / stopwatch")
@@ -800,8 +895,8 @@ class MainActivity : Activity() {
         // live status: is VRChat even talking to us?
         val alive = QuestMods.oscSeen > 0 && System.currentTimeMillis() - QuestMods.oscSeen < 15_000
         hp.addView(text(if (alive) "🟢 VRChat OSC: ${QuestMods.oscMsgs} msgs. recent: ${QuestMods.recent.takeLast(3).joinToString(", ").ifEmpty { "-" }}"
-            else if (!ChatboxService.running) "⚪ tap start chatbox first (the counter listens while it runs)"
-            else "🔴 not hearing VRChat: turn on OSC (Action Menu → Options → OSC → Enabled)", 13f, if (alive) TEXT else SUB)
+            else if (QuestMods.listenErr.isNotEmpty()) "🔴 ${QuestMods.listenErr}"
+            else "🔴 not hearing VRChat yet: turn on OSC (Action Menu → Options → OSC → Enabled), then reopen ur avatar", 13f, if (alive) TEXT else SUB)
             .apply { setPadding(0, dp(6), 0, 0) })
         val lr = row(hp); lr.setPadding(0, dp(6), 0, 0)
         chip(lr, if (QuestMods.learnKind == "pat") "listening… pat ur head!" else "learn my headpat", QuestMods.learnKind == "pat") { QuestMods.startLearn("pat") }
@@ -923,11 +1018,11 @@ class MainActivity : Activity() {
         val me = card(body, "📱 phone remote")
         me.addView(text("Quest can't show menus on top of VRChat, so ur phone is the menu! install this same app on an Android phone, " +
             "same Wi-Fi as ur Quest, and control everything while u play.", 14f, SUB))
-        me.addView(text("on the Quest: start chatbox, then on ur phone tap find my Quest.", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
+        me.addView(text("on the Quest: open Fluff VR Stats, then on ur phone tap find my Quest.", 14f, SUB).apply { setPadding(0, dp(6), 0, 0) })
 
         val q = card(body, "🥽 if this is the Quest")
         q.addView(text("pair code:  ${s.pairCode}", 26f, PINK, fTitle))
-        q.addView(text("Quest IP: ${RemoteLink.myIp()}  ·  the chatbox must be started for the remote to work", 13f, SUB))
+        q.addView(text("Quest IP: ${RemoteLink.myIp()}  ·  keep this app open (or in the background) for the remote", 13f, SUB))
 
         val ph = card(body, "📱 if this is the phone")
         val pr = row(ph)
@@ -1040,7 +1135,7 @@ class MainActivity : Activity() {
 
     private fun buildMusic() {
         val c = card(body, "now playing")
-        musicView = text("nothing playing", 20f, TEXT, fHead)
+        musicView = text("nothing playing", 22f, TEXT, fHead)
         c.addView(musicView)
         val r = row(c)
         r.setPadding(0, dp(10), 0, 0)
@@ -1056,6 +1151,184 @@ class MainActivity : Activity() {
                 try { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) } catch (_: Exception) {}
             }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
         }
+        // YouTube search (same as the PC Music tab's YouTube page)
+        val yt = card(body, "YouTube", full = true)
+        val sr = row(yt, wrap = false)
+        val q = edit(YouTube.query, "search youtube…").apply {
+            maxLines = 1; inputType = InputType.TYPE_CLASS_TEXT
+            setOnEditorActionListener { v, _, _ -> YouTube.search(v.text.toString()); true }
+        }
+        sr.addView(q, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        sr.addView(button("search", true) { YouTube.search(q.text.toString()) }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
+        yt.addView(text("copy a link, then paste it into a world's video player · open plays it in the browser", 13f, SUB, fBody2).apply { setPadding(0, dp(6), 0, dp(4)) })
+        ytList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        yt.addView(ytList)
+        fillYouTube()
+    }
+
+    private fun fillYouTube() {
+        val list = ytList ?: return
+        ytSig = YouTube.version
+        list.removeAllViews()
+        if (YouTube.results.isEmpty()) { list.addView(text(YouTube.status.ifEmpty { "search for a song or video :3" }, 15f, SUB)); return }
+        val grid = Masonry(this, 2, dp(10))
+        for (v in YouTube.results.take(8)) {
+            val cardV = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; background = round(PANEL2, 16, 2, INK); setPadding(dp(8), dp(8), dp(10), dp(8))
+                setTag(R.id.masonry_full, false)
+            }
+            val th = android.widget.FrameLayout(this)
+            th.addView(ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; background = round(PANEL, 10)
+                YouTube.thumbs[v.id]?.let { setImageBitmap(it) }
+            }, android.widget.FrameLayout.LayoutParams(dp(128), dp(72)))
+            th.addView(text(" ${v.length} ", 11f, Color.WHITE, fBody).apply { background = round(if (v.length == "LIVE") Color.rgb(200, 30, 40) else Color.BLACK, 6) },
+                android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.BOTTOM).apply { setMargins(0, 0, dp(4), dp(4)) })
+            cardV.addView(th)
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
+            col.addView(text(v.title, 14f, TEXT, fBody).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+            col.addView(text("${v.channel} · ${v.views}", 12f, SUB, fBody2).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            val br = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4), 0, 0) }
+            fun small(lab: String, on: Boolean, f: () -> Unit) = br.addView(button(lab, on) { f() }.apply {
+                textSize = 14f; minHeight = dp(32); minimumHeight = dp(32); setPadding(dp(12), 0, dp(12), dp(2)) },
+                LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(6) })
+            small("copy link", true) {
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("youtube", v.url))
+                android.widget.Toast.makeText(this, "link copied!! paste it into the video player :3", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            small("open", false) { open(v.url) }
+            small("chatbox", false) { Osc.chatbox(s.host, s.port, "🎥 watching: ${v.title.take(120)}") }
+            col.addView(br)
+            cardV.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            grid.addView(cardV, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { bottomMargin = dp(8) })
+        }
+        list.addView(grid, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        list.addView(text(YouTube.status, 13f, SUB))
+    }
+
+    // ---------------------------------------------------------------- body ---
+    private fun bodyText(): String {
+        val sb = StringBuilder()
+        if (s.standable) sb.append("standable: ${Standable.status}" + if (Standable.rate > 0) " · ${Standable.rate.toInt()}/s" else "").append("\n")
+        if (TrackRelay.live) sb.append("📸 phone tracker connected (${TrackRelay.from}) · ${TrackRelay.rate.toInt()} msgs/s\n")
+        if (TrackerService.running) sb.append("📸 ${TrackerService.status}\n")
+        Heart.bpmNow()?.let { sb.append("💓 $it bpm · ${Heart.status}") } ?: sb.append("💓 ${Heart.status}")
+        return sb.toString()
+    }
+
+    private val PERM_CAMERA = 41
+    private val PERM_BT = 42
+    private fun need(perm: String, code: Int): Boolean {
+        if (checkSelfPermission(perm) == android.content.pm.PackageManager.PERMISSION_GRANTED) return false
+        requestPermissions(arrayOf(perm), code); return true
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
+        super.onRequestPermissionsResult(code, perms, res)
+        if (res.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (code == PERM_CAMERA) TrackerService.start(this)
+            if (code == PERM_BT) Heart.scan(this)
+        }
+        build()
+    }
+
+    private fun buildBody() {
+        val live = card(body, "live", full = true)
+        bodyLive = text(bodyText(), 15f, TEXT, fBody)
+        live.addView(bodyLive)
+
+        // full-body estimation from VRChat's own OSC (works on the Quest by itself)
+        val st = card(body, "Full-body estimation")
+        st.addView(text("no trackers needed ~ ur feet stay planted + step when u move, crouching works too. needs OSC on in VRChat.", 14f, SUB, fBody2))
+        switchRow(st, "standable", if (s.standable) Standable.status else "hip + feet from how u move in VRChat", s.standable) { s.standable = !s.standable }
+        switchRow(st, "+ knees + chest", "more trackers (hips + feet is best for most)", s.trackFull) { s.trackFull = !s.trackFull }
+        val hr = row(st)
+        hr.addView(text("ur height  ", 16f, TEXT, fHead))
+        chip(hr, "−", false) { s.trackHeight = (s.trackHeight - 0.02f).coerceIn(1.2f, 2.2f) }
+        hr.addView(text(" ${"%.2f".format(s.trackHeight)} m ", 18f, PINK, fHead))
+        chip(hr, "+", false) { s.trackHeight = (s.trackHeight + 0.02f).coerceIn(1.2f, 2.2f) }
+        st.addView(text("then in VRChat: calibrate FBT like normal. real trackers? turn this off.", 13f, SUB, fBody2).apply { setPadding(0, dp(4), 0, 0) })
+
+        // camera full-body tracking: ur phone is the camera
+        val cam = card(body, "Camera body tracking")
+        if (client == "phone") {
+            cam.addView(text("put this phone on the floor or a shelf facing u (whole body in view), pair it with ur Quest in the Remote tab, then start. " +
+                "it tracks ur hips, knees, feet + elbows right on the phone.", 14f, SUB, fBody2))
+            val cr = row(cam); cr.setPadding(0, dp(8), 0, 0)
+            chip(cr, if (TrackerService.running) "stop tracking" else "start tracking", TrackerService.running) {
+                if (TrackerService.running) TrackerService.stop(this)
+                else if (!need(android.Manifest.permission.CAMERA, PERM_CAMERA)) TrackerService.start(this)
+            }
+            chip(cr, "calibrate (stand straight)", false) { TrackerService.calibrate() }
+            val cr2 = row(cam)
+            chip(cr2, "back camera", !s.trackFront) { s.trackFront = false }
+            chip(cr2, "selfie camera", s.trackFront) { s.trackFront = true }
+            chip(cr2, if (s.trackFull) "full body ✓" else "hips + feet", s.trackFull) { s.trackFull = !s.trackFull }
+            if (s.remoteCode.isEmpty()) cam.addView(text("pair with ur Quest first (Remote tab)", 14f, PINK, fHead))
+        } else {
+            cam.addView(text("ur phone is the camera! install this same app on an Android phone, pair it in the Remote tab, then open " +
+                "Body → camera body tracking on the phone. it sends ur legs to VRChat through this app.", 14f, SUB, fBody2))
+            cam.addView(text(if (TrackRelay.live) "🟢 phone tracker connected" else "⚪ no phone tracker yet · pair code ${s.pairCode}", 15f,
+                if (TrackRelay.live) GOOD else SUB, fHead).apply { setPadding(0, dp(6), 0, 0) })
+        }
+
+        // heart rate
+        val h = card(body, "Heart rate")
+        val hb = Heart.bpmNow()
+        val top = row(h, wrap = false)
+        top.addView(text(if (hb != null) "$hb" else "--", 40f, TEXT, fTitle))
+        top.addView(text(" bpm", 18f, SUB, fHead), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        top.addView(text("min ${Heart.minBpm ?: "-"} · avg ${Heart.avg() ?: "-"} · max ${Heart.maxBpm ?: "-"}", 13f, SUB, fBody2))
+        val sr = row(h)
+        for ((k, lab) in listOf("off" to "off", "pulsoid" to "pulsoid", "ble" to "bluetooth")) chip(sr, lab, s.heartSource == k) { s.heartSource = k }
+        when (s.heartSource) {
+            "pulsoid" -> {
+                val tk = edit(s.pulsoidToken, "paste ur Pulsoid token (pulsoid.net → Keys)")
+                h.addView(tk, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+                val pr = row(h); pr.setPadding(0, dp(6), 0, 0)
+                chip(pr, "save token", true) { s.pulsoidToken = tk.text.toString().replace("Bearer", "").trim() }
+                chip(pr, "get a token", false) { open("https://pulsoid.net/ui/keys") }
+            }
+            "ble" -> {
+                val br = row(h); br.setPadding(0, dp(6), 0, 0)
+                chip(br, "find my strap", true) {
+                    val perm = if (Build.VERSION.SDK_INT >= 31) android.Manifest.permission.BLUETOOTH_SCAN else android.Manifest.permission.ACCESS_FINE_LOCATION
+                    if (!need(perm, PERM_BT)) {
+                        if (Build.VERSION.SDK_INT >= 31 && need(android.Manifest.permission.BLUETOOTH_CONNECT, PERM_BT)) return@chip
+                        Heart.scan(this)
+                    }
+                }
+                for ((nm, addr) in Heart.found.take(4)) chip(br, (if (s.bleAddr == addr) "✓ " else "") + nm, s.bleAddr == addr) { s.bleAddr = addr }
+            }
+            else -> h.addView(text("watch / strap / phone → ur chatbox + avatar (HR, HeartRate, isHRConnected, HeartBeatToggle...)", 14f, SUB, fBody2))
+        }
+        switchRow(h, "send to my avatar", "avatar params for heart rate prefabs", s.heartParams) { s.heartParams = !s.heartParams }
+        switchRow(h, "show in chatbox", "💓 92 bpm in ur chatbox", s.line("heart")) { s.setLine("heart", !s.line("heart")) }
+
+        val inf = card(body, "Tracking add-ons")
+        inf.addView(text("Kinect One, SlimeVR + Vive trackers need a PC (PCVR through Link / Air Link / Virtual Desktop). " +
+            "the PC app's Body tab finds them and steps aside so ur real trackers win.", 14f, SUB, fBody2))
+    }
+
+    // ----------------------------------------------------------------- cam ---
+    private fun buildCam() {
+        val top = card(body, "VCam", full = true)
+        top.addView(text("VRChat's camera from here ~ open it in VRChat once first. needs VRChat 2025.3+ and OSC on.", 14f, SUB, fBody2))
+        val mr = row(top); mr.setPadding(0, dp(6), 0, 0)
+        for ((m, lab) in VCam.MODES) chip(mr, lab, s.vcamMode == m) { VCam.mode(s, m) }
+        chip(mr, "close cam", false) { VCam.send(s, "Close", true) }
+
+        val sh = card(body, "Shutter")
+        val big = button("📸  snap!", true) { VCam.send(s, "Capture", true) }.apply { textSize = 24f; minHeight = dp(80) }
+        sh.addView(big, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        val sr = row(sh); sr.setPadding(0, dp(8), 0, 0)
+        chip(sr, "timer photo", false) { VCam.send(s, "CaptureDelayed", true) }
+        sr.addView(text("  zoom ${s.vcamZoom.toInt()}°  ", 16f, TEXT, fHead))
+        chip(sr, "−", false) { VCam.zoom(s, -10f) }
+        chip(sr, "+", false) { VCam.zoom(s, 10f) }
+
+        val tg = card(body, "Camera toggles")
+        for ((k, lab) in VCam.TOGGLES) switchRow(tg, lab, "/usercamera/$k", VCam.on[k] == true) { VCam.toggle(s, k) }
     }
 
     private fun buildSettings() {

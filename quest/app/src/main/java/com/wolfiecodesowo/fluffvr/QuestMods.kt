@@ -32,27 +32,33 @@ object QuestMods {
     private var patWasOn = false
     private var listener: Thread? = null
     @Volatile private var listening = false
+    @Volatile private var gen = 0                     // each start gets a new number, so an old thread can't stop a new one
+    @Volatile var listenErr = ""                      // shown in the Mods tab if port 9001 can't be opened
 
     // ---- OSC listener (VRChat sends to 127.0.0.1:9001 by default)
     fun startListener(ctx: Context) {
         if (listening) return
         listening = true
+        val my = ++gen
+        val app = ctx.applicationContext
         listener = Thread {
             var sock: DatagramSocket? = null
             try {
                 sock = DatagramSocket(null).apply { reuseAddress = true; soTimeout = 1000; bind(InetSocketAddress(9001)) }
-                val buf = ByteArray(4096)
-                while (listening) {
+                listenErr = ""
+                val buf = ByteArray(65535)
+                while (listening && gen == my) {
                     val pk = DatagramPacket(buf, buf.size)
                     try { sock.receive(pk) } catch (_: java.net.SocketTimeoutException) { continue }
-                    try { for (msg in parseAll(pk.data, 0, pk.length)) handle(ctx, msg) } catch (_: Exception) {}
+                    try { for (msg in parseAll(pk.data, 0, pk.length)) handle(app, msg) } catch (_: Exception) {}
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                listenErr = "can't listen on port 9001 (${e.message}) ~ another OSC app might be using it"
             } finally {
                 sock?.close()
-                listening = false
+                if (gen == my) listening = false
             }
-        }.apply { isDaemon = true; start() }
+        }.apply { isDaemon = true; name = "fluff-osc"; start() }
     }
 
     fun stopListener() { listening = false }
@@ -129,8 +135,10 @@ object QuestMods {
     private var grounded: Boolean? = null
     private var talkSince = 0L
     @Volatile var talkMs = 0L
-    @Volatile private var velX = 0f
-    @Volatile private var velZ = 0f
+    @Volatile var velX = 0f                 // (public for Standable: ur movement from VRChat itself)
+    @Volatile var velZ = 0f
+    @Volatile var upright = 1f              // VRChat's Upright: 1 standing, lower = crouching / crawling
+    @Volatile var groundedNow = true
     private var lastMoveTick = 0L
     @Volatile var speed = 0f              // how fast ur avatar moves in VRChat (thumbstick too), m/s
 
@@ -227,8 +235,10 @@ object QuestMods {
                 else if (!talking && talkSince > 0) { talkMs += now - talkSince; talkSince = 0L }
                 return
             }
+            "Upright" -> { (v as? Float)?.let { upright = it }; return }
             "Grounded" -> {
                 val g = v == true
+                groundedNow = g
                 if (grounded == true && !g && !seated) s.jumps = s.jumps + 1
                 grounded = g; return
             }

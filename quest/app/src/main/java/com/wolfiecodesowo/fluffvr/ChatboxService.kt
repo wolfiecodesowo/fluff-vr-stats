@@ -15,8 +15,10 @@ import android.os.IBinder
 import android.os.PowerManager
 
 /**
- * Runs in the background (as a "foreground service" so the Quest doesn't pause it)
- * and sends ur chatbox stats to VRChat every few seconds, like the PC app does.
+ * Runs in the background (as a "foreground service" so the Quest doesn't pause it) whenever the app is open:
+ * listens to VRChat (counters, mute, talking...), runs every mod + reminder, and, when the chatbox is on,
+ * sends ur chatbox stats to VRChat every few seconds like the PC app does.
+ * v0.10: it used to only run while the chatbox was on, so mods + counters did nothing with the chatbox off.
  */
 class ChatboxService : Service() {
     private lateinit var thread: HandlerThread
@@ -40,6 +42,9 @@ class ChatboxService : Service() {
         handler.post(slow)
         QuestMods.startListener(this)
         RemoteLink.startServer(this)
+        TrackRelay.start(this)
+        Heart.start(this)
+        Standable.start(this)
         GlobalChat.start(this)
         GlobalChat.onMessage = { m ->
             if (!m.mine && Settings(this).gchatNotify) QuestMods.alert(this, "🌐 ${m.name}: ${m.text}")
@@ -59,7 +64,10 @@ class ChatboxService : Service() {
                 val text = Chatbox.compose(this@ChatboxService, s)
                 val now = System.currentTimeMillis()
                 // only send when something changed, plus a keep-alive so it doesn't fade out
-                if (text.isNotEmpty() && (text != lastText || now - lastSent > 25_000)) {
+                if (!s.chatboxOn) {
+                    if (lastText.isNotEmpty()) { Osc.chatbox(s.host, s.port, ""); lastText = "" }   // clear the bubble once
+                    preview = text
+                } else if (text.isNotEmpty() && (text != lastText || now - lastSent > 25_000)) {
                     Osc.chatbox(s.host, s.port, text)
                     lastText = text
                     lastSent = now
@@ -103,7 +111,7 @@ class ChatboxService : Service() {
             s.vrStreak = if (s.vrDate == yday) s.vrStreak + 1 else 1
             s.vrDate = today; s.vrTodayS = 0
         }
-        s.vrTodayS = s.vrTodayS + (now - lastVrTick) / 1000
+        if (QuestMods.afkSince == 0L) s.vrTodayS = s.vrTodayS + (now - lastVrTick) / 1000   // headset off doesn't count
         lastVrTick = now
         val hrs = ((now - Chatbox.sessionStart) / 3_600_000).toInt()
         if (s.line("milestones") && hrs > milestone) { milestone = hrs; QuestMods.alert(this, "$hrs hour${if (hrs > 1) "s" else ""} in VR!! 🎉") }
@@ -161,7 +169,7 @@ class ChatboxService : Service() {
             PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, "chatbox")
             .setContentTitle("Fluff VR Stats :3")
-            .setContentText("sending ur chatbox stats to VRChat")
+            .setContentText("mods + counters are on ~ open the app to change things")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(open)
             .setOngoing(true)
@@ -173,17 +181,21 @@ class ChatboxService : Service() {
         try { unregisterReceiver(screen) } catch (_: Exception) {}
         QuestMods.stopListener()
         RemoteLink.stopServer()
+        TrackRelay.stop()
+        Standable.stop()
         handler.removeCallbacksAndMessages(null)
         thread.quitSafely()
         wake?.let { if (it.isHeld) it.release() }
         val s = Settings(this)
-        Osc.chatbox(s.host, s.port, "")       // clear the bubble when stopped
+        if (s.chatboxOn) Osc.chatbox(s.host, s.port, "")       // clear the bubble when stopped
         super.onDestroy()
     }
 
     companion object {
         @Volatile var running = false
         @Volatile var preview = ""
+        /** running + the chatbox is turned on */
+        fun sending(ctx: Context) = running && Settings(ctx).chatboxOn
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, ChatboxService::class.java))
         fun stop(ctx: Context) = ctx.stopService(Intent(ctx, ChatboxService::class.java))

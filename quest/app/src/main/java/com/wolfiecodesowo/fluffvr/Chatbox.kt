@@ -89,6 +89,20 @@ class Settings(ctx: Context) {
     var ears: String get() = p.getString("ears", "cat")!!; set(v) = p.edit().putString("ears", v).apply()
     var kittyName: String get() = p.getString("kitty_name", "Mochi")!!; set(v) = p.edit().putString("kitty_name", v).apply()
 
+    // v0.10: the service runs whenever the app is open (mods, counters, OSC); this only says if the chatbox sends
+    var chatboxOn: Boolean get() = p.getBoolean("chatbox_on", false); set(v) = p.edit().putBoolean("chatbox_on", v).apply()
+    var standable: Boolean get() = p.getBoolean("standable", false); set(v) = p.edit().putBoolean("standable", v).apply()
+    // v0.10: heart rate, phone body tracker, VCam
+    var heartSource: String get() = p.getString("hr_src", "off")!!; set(v) = p.edit().putString("hr_src", v).apply()
+    var pulsoidToken: String get() = p.getString("hr_token", "")!!; set(v) = p.edit().putString("hr_token", v).apply()
+    var bleAddr: String get() = p.getString("hr_ble", "")!!; set(v) = p.edit().putString("hr_ble", v).apply()
+    var heartParams: Boolean get() = p.getBoolean("hr_params", true); set(v) = p.edit().putBoolean("hr_params", v).apply()
+    var trackHeight: Float get() = p.getFloat("trk_h", 1.70f); set(v) = p.edit().putFloat("trk_h", v).apply()
+    var trackFront: Boolean get() = p.getBoolean("trk_front", false); set(v) = p.edit().putBoolean("trk_front", v).apply()
+    var trackFull: Boolean get() = p.getBoolean("trk_full", false); set(v) = p.edit().putBoolean("trk_full", v).apply()
+    var vcamMode: Int get() = p.getInt("vcam_mode", 1); set(v) = p.edit().putInt("vcam_mode", v).apply()
+    var vcamZoom: Float get() = p.getFloat("vcam_zoom", 45f); set(v) = p.edit().putFloat("vcam_zoom", v).apply()
+
     fun line(key: String): Boolean = p.getBoolean("line_$key", key in DEFAULT_ON)
     fun setLine(key: String, on: Boolean) = p.edit().putBoolean("line_$key", on).apply()
 
@@ -177,11 +191,12 @@ class Settings(ctx: Context) {
             Triple("quiet", "🌙 Quiet hours", "no pop-ups at night (warnings still show)"),
             Triple("batt_saver", "🪫 Battery saver", "under 20%: chatbox updates slower + ping/weather pause"),
             Triple("talking", "🎙️ Talking dot", "shows 🎙️ while u're talking"),
+            // ---- v0.10
+            Triple("heart", "💓 Heart rate", "ur bpm in the chatbox (set it up in the Body tab)"),
         )
         /** category for each mod (Mods tab filter) */
         val CATS = listOf("all" to "✨ all", "new" to "🆕 new", "chat" to "💬 chatbox", "alert" to "🔔 alerts", "comfy" to "😌 comfy", "fun" to "🎉 fun")
-        val NEW = setOf("water", "mood", "compliment", "clock2", "steps", "swaps", "pat_goal", "speed", "afk_recap", "dance",
-            "play_limit", "charge", "quiet", "batt_saver", "talking")
+        val NEW = setOf("heart")
         fun catOf(k: String) = when (k) {
             "pat_party", "milestones", "mute_nudge", "chime", "ram_alert", "hot_alert", "batt_alerts", "afk_recap", "charge", "lowbatt" -> "alert"
             "eye_break", "posture", "bedtime", "hydrate", "quiet", "play_limit", "batt_saver" -> "comfy"
@@ -212,7 +227,7 @@ object Chatbox {
         "countdown" to "🎉", "today" to "🥽", "streak" to "🔥", "quote" to "💭", "combo" to "💥", "vibe" to "🕺",
         "goal" to "🎯", "fortune" to "🍀",
         "water" to "🥤", "mood" to "", "compliment" to "💖", "clock2" to "🌏", "steps" to "🚶", "swaps" to "👗",
-        "pat_goal" to "🏅", "speed" to "💨")
+        "pat_goal" to "🏅", "speed" to "💨", "heart" to "💓")
     private val KAO = listOf("(=^･ω･^=)", "(◕ᴗ◕✿)", "(｡•ᴗ•｡)", "ʕ•ᴥ•ʔ", "(≧◡≦)", "(•ω•)", "ฅ^•ﻌ•^ฅ", "(｡♥‿♥｡)")
     private val SIMPLE = mapOf("status" to "♡", "song" to "♪", "afk" to "zzz")
 
@@ -296,6 +311,7 @@ object Chatbox {
         if (s.line("streak") && s.vrStreak > 1) vr += tag("streak", "${s.vrStreak} day streak")
         if (vr.isNotEmpty()) lines += vr.joinToString("  ")
         if (s.line("timer")) QuestMods.timerText(s, now)?.let { lines += tag("timer", it) }
+        if (s.line("heart")) Heart.bpmNow()?.let { lines += tag("heart", "$it bpm") }
         if (s.line("song") && m.title.isNotEmpty() && m.playing) {
             lines += tag("song", short(if (m.artist.isNotEmpty()) "${m.title} - ${m.artist}" else m.title, 48))
             if (s.line("song_bar")) songBar(m.position(), m.duration)?.let { lines += it }

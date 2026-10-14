@@ -16,8 +16,9 @@ class FluffDrawable(
     private val fill: Int, private val ink: Int, private val inner: Int, private val radius: Float,
     private val d: Float, private val ears: String = "none", private val tufts: Boolean = true, private val seed: Int = 7,
     private val accent: Int = inner, private val glow: Boolean = false,
+    private val earSize: Float = 13f, private val outline: Boolean = false,
 ) : Drawable() {
-    val earH = if (ears == "none") 0f else 13 * d
+    val earH = if (ears == "none") 0f else earSize * d
     val insetTop get() = (earH + 3 * d).toInt()
     val insetSide get() = (6 * d).toInt()
     val insetBottom get() = (6 * d).toInt()
@@ -119,6 +120,8 @@ class FluffDrawable(
                 android.graphics.Shader.TileMode.CLAMP)
         }
         c.drawRoundRect(RectF(r.left + 0.8f * d, r.top + 0.8f * d, r.right - 0.8f * d, r.bottom - 0.8f * d), rr, rr, rim)
+        if (outline) c.drawRoundRect(r, rr, rr, Paint(Paint.ANTI_ALIAS_FLAG).apply {   // PC-style ink line
+            color = ink; style = Paint.Style.STROKE; strokeWidth = 2.6f * d })
         if (false) for (p in shapes) c.drawPath(p, pFill)
         // doodled fur strokes in the bottom-right corner
         if (false) {
