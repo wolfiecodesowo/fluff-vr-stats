@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.1: sitting + every language
+- 🪑 **better standable can sit now (PC):** stay low + still for 2 secs and ur legs go out in front, stand up and ur back on ur feet (Quest already had it)
+- 🌍 **all the v0.5 stuff is translated** into all 12 languages: Body, VCam, YouTube, OVR Toolkit + the new alerts
+- 📸 webcam tracking add-on confirmed working on Python 3.14
+- 🤖 Fluff Bot: /setup never deletes channels any more, update posts can't silently stop, lost channels get found again
+
 ## v0.5.0 + Quest Edition v0.10.0: full-body tracking, heart rate, VCam + a brand new Quest look
 - 🦴 **full-body estimation (new Body tab, PC + Quest):** no trackers needed. ur hip follows u, ur feet stay planted and take a step when u move, crouching works. turn on **standable**, then calibrate FBT in VRChat like normal (it uses VRChat's own OSC trackers, no SteamVR driver, nothing touches VRChat)
   - PC: from ur headset + controllers · Quest: from how u move in VRChat (OSC on)
