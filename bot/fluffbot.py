@@ -234,8 +234,10 @@ class FluffBot(discord.Client):
         if not name:
             return None
         for pool in (g.text_channels, g.voice_channels):
+            stem = _plain_name(name.split(":")[0]) if ":" in name else None   # stat channels: "🐾 Members: 42"
             c = discord.utils.get(pool, name=name) or discord.utils.find(
-                lambda x: x.name.lower() == name.lower() or _plain_name(x.name) == _plain_name(name), pool)
+                lambda x: x.name.lower() == name.lower() or _plain_name(x.name) == _plain_name(name)
+                or (stem and _plain_name(x.name.split(":")[0]) == stem), pool)
             if c is not None:
                 CFG["channels"][key] = c.id
                 save_cfg(CFG)
