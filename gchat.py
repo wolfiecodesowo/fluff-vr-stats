@@ -25,6 +25,8 @@ BASE = "https://ntfy.sh"
 TOPIC = "fluffvrstats-global-chat-v1"      # v1 (legacy) room
 ROOM2 = "fluffvrstats-room-v2"              # v2: only Fluff Bot posts here (signed)
 INBOX2 = "fluffvrstats-inbox-v2"            # v2: apps send here, Fluff Bot checks + relays
+MODACK2 = "fluffvrstats-modack-v2"          # Fluff Bot's signed answers to the owner's dev panel
+MOD_NAME = "Fluff Mod"                      # who kick/mute/ban notices come from in the room
 MAX_LEN = 200
 SLOW_S = 3.0
 UA = {"User-Agent": "FluffVRStats-gchat"}
@@ -49,6 +51,12 @@ def clean(text):
 def clean_name(name):
     name = re.sub(r"[^\w .~-]", "", str(name or ""), flags=re.UNICODE).strip()[:20]
     return _BAD.sub("fluff", name)
+
+
+def reserved_name(name):
+    """names only Fluff Bot / the mods post as (so nobody can fake a ban notice)"""
+    n = re.sub(r"[^a-z]", "", str(name or "").lower())
+    return n in ("fluffmod", "fluffbot", "fluffstaff", "fluffowner", "mod", "admin", "staff", "owner", "system")
 
 
 class GlobalChat:

@@ -8,7 +8,13 @@ Data lives in bot/bot_data.json (never uploaded):
   keys:  {key: discord user id}
   users: {uid: {key, gen, sids, v, c, last, first, badges, name}}
   bans:  {uids: [...], sids: [...]}
+  mutes: {"u:<uid>" / "s:<sid>": {kind: mute|kick, until (0 = no end), why, by, name}}
   events:{id: {...}}
+
+Dev panel (devpanel.py, owner only): it posts kick/mute/ban commands into the inbox, signed with the
+password-locked "mod" key. Fluff Bot only obeys good signatures, does it here (so it works for every
+app version, old ones too), says it publicly in the app's global chat as "Fluff Mod", and answers
+the panel on MODACK2.
 """
 import asyncio
 import datetime
@@ -53,7 +59,7 @@ def load_data():
             d = json.load(f)
     except Exception:
         d = {}
-    for k, v in (("keys", {}), ("users", {}), ("bans", {"uids": [], "sids": []}), ("events", {})):
+    for k, v in (("keys", {}), ("users", {}), ("bans", {"uids": [], "sids": []}), ("mutes", {}), ("events", {})):
         d.setdefault(k, v)
     d["bans"].setdefault("uids", [])
     d["bans"].setdefault("sids", [])
@@ -97,7 +103,7 @@ def install(bot, env):
             log.warning("bot_key.pem couldn't load: %s", e)
     if PK is None:
         log.info("no bot/bot_key.pem yet: app keys + safe chat are off (run tools/make_keys.py)")
-    state = {"recent": {}, "last_msg": {}, "uid_by_hash": {}}
+    state = {"recent": {}, "last_msg": {}, "uid_by_hash": {}, "nonces": {}}
 
     def keys_on():
         return PK is not None
@@ -279,21 +285,37 @@ def install(bot, env):
                 except discord.HTTPException:
                     pass
 
+    def chat_name(raw, sid):
+        """cleaned chat name; nobody but the mods gets to be "Fluff Mod" / "Fluff Bot" etc."""
+        n = G.clean_name(raw) or "fluff"
+        return ("fluff-" + str(sid)[:4]) if G.reserved_name(n) else n
+
+    def muted(uid=None, sid=None):
+        """the mute/kick entry stopping this person from chatting right now, or None"""
+        now = time.time()
+        for k in ([f"u:{uid}"] if uid else []) + ([f"s:{sid}"] if sid else []):
+            e = D["mutes"].get(k)
+            if e and (not e.get("until") or e["until"] > now):
+                return e
+        return None
+
     async def on_inbox(p, ev):
         t = p.get("t")
+        if t == "mod":
+            return await on_mod(p)                   # owner's dev panel (checked by signature, not app key)
         sid = str(p.get("s", ""))[:16]
         uid, u = check_tok(p.get("tok"), sid)
         if not u:
             return                                   # no real key / banned -> silently dropped
         if t == "msg":
             text, why = G.clean(p.get("m"))
-            if text is None:
+            if text is None or muted(uid, sid):
                 return
             now = time.time()
             if now - state["last_msg"].get(uid, 0) < MSG_SLOW_S:
                 return
             state["last_msg"][uid] = now
-            name = G.clean_name(p.get("n")) or "fluff"
+            name = chat_name(p.get("n"), sid)
             await relay(uuid.uuid4().hex[:16], name, text, sid, str(p.get("c", "pc"))[:8], uid)
         elif t == "report":
             m = state["recent"].get(str(p.get("id", "")))
@@ -320,7 +342,7 @@ def install(bot, env):
                 await ntfy_post(G.TOPIC, {"v": 1, "n": "Fluff Bot", "m": OLD_NOTICE, "s": "fluffbot", "c": "sys", "r": 1})
             return
         sid = str(p.get("s", ""))[:16]
-        if sid in D["bans"]["sids"]:
+        if sid in D["bans"]["sids"] or muted(None, sid):
             return
         text, why = G.clean(p.get("m"))
         if text is None:
@@ -329,21 +351,175 @@ def install(bot, env):
         if now - state["last_msg"].get("v1:" + sid, 0) < MSG_SLOW_S:
             return
         state["last_msg"]["v1:" + sid] = now
-        await relay(uuid.uuid4().hex[:16], G.clean_name(p.get("n")) or "fluff", text, sid,
+        await relay(uuid.uuid4().hex[:16], chat_name(p.get("n"), sid), text, sid,
                     str(p.get("c", "pc"))[:8], None, to_discord=True, to_v1=False)
 
     async def from_discord(msg, text):
         """Discord #global-chat -> v2 room (old apps get it from fluffbot's v1 bridge)"""
         if not keys_on():
             return False
-        if str(msg.author.id) in D["bans"]["uids"]:
+        uid, sid = str(msg.author.id), "d" + str(msg.author.id)[-9:]
+        if uid in D["bans"]["uids"] or muted(uid, sid):
             return True
-        await relay(uuid.uuid4().hex[:16], G.clean_name(msg.author.display_name) or "fluff", text,
-                    "d" + str(msg.author.id)[-9:], "discord", str(msg.author.id), to_discord=False, to_v1=True)
+        await relay(uuid.uuid4().hex[:16], chat_name(msg.author.display_name, sid), text,
+                    sid, "discord", uid, to_discord=False, to_v1=True)
         return True
+
+    # ------------------------------------------------------ owner dev panel ---
+    KICK_MIN = 10                  # a kick = their recent messages vanish + they can't chat for 10 min
+
+    def mod_signer(p):
+        """which mod key signed this ("mod" = the owner), or None"""
+        for name in trust.mod_key_names():
+            if trust.verify_payload(name, p):
+                return name
+        return None
+
+    def uid_of_sid(sid):
+        for uid, u in D["users"].items():
+            if sid in u.get("sids", []):
+                return uid
+        g = bot.guild()
+        if g and sid.startswith("d"):                          # Discord people in #global-chat
+            for m in g.members:
+                if "d" + str(m.id)[-9:] == sid:
+                    return str(m.id)
+        return None
+
+    def resolve(p):
+        """a mod command's target -> (discord uid or None, every sid of theirs, name to show)"""
+        m = state["recent"].get(str(p.get("mid") or "")) or {}
+        uid = str(p.get("uid") or "").strip() or m.get("uid")
+        sid = str(p.get("sid") or "").strip()[:16] or m.get("sid")
+        if not uid and sid:
+            uid = uid_of_sid(sid)
+        sids = {sid} if sid else set()
+        if uid:
+            sids |= set(D["users"].get(uid, {}).get("sids", []))
+            sids.add("d" + uid[-9:])
+        mem = member(uid) if uid and uid.isdigit() else None
+        name = m.get("name") or (D["users"].get(uid, {}).get("name") if uid else None) \
+            or (mem.display_name if mem else None) or (f"sid {sid}" if sid else "someone")
+        return uid, sorted(sids), G.clean_name(name) or "someone"
+
+    def mins_txt(mins):
+        for n, unit in ((1440, "day"), (60, "hour"), (1, "min")):
+            if mins >= n and mins % n == 0:
+                k = mins // n
+                return f"{k} {unit}" + ("s" if k != 1 and unit != "min" else "")
+        return f"{mins} min"
+
+    async def notice(text):
+        """public in the app's global chat only (every version, old v1 apps too), not in Discord"""
+        await relay(uuid.uuid4().hex[:16], G.MOD_NAME, str(text)[:G.MAX_LEN], "fluffmod", "sys", None,
+                    to_discord=False, to_v1=True)
+
+    async def on_mod(p):
+        who = mod_signer(p)
+        if not who:
+            log.warning("dev panel: dropped a mod command with a bad signature")
+            return
+        nonce = str(p.get("nonce", ""))[:32]
+
+        async def ack(ok, msg):
+            await signed(G.MODACK2, {"t": "ack", "nonce": nonce, "ok": bool(ok), "msg": str(msg)[:300]})
+        try:
+            ts = float(p.get("ts", 0))
+        except (TypeError, ValueError):
+            ts = 0
+        now = time.time()
+        if not nonce or nonce in state["nonces"] or abs(now - ts) > 300:
+            return await ack(False, "that command is too old or was already used (is ur PC clock right?)")
+        state["nonces"][nonce] = now
+        for k in [k for k, v in state["nonces"].items() if now - v > 600]:
+            state["nonces"].pop(k, None)
+        for k in [k for k, v in D["mutes"].items() if v.get("until") and v["until"] < now]:
+            D["mutes"].pop(k, None)                            # tidy up mutes that ran out
+
+        a, why = str(p.get("a", "")), " ".join(str(p.get("why") or "").split())[:100]
+        tail = f" · {why}" if why else ""
+        by = "owner" if who == "mod" else who[4:]
+        if a == "ping":
+            return await ack(True, "Fluff Bot hears u :3")
+        if a == "say":
+            text = " ".join(str(p.get("text", "")).split())[:G.MAX_LEN]
+            if not text:
+                return await ack(False, "type something to say first")
+            await notice(text)
+            await bot.modlog(f"🛡️ **dev panel** ({by}) said in app chat: {text}", C.GOLD)
+            return await ack(True, "posted in global chat as Fluff Mod")
+        if a == "del":
+            mid = str(p.get("mid") or "").strip()[:40]
+            if not mid:
+                return await ack(False, "pick a message first")
+            await signed(G.ROOM2, {"t": "del", "id": mid, "ts": now})
+            m = state["recent"].get(mid, {})
+            await bot.modlog(f"🛡️ **dev panel** ({by}) deleted a message from {m.get('name', '?')}: "
+                             f"{m.get('text', '(too old to show)')}", C.GOLD)
+            return await ack(True, "message removed from everyone's chat")
+        if a not in ("kick", "mute", "unmute", "ban", "unban"):
+            return await ack(False, f"unknown action {a!r} (is Fluff Bot up to date?)")
+
+        uid, sids, name = resolve(p)
+        if not uid and not sids:
+            return await ack(False, "couldn't tell who that is ~ pick one of their messages")
+        g = bot.guild()
+        if uid and g and uid == str(g.owner_id):
+            return await ack(False, "that's u, silly :3")
+        keys = ([f"u:{uid}"] if uid else []) + [f"s:{s}" for s in sids]
+        if a in ("kick", "mute"):
+            mins = KICK_MIN if a == "kick" else max(0, int(p.get("mins") or 0))
+            until = int(now + mins * 60) if mins else 0
+            for k in keys:
+                D["mutes"][k] = {"kind": a, "until": until, "why": why, "by": by, "name": name}
+            save_data(D)
+            if a == "kick":
+                gone = [mid for mid, m in state["recent"].items()
+                        if m.get("sid") in sids or (uid and m.get("uid") == uid)][-30:]
+                for mid in gone:
+                    await signed(G.ROOM2, {"t": "del", "id": mid, "ts": now})
+                await notice(f"👢 {name} was kicked from global chat ({KICK_MIN} min){tail}")
+                done = f"kicked {name} ({len(gone)} msg{'' if len(gone) == 1 else 's'} removed, back in {KICK_MIN} min)"
+            else:
+                await notice(f"🔇 {name} was muted " + (f"for {mins_txt(mins)}" if mins else "until further notice") + tail)
+                done = f"muted {name}" + (f" for {mins_txt(mins)}" if mins else " (no end)")
+        elif a == "unmute":
+            n = sum(1 for k in keys if D["mutes"].pop(k, None))
+            save_data(D)
+            if not n:
+                return await ack(False, f"{name} wasn't muted or kicked")
+            await notice(f"🔊 {name} can chat again")
+            done = f"unmuted {name}"
+        elif a == "ban":
+            if uid and uid not in D["bans"]["uids"]:
+                D["bans"]["uids"].append(uid)
+            for s in sids:
+                if s not in D["bans"]["sids"]:
+                    D["bans"]["sids"].append(s)
+                await signed(G.ROOM2, {"t": "ban", "s": s, "ts": now})
+            save_data(D)
+            await notice(f"🔨 {name} was banned from global chat{tail}")
+            done = f"banned {name} ({len(sids)} installs)"
+        else:                                                   # unban
+            was = (uid in D["bans"]["uids"]) or any(s in D["bans"]["sids"] for s in sids)
+            if uid:
+                D["bans"]["uids"] = [x for x in D["bans"]["uids"] if x != uid]
+            D["bans"]["sids"] = [x for x in D["bans"]["sids"] if x not in sids]
+            for k in keys:
+                D["mutes"].pop(k, None)
+            save_data(D)
+            if not was:
+                return await ack(False, f"{name} wasn't banned")
+            await notice(f"✅ {name} was unbanned and can chat again")
+            done = f"unbanned {name}"
+        await bot.modlog(f"🛡️ **dev panel** ({by}): {done}" + (f" · <@{uid}>" if uid and uid.isdigit() else "")
+                         + (f" · reason: {why}" if why else ""), 0xFF6B6B if a in ("ban", "kick") else C.GOLD)
+        await ack(True, done)
 
     bot.safe_from_discord = from_discord
     bot.safe_keys_on = keys_on
+    bot.safe_on_inbox = on_inbox             # tests feed the inbox straight in
+    bot.safe_data = D
 
     # ---------------------------------------------------------------- events ---
     @tasks.loop(hours=6)

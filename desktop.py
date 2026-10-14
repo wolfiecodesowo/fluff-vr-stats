@@ -472,6 +472,15 @@ def run():
     m2.add_command(label="Switch to VR mode", command=switch_vr)
     m2.add_command(label="Ask VR or Desktop every launch", command=ask_each_time)
     menu.add_cascade(label="Mode", menu=m2)
+    try:
+        import devpanel                     # owner only: shows up just on a PC that has the mod key
+        if devpanel.available():
+            m3 = tk.Menu(menu, tearoff=0)
+            m3.add_command(label="Dev panel (kick / mute / ban)…",
+                           command=lambda: subprocess.Popen([sys.executable, os.path.join(HERE, "devpanel.py")], cwd=HERE))
+            menu.add_cascade(label="Dev", menu=m3)
+    except Exception:
+        pass
     root.config(menu=menu)
 
     def close():

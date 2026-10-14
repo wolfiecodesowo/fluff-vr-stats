@@ -7,6 +7,9 @@ Two key pairs, both ECDSA P-256:
                so posting straight to ntfy with curl does nothing.
   - "release": signs each release's file list (SHA-256 of every file). The auto-updater checks it
                before it swaps a single file.
+  - "mod":     the owner's dev panel (devpanel.py) signs kick/mute/ban commands with it, Fluff Bot only
+               obeys commands with a good signature. Its private half is password-locked on the owner's PC
+               (tools/make_mod_key.py), so having the source code doesn't let anyone else use the panel.
 
 Only the PUBLIC halves live in the repo (trust.json). The private halves are made on the owner's
 PC by tools/make_keys.py and never get uploaded (they're in .gitignore).
@@ -92,10 +95,18 @@ def verify_payload(name, payload):
     return isinstance(payload, dict) and verify(name, canonical(payload), payload.get("sig"))
 
 
+def mod_key_names():
+    """keys allowed to send mod commands (kick/mute/ban) to Fluff Bot: "mod" is the owner's,
+    "mod_<name>" ones are for staff later (tools/make_mod_key.py --staff <name>)"""
+    return [k for k in trust_keys() if k == "mod" or k.startswith("mod_")]
+
+
 # --------------------------------------------------------- owner/bot side ---
-def load_private(path):
+def load_private(path, password=None):
+    """password: for the dev panel's mod key (it's stored encrypted). Wrong password -> ValueError"""
     with open(path, "rb") as f:
-        return serialization.load_pem_private_key(f.read(), password=None)
+        pw = password.encode("utf-8") if isinstance(password, str) else password
+        return serialization.load_pem_private_key(f.read(), password=pw or None)
 
 
 def sign(private_key, data):
@@ -108,10 +119,11 @@ def sign_payload(private_key, payload):
     return out
 
 
-def new_keypair():
+def new_keypair(password=None):
     k = ec.generate_private_key(ec.SECP256R1())
-    pem = k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
-                          serialization.NoEncryption())
+    enc = (serialization.BestAvailableEncryption(password.encode("utf-8")) if password
+           else serialization.NoEncryption())
+    pem = k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, enc)
     pub = k.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
     return pem, b64e(pub)
 
