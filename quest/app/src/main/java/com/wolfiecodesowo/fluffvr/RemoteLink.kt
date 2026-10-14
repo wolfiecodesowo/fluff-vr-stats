@@ -22,6 +22,7 @@ object RemoteLink {
 
     // ------------------------------------------------------------------ Quest side ---
     @Volatile private var serving = false
+    private val seenPhones = java.util.Collections.synchronizedSet(HashSet<String>())
     private var multicast: WifiManager.MulticastLock? = null
 
     fun startServer(ctx: Context) {
@@ -41,6 +42,8 @@ object RemoteLink {
                     try { sock.receive(pk) } catch (_: java.net.SocketTimeoutException) { continue }
                     try {
                         val msg = JSONObject(String(pk.data, 0, pk.length, Charsets.UTF_8))
+                        val who = pk.address.hostAddress ?: ""
+                        if (seenPhones.add(who)) android.util.Log.i("FluffTrack", "remote: $who says ${msg.optString("t")} (code ${msg.optString("code")}, ours ${Settings(ctx).pairCode})")
                         val reply = handle(ctx, msg) ?: continue
                         val out = reply.toString().toByteArray(Charsets.UTF_8)
                         sock.send(DatagramPacket(out, out.size, pk.address, pk.port))

@@ -45,6 +45,8 @@ class TrackerService : Service() {
     private var frames = 0
     private var rateT = System.currentTimeMillis()
     private var lastAsk = 0L
+    private var lastFind = 0L
+    private val startedAt = System.currentTimeMillis()
     private var calibratedAt = 0L
 
     /** what the Quest says about our tracking (it answers the Remote link) */
@@ -216,6 +218,15 @@ class TrackerService : Service() {
         if (RemoteLink.questIp.isEmpty()) { RemoteLink.questIp = ip; RemoteLink.code = code }
         val now0 = System.currentTimeMillis()
         if (now0 - lastAsk > 2000) { lastAsk = now0; Thread { RemoteLink.poll() }.start() }   // does the Quest hear us?
+        if (!RemoteLink.connected() && now0 - lastFind > 8000 && now0 - startedAt > 3000) {
+            lastFind = now0
+            Thread {
+                RemoteLink.discover()
+                val q = RemoteLink.found.keys.firstOrNull()
+                android.util.Log.i("FluffTrack", "Quest at $ip not answering, found: ${RemoteLink.found}")
+                if (q != null && q != RemoteLink.questIp) { RemoteLink.questIp = q; s.remoteIp = q; status = "found ur Quest at $q :3" }
+            }.start()
+        }
         try {
             val sk = sock ?: Net.udp().also { sock = it }
             val addr = InetAddress.getByName(ip)
@@ -226,7 +237,8 @@ class TrackerService : Service() {
             frames++
             val now = System.currentTimeMillis()
             if (now - rateT >= 1000) { fps = frames * 1000f / (now - rateT); frames = 0; rateT = now }
-            if (!status.startsWith("calibrated") || now - calibratedAt > 4000) status = "tracking :3 · ${fps.toInt()} fps → $ip\n" + questHears()
+            if (!status.startsWith("calibrated") || now - calibratedAt > 4000) status = "tracking :3 · ${fps.toInt()} fps → $ip (code $code)\n" + questHears()
+            if (frames == 1 && fps == 0f) android.util.Log.i("FluffTrack", "sending tracking to $ip:${TrackRelay.PORT} code $code")
             last = res.first
         } catch (e: Exception) { status = "couldn't reach ur Quest (${e.message})" }
     }
