@@ -71,8 +71,23 @@ class ModsTest {
         repeat(60) { i -> out = Standable.compute(s, 0f, i * 0.02f, 1f, 0.033f) }  // walk 1.2 m: feet follow
         repeat(30) { out = Standable.compute(s, 0f, 1.2f, 1f, 0.033f) }
         assertTrue("feet stepped", out["foot_l"]!![2] > 0.9f)
-        val crouch = Standable.compute(s, 0f, 1.2f, 0.4f, 0.033f)
-        assertTrue("crouch lowers hip", crouch["hip"]!![1] < out["hip"]!![1] - 0.2f)
+        val stand = out
+        // crouch (head at 60% height): head + hip go down, feet stay on the floor
+        var t = 1_000_000L
+        val crouch = Standable.compute(s, 0f, 1.2f, 0.6f, 0.033f, t)
+        assertEquals("head follows ur real height", 1.7f * 0.93f * 0.6f - 0.09f, crouch["head"]!![1], 0.02f)
+        assertTrue("crouch lowers hip", crouch["hip"]!![1] < stand["hip"]!![1] - 0.3f)
+        assertTrue("feet stay down", crouch["foot_l"]!![1] < 0.12f)
+        assertTrue("not sitting yet", !Standable.sitting)
+        // stay low + still for 2s = sitting: knees out in front of the hips
+        var sit = crouch
+        repeat(80) { t += 33; sit = Standable.compute(s, 0f, 1.2f, 0.5f, 0.033f, t) }
+        assertTrue("sitting", Standable.sitting)
+        assertTrue("knees in front of hips", sit["knee_l"]!![2] > sit["hip"]!![2] + 0.2f)
+        assertTrue("feet in front", sit["foot_l"]!![2] > sit["hip"]!![2] + 0.2f)
+        // stand back up
+        t += 33; Standable.compute(s, 0f, 1.2f, 1f, 0.033f, t)
+        assertTrue("standing again", !Standable.sitting)
     }
 
     @Test

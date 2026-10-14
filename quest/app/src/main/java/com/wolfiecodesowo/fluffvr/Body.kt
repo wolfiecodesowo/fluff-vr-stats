@@ -300,7 +300,10 @@ object Standable {
                 val now = System.currentTimeMillis()
                 val t1 = System.nanoTime()
                 val dt = min(0.1f, (t1 - t0) / 1e9f); t0 = t1
-                if (!s.standable) { status = "off"; legs.reset(); Thread.sleep(250); continue }
+                if (!s.standable) {
+                    if (status != "off") android.util.Log.i("FluffStandable", "off")
+                    status = "off"; legs.reset(); Thread.sleep(250); continue
+                }
                 // always send (standing trackers are enough for VRChat to offer "Calibrate FBT");
                 // VRChat's own OSC (if we hear it) adds walking, crouching + sitting on top
                 val hearing = now - QuestMods.oscSeen < 4000
@@ -308,21 +311,24 @@ object Standable {
                 val vx = if (hearing) QuestMods.velX.coerceIn(-8f, 8f) else 0f
                 val vz = if (hearing) QuestMods.velZ.coerceIn(-8f, 8f) else 0f
                 if (abs(vx) + abs(vz) > 0.05f) { px += vx * dt; pz += vz * dt }
-                val out = compute(s, px, pz, if (hearing) QuestMods.upright else 1f, dt)
+                val out = compute(s, px, pz, if (hearing) QuestMods.upright else 1f, dt, now, abs(vx) + abs(vz) > 0.3f)
                 last = out
                 try {
                     if (sock == null) sock = DatagramSocket()
                     val addr = InetAddress.getByName(s.host)
-                    val eye = s.trackHeight * 0.93f
-                    val headY = eye * (0.5f + 0.5f * (if (hearing) QuestMods.upright else 1f).coerceIn(0f, 1f))
                     val parts = out.filterKeys { s.trackFull || it in setOf("hip", "foot_l", "foot_r") }
-                    for (m in Trackers.messages(parts, floatArrayOf(px, headY - 0.09f, pz - 0.06f), 0f))
+                    for (m in Trackers.messages(parts, out["head"], 0f))
                         sock.send(DatagramPacket(m, m.size, addr, s.port))
-                    status = if (hearing) "live ~ walk, crouch + stand :3"
+                    status = if (hearing) (if (sitting) "live ~ sitting :3" else "live ~ walk, crouch, sit + stand :3")
                         else "sending trackers ~ calibrate FBT in VRChat. (not hearing VRChat's OSC, so walking won't move ur feet yet)"
                 } catch (e: Exception) { status = "couldn't send (${e.message})" }
                 count++
-                if (now - rateT >= 1000) { rate = count * 1000f / (now - rateT); count = 0; rateT = now }
+                if (now - rateT >= 1000) {
+                    rate = count * 1000f / (now - rateT); count = 0; rateT = now
+                    // shows up in `adb logcat -s FluffStandable` (helps when VRChat won't show Calibrate FBT)
+                    if ((now / 1000) % 5 == 0L) android.util.Log.i("FluffStandable", "sending ${rate.toInt()}/s to ${s.host}:${s.port} · " +
+                        "hearing VRChat=${now - QuestMods.oscSeen < 4000} · $status")
+                }
                 Thread.sleep(33)
             }
             sock?.close()
@@ -331,18 +337,49 @@ object Standable {
 
     fun stop() { running = false }
 
-    /** head over (px, pz) -> hip, feet, knees, chest. upright 1 = standing */
-    fun compute(s: Settings, hx: Float, hz: Float, upright: Float, dt: Float): Map<String, FloatArray> {
+    @Volatile var sitting = false
+    private var lowSince = 0L
+
+    /**
+     * head over (px, pz) -> hip, feet, knees, chest + "head" (where we tell VRChat ur head is).
+     * upright = VRChat's Upright (ur head height / standing height): 1 standing, ~0.6 crouching, ~0.5 sitting.
+     * low + still for 2s = sitting (hips back, legs out in front), stand up again = back to standing.
+     */
+    fun compute(s: Settings, hx: Float, hz: Float, upright: Float, dt: Float, now: Long = System.currentTimeMillis(),
+                moving: Boolean = false): Map<String, FloatArray> {
         val eye = s.trackHeight * 0.93f
-        val up = upright.coerceIn(0.2f, 1f)
-        val headY = eye * (0.5f + 0.5f * up)
-        val crouch = 1f - up
-        val hipY = max(0.2f, headY - eye * 0.4f * (1f - crouch * 0.35f))
-        val hipZ = hz - 0.07f - crouch * 0.22f
+        val up = upright.coerceIn(0.25f, 1.05f)
+        val headY = eye * up                       // VRChat pins our head to ur real head, so this has to be ur real height
+        val legLen = max(0.3f, eye * 0.57f - 0.07f)
+        if (up < 0.68f && !moving) { if (lowSince == 0L) lowSince = now } else lowSince = 0L
+        if (up > 0.8f) sitting = false
+        else if (lowSince > 0 && now - lowSince > 2000) sitting = true
         val out = HashMap<String, FloatArray>()
+        out["head"] = floatArrayOf(hx, headY - 0.09f, hz - 0.06f, 0f)
+        if (sitting) {
+            // seat under ur hips, thighs forward, shins down to the floor
+            val hipY = max(0.15f, headY - eye * 0.36f)
+            val hipZ = hz - 0.12f
+            val thigh = legLen * 0.5f
+            val kneeY = max(0.1f, hipY + 0.04f)
+            for ((side, dx) in listOf("l" to -0.12f, "r" to 0.12f)) {
+                val kz = hipZ + thigh
+                val footZ = kz + max(0f, legLen * 0.5f - kneeY) * 0.6f
+                out["knee_$side"] = floatArrayOf(hx + dx, kneeY, kz, 0f)
+                out["foot_$side"] = floatArrayOf(hx + dx * 1.1f, legs.ANKLE, footZ, 0f)
+            }
+            out["hip"] = floatArrayOf(hx, hipY, hipZ, 0f)
+            out["chest"] = floatArrayOf(hx, hipY + (headY - hipY) * 0.55f, hipZ + 0.02f, 0f)
+            legs.reset()                           // feet re-plant under u when u stand up
+            return out
+        }
+        val crouch = (1f - up).coerceIn(0f, 0.75f)
+        val torso = eye * 0.4f
+        val hipY = max(0.2f, headY - torso * (1f - crouch * 0.3f))
+        val hipZ = hz - 0.07f - crouch * 0.3f     // bum goes back when u crouch
         out["hip"] = floatArrayOf(hx, hipY, hipZ, 0f)
-        out.putAll(legs.update(hx, hipY, hipZ, dt, max(0.3f, eye * 0.57f - 0.07f)))
-        out["chest"] = floatArrayOf(hx, hipY + (headY - hipY) * 0.55f, hipZ + 0.03f, 0f)
+        out.putAll(legs.update(hx, hipY, hipZ + crouch * 0.3f, dt, legLen))   // feet stay under ur head
+        out["chest"] = floatArrayOf(hx, hipY + (headY - hipY) * 0.55f, hipZ + 0.05f + crouch * 0.15f, 0f)
         return out
     }
 }
