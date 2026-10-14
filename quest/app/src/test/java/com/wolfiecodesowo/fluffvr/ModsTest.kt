@@ -82,7 +82,8 @@ class ModsTest {
         val stand = out
         // crouch (head at 60% height): head + hip go down, feet stay on the floor
         var t = 1_000_000L
-        val crouch = Standable.compute(s, 0f, 1.2f, 0.6f, 0.033f, t)
+        var crouch = stand
+        repeat(20) { t += 33; crouch = Standable.compute(s, 0f, 1.2f, 0.6f, 0.033f, t) }   // ~0.7s low: still a crouch
         assertEquals("head follows ur real height", 1.7f * 0.93f * 0.6f - 0.09f, crouch["head"]!![1], 0.02f)
         assertTrue("crouch lowers hip", crouch["hip"]!![1] < stand["hip"]!![1] - 0.3f)
         assertTrue("feet stay down", crouch["foot_l"]!![1] < 0.12f)
@@ -91,6 +92,10 @@ class ModsTest {
         var sit = crouch
         repeat(80) { t += 33; sit = Standable.compute(s, 0f, 1.2f, 0.5f, 0.033f, t) }
         assertTrue("sitting", Standable.sitting)
+        val seat = sit["hip"]!![1]
+        assertTrue("chair height seat ($seat), not the floor", seat in 0.32f..0.62f)
+        assertTrue("thighs level: knee near seat height", kotlin.math.abs(sit["knee_l"]!![1] - seat) < 0.1f)
+        assertTrue("feet apart", sit["foot_r"]!![0] - sit["foot_l"]!![0] > 0.2f)
         assertTrue("knees in front of hips", sit["knee_l"]!![2] > sit["hip"]!![2] + 0.2f)
         assertTrue("feet in front", sit["foot_l"]!![2] > sit["hip"]!![2] + 0.2f)
         // stand back up

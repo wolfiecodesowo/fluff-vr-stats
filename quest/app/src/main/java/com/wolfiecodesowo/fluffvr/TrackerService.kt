@@ -79,7 +79,15 @@ class TrackerService : Service() {
             busy = true
             val input = InputImage.fromMediaImage(img, rotation)
             detector.process(input)
-                .addOnSuccessListener { pose -> onPose(pose, input.width, input.height) }
+                .addOnSuccessListener { pose ->
+                    onPose(pose, input.width, input.height)
+                    // live view for the Body tab (so u can see if ur whole body is in the shot), ~4x a second
+                    val nowMs = System.currentTimeMillis()
+                    if (previewWanted && nowMs - lastPreview > 250) {
+                        lastPreview = nowMs
+                        try { makePreview(img, pose) } catch (_: Exception) {}
+                    }
+                }
                 .addOnFailureListener { status = "pose error: ${it.message}" }
                 .addOnCompleteListener { img.close(); busy = false }
         }, handler)
@@ -102,6 +110,69 @@ class TrackerService : Service() {
                 override fun onError(cd: CameraDevice, e: Int) { cd.close(); status = "camera error $e" }
             }, handler)
         } catch (e: SecurityException) { status = "allow the camera for Fluff VR Stats first" }
+    }
+
+    private var lastPreview = 0L
+
+    /** camera frame (YUV) -> upright bitmap + ur skeleton + a green/red "whole body in view" frame */
+    private fun makePreview(img: android.media.Image, pose: com.google.mlkit.vision.pose.Pose) {
+        val w = img.width; val h = img.height
+        val nv21 = ByteArray(w * h * 3 / 2)
+        val yP = img.planes[0]; val uP = img.planes[1]; val vP = img.planes[2]
+        val yb = yP.buffer; var o = 0
+        for (row in 0 until h) { yb.position(row * yP.rowStride); yb.get(nv21, o, w); o += w }
+        val ub = uP.buffer; val vb = vP.buffer
+        for (row in 0 until h / 2) for (col in 0 until w / 2) {
+            nv21[o++] = vb.get(row * vP.rowStride + col * vP.pixelStride)
+            nv21[o++] = ub.get(row * uP.rowStride + col * uP.pixelStride)
+        }
+        val jpg = java.io.ByteArrayOutputStream()
+        android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21, w, h, null).compressToJpeg(android.graphics.Rect(0, 0, w, h), 60, jpg)
+        var bmp = android.graphics.BitmapFactory.decodeByteArray(jpg.toByteArray(), 0, jpg.size())
+        val m = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+        bmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+        val c = android.graphics.Canvas(bmp)
+        val bw = bmp.width.toFloat(); val bh = bmp.height.toFloat()
+        // is ur whole body in the shot? head, hips, knees + ankles all seen
+        val need = listOf(PoseLandmark.NOSE, PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP, PoseLandmark.LEFT_KNEE,
+            PoseLandmark.RIGHT_KNEE, PoseLandmark.LEFT_ANKLE, PoseLandmark.RIGHT_ANKLE)
+        val seen = need.mapNotNull { pose.getPoseLandmark(it)?.takeIf { lm -> lm.inFrameLikelihood > 0.5f } }
+        val ok = seen.size == need.size
+        val xs = pose.allPoseLandmarks.filter { it.inFrameLikelihood > 0.5f }.map { it.position.x }
+        val ankle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)?.inFrameLikelihood ?: 0f
+        previewHint = when {
+            ok -> "perfect!! ur whole body is in view :3 stand straight + tap calibrate"
+            seen.isEmpty() -> "can't see u ~ face the phone + step into the shot"
+            ankle < 0.5f -> "step back ~ ur feet need to be in the shot"
+            xs.isNotEmpty() && xs.average() < bw * 0.3 -> "move a lil to the side (ur too close to the edge)"
+            xs.isNotEmpty() && xs.average() > bw * 0.7 -> "move a lil to the other side (ur too close to the edge)"
+            else -> "almost ~ step back a lil so ur head + feet fit"
+        }
+        val good = 0xFF6EE7A0.toInt(); val bad = 0xFFFF768E.toInt()
+        val pen = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE; strokeWidth = bw / 90f; color = if (ok) good else bad }
+        c.drawRect(bw * 0.06f, bh * 0.04f, bw * 0.94f, bh * 0.96f, pen)
+        // skeleton
+        val bone = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = bw / 70f; color = 0xFFFF96CA.toInt() }
+        val links = listOf(PoseLandmark.LEFT_SHOULDER to PoseLandmark.RIGHT_SHOULDER, PoseLandmark.LEFT_HIP to PoseLandmark.RIGHT_HIP,
+            PoseLandmark.LEFT_SHOULDER to PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_SHOULDER to PoseLandmark.RIGHT_HIP,
+            PoseLandmark.LEFT_HIP to PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_KNEE to PoseLandmark.LEFT_ANKLE,
+            PoseLandmark.RIGHT_HIP to PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_KNEE to PoseLandmark.RIGHT_ANKLE,
+            PoseLandmark.LEFT_SHOULDER to PoseLandmark.LEFT_ELBOW, PoseLandmark.RIGHT_SHOULDER to PoseLandmark.RIGHT_ELBOW)
+        for ((a1, b1) in links) {
+            val p1 = pose.getPoseLandmark(a1); val p2 = pose.getPoseLandmark(b1)
+            if (p1 != null && p2 != null && p1.inFrameLikelihood > 0.5f && p2.inFrameLikelihood > 0.5f)
+                c.drawLine(p1.position.x, p1.position.y, p2.position.x, p2.position.y, bone)
+        }
+        val dot = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+        for (lm in pose.allPoseLandmarks) if (lm.inFrameLikelihood > 0.5f) c.drawCircle(lm.position.x, lm.position.y, bw / 80f, dot)
+        // the selfie camera looks like a mirror to u, so flip it for the screen
+        if (Settings(this).trackFront) {
+            val mm = android.graphics.Matrix().apply { preScale(-1f, 1f) }
+            bmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, mm, false)
+        }
+        preview = bmp
+        previewOk = ok
     }
 
     private fun onPose(pose: com.google.mlkit.vision.pose.Pose, w: Int, h: Int) {
@@ -167,6 +238,10 @@ class TrackerService : Service() {
         @Volatile var last: Map<String, FloatArray> = emptyMap()
         @Volatile var recalibrate = true
         @Volatile var rotation = 90
+        @Volatile var previewWanted = false     // the Body tab is open on the phone
+        @Volatile var preview: android.graphics.Bitmap? = null
+        @Volatile var previewHint = "start tracking to see the camera"
+        @Volatile var previewOk = false
 
         fun start(ctx: Context) { recalibrate = true; ctx.startForegroundService(Intent(ctx, TrackerService::class.java)) }
         fun stop(ctx: Context) = ctx.stopService(Intent(ctx, TrackerService::class.java))

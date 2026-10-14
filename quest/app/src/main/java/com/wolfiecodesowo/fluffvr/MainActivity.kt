@@ -48,6 +48,21 @@ class MainActivity : Activity() {
     private var remoteSig = ""
     private var modsSig = ""
     private var bodyLive: TextView? = null
+    private var camView: ImageView? = null
+    private var camHint: TextView? = null
+    private var camShown: android.graphics.Bitmap? = null
+    private val camTick = object : Runnable {
+        override fun run() {
+            val v = camView
+            TrackerService.previewWanted = v != null && tab == "Body"
+            if (v != null) {
+                TrackerService.preview?.let { if (it !== camShown) { camShown = it; v.setImageBitmap(it) } }
+                camHint?.text = if (TrackerService.running) TrackerService.previewHint else "tap start tracking to see the camera"
+                camHint?.setTextColor(if (TrackerService.previewOk && TrackerService.running) GOOD else PINK)
+            }
+            ui.postDelayed(this, 200)
+        }
+    }
     private var ytList: LinearLayout? = null
     private var ytSig = -1
     @Volatile private var polling = false
@@ -109,6 +124,7 @@ class MainActivity : Activity() {
         build()
         ui.post(refresher)
         ui.post(kittyAnim)
+        ui.post(camTick)
         checkForUpdate()
     }
 
@@ -323,7 +339,7 @@ class MainActivity : Activity() {
         updView = null
         statusNow = null
         previewView = null; stateView = null; startBtn = null; musicView = null; liveView = null; remoteView = null; patsView = null
-        gchatList = null; kittyView = null; kittyText = null; gchatSig = -1; bodyLive = null; ytList = null
+        gchatList = null; kittyView = null; kittyText = null; gchatSig = -1; bodyLive = null; ytList = null; camView = null; camHint = null; camShown = null
         val d = resources.displayMetrics.density
         val wideNow = wide
         // the window: a big furry card with ears + the pride stripe across its top (the PC menu's frame)
@@ -1321,6 +1337,16 @@ class MainActivity : Activity() {
                 else if (!need(android.Manifest.permission.CAMERA, PERM_CAMERA)) TrackerService.start(this)
             }
             chip(cr, "calibrate (stand straight)", false) { TrackerService.calibrate() }
+            // live camera view: see where to stand before u calibrate
+            val pv = ImageView(this).apply {
+                adjustViewBounds = true; scaleType = ImageView.ScaleType.FIT_CENTER
+                background = round(Color.BLACK, 18, 3, INK); clipToOutline = true
+                TrackerService.preview?.let { setImageBitmap(it) }
+            }
+            cam.addView(pv, LinearLayout.LayoutParams(MATCH_PARENT, dp(320)).apply { topMargin = dp(8) })
+            val hint = text(TrackerService.previewHint, 15f, if (TrackerService.previewOk) GOOD else PINK, fHead).apply { setPadding(0, dp(6), 0, 0) }
+            cam.addView(hint)
+            camView = pv; camHint = hint
             val cr2 = row(cam)
             chip(cr2, "back camera", !s.trackFront) { s.trackFront = false }
             chip(cr2, "selfie camera", s.trackFront) { s.trackFront = true }

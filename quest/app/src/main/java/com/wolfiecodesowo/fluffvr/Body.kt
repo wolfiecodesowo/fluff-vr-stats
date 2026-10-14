@@ -271,6 +271,57 @@ class Legs(private val stepDist: Float = 0.16f) {
     fun reset() { feet = null }
 }
 
+// ============================================================================ natural chair pose ===
+/**
+ * Sitting in a chair, the way people actually sit: seat at chair height (worked out from how high ur head is),
+ * thighs level + forward, shins hanging down with the feet a lil in front, knees + feet naturally apart and the
+ * feet turned out a bit. head = ur head (x, y, z), yaw = which way ur body faces.
+ */
+fun chairPose(hx: Float, hy: Float, hz: Float, yaw: Float, eye: Float, legLen: Float, ankle: Float = 0.07f): HashMap<String, FloatArray> {
+    val r = Math.toRadians(yaw.toDouble())
+    val fx = sin(r).toFloat(); val fz = kotlin.math.cos(r).toFloat()
+    val rx = fz; val rz = -fx
+    // seated: ur eyes are ~half ur eye height above the seat (torso + neck + head)
+    val seatY = (hy - eye * 0.50f).coerceIn(0.32f, 0.62f)
+    val hipX = hx - fx * 0.10f; val hipZ = hz - fz * 0.10f
+    val thigh = legLen * 0.50f
+    val out = HashMap<String, FloatArray>()
+    out["hip"] = floatArrayOf(hipX, seatY, hipZ, yaw)
+    for ((side, sg) in listOf("l" to -1f, "r" to 1f)) {
+        val kx = hipX + rx * 0.11f * sg + fx * thigh
+        val kz = hipZ + rz * 0.11f * sg + fz * thigh
+        val ky = seatY + 0.05f                                   // knees a hair above the seat
+        out["knee_$side"] = floatArrayOf(kx, ky, kz, yaw)
+        // shin hangs down, foot slightly in front + a lil wider than the knee, toes turned out
+        out["foot_$side"] = floatArrayOf(kx + rx * 0.04f * sg + fx * 0.07f, ankle, kz + rz * 0.04f * sg + fz * 0.07f, yaw + 9f * sg)
+    }
+    out["chest"] = floatArrayOf(hipX + (hx - hipX) * 0.55f, seatY + (hy - seatY) * 0.55f, hipZ + (hz - hipZ) * 0.55f, yaw)
+    return out
+}
+
+/** eases every tracker toward its new spot (no snapping = less robot): fast normally, slow while sitting down / up */
+class PoseSmoother {
+    private val cur = HashMap<String, FloatArray>()
+    private var blendUntil = 0L
+    fun transition(now: Long = System.currentTimeMillis()) { blendUntil = now + 600 }
+    fun apply(target: Map<String, FloatArray>, dt: Float, now: Long = System.currentTimeMillis()): Map<String, FloatArray> {
+        val k = min(1f, dt * if (now < blendUntil) 5f else 18f)
+        val out = HashMap<String, FloatArray>()
+        for ((name, t) in target) {
+            if (name == "head") { out[name] = t; continue }      // VRChat lines up with the head: never delay it
+            val c = cur[name]
+            val v = if (c == null || c.size != t.size) t.copyOf() else FloatArray(t.size) { i ->
+                if (i == 3) {                                          // yaw: go the short way round
+                    var d = (t[3] - c[3] + 540f) % 360f - 180f
+                    c[3] + d * k
+                } else c[i] + (t[i] - c[i]) * k
+            }
+            cur[name] = v; out[name] = v
+        }
+        return out
+    }
+}
+
 // ====================================================================== Standable on standalone Quest ===
 /**
  * A Quest app can't see ur headset's position while VRChat is open, so this uses what VRChat itself sends
@@ -372,6 +423,7 @@ object Standable {
     @Volatile var mode = "velocity"           // "real" = VRChat streams ur head position, "velocity" = fallback
     private val headEst = HeadEstimator()
     @Volatile var upMax = 0f
+    private val smoother = PoseSmoother()
     private var upAvatar = ""
     private var lowSince = 0L
 
@@ -390,27 +442,18 @@ object Standable {
         val up = (upright / max(upMax, 0.4f)).coerceIn(0.25f, 1.05f)
         val headY = eye * up                       // VRChat pins our head to ur real head, so this has to be ur real height
         val legLen = max(0.3f, eye * 0.57f - 0.07f)
-        if (up < 0.68f && !moving) { if (lowSince == 0L) lowSince = now } else lowSince = 0L
-        if (up > 0.8f) sitting = false
-        else if (lowSince > 0 && now - lowSince > 2000) sitting = true
+        // chair: ur head drops to ~75% of standing; low + still for 1.5s = sitting, back above 88% = standing
+        if (up < 0.82f && !moving) { if (lowSince == 0L) lowSince = now } else lowSince = 0L
+        val wasSitting = sitting
+        if (up > 0.88f) sitting = false
+        else if (lowSince > 0 && now - lowSince > 1500) sitting = true
+        if (sitting != wasSitting) smoother.transition(now)
         val out = HashMap<String, FloatArray>()
         out["head"] = floatArrayOf(hx, headY - 0.09f, hz - 0.06f, 0f)
         if (sitting) {
-            // seat under ur hips, thighs forward, shins down to the floor
-            val hipY = max(0.15f, headY - eye * 0.36f)
-            val hipZ = hz - 0.12f
-            val thigh = legLen * 0.5f
-            val kneeY = max(0.1f, hipY + 0.04f)
-            for ((side, dx) in listOf("l" to -0.12f, "r" to 0.12f)) {
-                val kz = hipZ + thigh
-                val footZ = kz + max(0f, legLen * 0.5f - kneeY) * 0.6f
-                out["knee_$side"] = floatArrayOf(hx + dx, kneeY, kz, 0f)
-                out["foot_$side"] = floatArrayOf(hx + dx * 1.1f, legs.ANKLE, footZ, 0f)
-            }
-            out["hip"] = floatArrayOf(hx, hipY, hipZ, 0f)
-            out["chest"] = floatArrayOf(hx, hipY + (headY - hipY) * 0.55f, hipZ + 0.02f, 0f)
+            out.putAll(chairPose(hx, headY, hz, 0f, eye, legLen))
             legs.reset()                           // feet re-plant under u when u stand up
-            return out
+            return smoother.apply(out, dt, now)
         }
         val crouch = (1f - up).coerceIn(0f, 0.75f)
         val torso = eye * 0.4f
@@ -419,7 +462,7 @@ object Standable {
         out["hip"] = floatArrayOf(hx, hipY, hipZ, 0f)
         out.putAll(legs.update(hx, hipY, hipZ + crouch * 0.3f, dt, legLen))   // feet stay under ur head
         out["chest"] = floatArrayOf(hx, hipY + (headY - hipY) * 0.55f, hipZ + 0.05f + crouch * 0.15f, 0f)
-        return out
+        return smoother.apply(out, dt, now)
     }
 }
 
@@ -649,6 +692,7 @@ class HeadEstimator {
     private var lastHead: FloatArray? = null
     private var lowT = 0f
     var sitting = false
+    private val smoother = PoseSmoother()
     val ANKLE = 0.07f
 
     private fun wrap(a: Float): Float { var x = (a + 180f) % 360f; if (x < 0) x += 360f; return x - 180f }
@@ -678,28 +722,20 @@ class HeadEstimator {
         bodyYaw = by
         val f = fwd(by); val r = right(by); val hf = fwd(headYaw)
 
-        // sitting: head low (< 68% of eye height) + not walking for 2s; stand up (> 80%) = standing again
+        // sitting in a chair: head drops to ~75% of standing + not walking for 1.5s; back above 88% = standing
         val lh = lastHead
         val speed = if (lh != null) dxz(head[0], head[2], lh[0], lh[2]) / max(dt, 1e-3f) else 0f
         lastHead = head.copyOf()
-        lowT = if (head[1] < eye * 0.68f && speed < 0.3f) lowT + dt else 0f
-        if (head[1] > eye * 0.8f) sitting = false else if (lowT > 2f) sitting = true
+        lowT = if (head[1] < eye * 0.82f && speed < 0.3f) lowT + dt else 0f
+        val wasSitting = sitting
+        if (head[1] > eye * 0.88f) sitting = false else if (lowT > 1.5f) sitting = true
+        if (sitting != wasSitting) smoother.transition()
         val legLen = max(0.3f, eye * 0.57f - ANKLE)
         val out = HashMap<String, FloatArray>()
         if (sitting) {
-            val hp = floatArrayOf(head[0] - f[0] * 0.12f, max(0.15f, head[1] - eye * 0.36f), head[2] - f[2] * 0.12f)
-            hip = hp; feet = null
-            val kneeY = max(0.1f, hp[1] + 0.04f)
-            for ((side, sgn) in listOf("l" to -1f, "r" to 1f)) {
-                val kx = hp[0] + r[0] * 0.12f * sgn + f[0] * legLen * 0.5f
-                val kz = hp[2] + r[2] * 0.12f * sgn + f[2] * legLen * 0.5f
-                val push = max(0f, legLen * 0.5f - kneeY) * 0.6f
-                out["knee_$side"] = floatArrayOf(kx, kneeY, kz, by)
-                out["foot_$side"] = floatArrayOf(kx + f[0] * push, ANKLE, kz + f[2] * push, by)
-            }
-            out["hip"] = floatArrayOf(hp[0], hp[1], hp[2], by)
-            out["chest"] = floatArrayOf((hp[0] + head[0]) / 2, hp[1] + (head[1] - hp[1]) * 0.55f, (hp[2] + head[2]) / 2, by)
-            return out
+            val pose = chairPose(head[0], head[1], head[2], by, eye, legLen, ANKLE)
+            hip = pose["hip"]!!.copyOf(3); feet = null
+            return smoother.apply(pose, dt)
         }
         // hip: under the head, a bit back. crouch -> legs bend, hip sinks + goes back
         val crouch = (1f - head[1] / eye).coerceIn(0f, 1f)
@@ -750,6 +786,6 @@ class HeadEstimator {
         }
         out["chest"] = floatArrayOf(hp[0] + (head[0] - hp[0]) * 0.55f + hf[0] * 0.02f, hp[1] + (head[1] - hp[1]) * 0.55f,
             hp[2] + (head[2] - hp[2]) * 0.55f + hf[2] * 0.02f, wrap(by + wrap(headYaw - by) * 0.4f))
-        return out
+        return smoother.apply(out, dt)
     }
 }
