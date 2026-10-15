@@ -1,16 +1,66 @@
 #!/usr/bin/env bash
-# lil helper for Fluff Bot on the server:  ./fluff move | start | stop | restart | status | logs | update
+# lil helper for Fluff Bot on the server:
+#   ./fluff move | start | stop | restart | status | logs | health | update | backup | restore
 DIR="$HOME/fluff-vr-stats"
+BOT="$DIR/bot"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+connected() {
+  # the bot logs "logged in as ..." when it reaches Discord. look for it in the last 10 minutes
+  journalctl -u fluffbot --since "-10 min" --no-pager 2>/dev/null | grep -q "logged in as"
+}
+
 case "$1" in
   move)
+    # never silently overwrite a live file: keep a timestamped copy of anything already here
     for f in bot_config.json bot_key.pem bot_data.json; do
-      if [ -f "$HOME/$f" ]; then mv -f "$HOME/$f" "$DIR/bot/$f"; chmod 600 "$DIR/bot/$f"; echo "  moved $f"; else echo "  !! $f not uploaded yet"; fi
+      if [ -f "$HOME/$f" ]; then
+        if [ -f "$BOT/$f" ]; then cp -p "$BOT/$f" "$BOT/$f.bak-$STAMP"; echo "  kept the old $f as $f.bak-$STAMP"; fi
+        mv -f "$HOME/$f" "$BOT/$f"; chmod 600 "$BOT/$f"; echo "  moved $f"
+      else
+        echo "  !! $f not uploaded yet"
+      fi
     done
-    sudo systemctl restart fluffbot; sleep 4; systemctl --no-pager -n 15 status fluffbot ;;
+    sudo systemctl restart fluffbot; sleep 8; "$0" health ;;
   start|stop|restart) sudo systemctl "$1" fluffbot; echo "  $1 ok" ;;
   status) systemctl --no-pager status fluffbot ;;
   logs) journalctl -u fluffbot -n 80 --no-pager ;;
-  update) git -C "$DIR" pull && sudo systemctl restart fluffbot && echo "  updated + restarted :3" ;;
-  backup) cp "$DIR/bot/bot_data.json" "$HOME/bot_data_backup_$(date +%F).json" && echo "  saved $HOME/bot_data_backup_$(date +%F).json (download it to keep it safe)" ;;
-  *) echo "usage: ./fluff move | start | stop | restart | status | logs | update | backup" ;;
+  health)
+    if systemctl is-active --quiet fluffbot; then echo "  service: running"; else echo "  service: NOT running (./fluff logs)"; fi
+    if connected; then echo "  discord: connected in the last 10 min"; else echo "  discord: no 'logged in' line in the last 10 min (./fluff logs)"; fi
+    echo "  backups: $(ls "$BOT/backups" 2>/dev/null | wc -l) copy(ies) of bot_data.json in $BOT/backups" ;;
+  update)
+    PREV="$(git -C "$DIR" rev-parse HEAD)"
+    git -C "$DIR" pull -q || { echo "  !! git pull failed, nothing changed"; exit 1; }
+    "$DIR/.venv/bin/pip" install -q -r "$BOT/requirements-server.txt" || { echo "  !! pip failed, rolling back"; git -C "$DIR" reset -q --hard "$PREV"; exit 1; }
+    sudo systemctl restart fluffbot
+    sleep 40
+    if connected; then
+      echo "  updated + connected :3"
+    else
+      echo "  !! the new version didn't connect, rolling back to the previous one"
+      git -C "$DIR" reset -q --hard "$PREV"
+      "$DIR/.venv/bin/pip" install -q -r "$BOT/requirements-server.txt"
+      sudo systemctl restart fluffbot
+      exit 1
+    fi ;;
+  backup)
+    # one file with everything needed to rebuild: the owner downloads it (it has the token + the signing key)
+    OUT="$HOME/fluff-backup-$STAMP.tgz"
+    FILES=""
+    for f in bot_data.json bot_config.json bot_key.pem; do [ -f "$BOT/$f" ] && FILES="$FILES $f"; done
+    tar -czf "$OUT" -C "$BOT" $FILES && chmod 600 "$OUT" && echo "  saved $OUT (download it with ⚙ / DOWNLOAD FILE, keep it private)" ;;
+  restore)
+    # ./fluff restore <file.tgz>: puts a backup back in place (the current files are kept as .bak)
+    [ -n "$2" ] && [ -f "$2" ] || { echo "  usage: ./fluff restore <backup.tgz>"; exit 1; }
+    sudo systemctl stop fluffbot
+    mkdir -p "$BOT/restore-$STAMP" && tar -xzf "$2" -C "$BOT/restore-$STAMP"
+    for f in "$BOT/restore-$STAMP"/*; do
+      name="$(basename "$f")"
+      [ -f "$BOT/$name" ] && cp -p "$BOT/$name" "$BOT/$name.bak-$STAMP"
+      mv -f "$f" "$BOT/$name"; chmod 600 "$BOT/$name"; echo "  restored $name"
+    done
+    rmdir "$BOT/restore-$STAMP" 2>/dev/null
+    sudo systemctl start fluffbot; sleep 8; "$0" health ;;
+  *) echo "usage: ./fluff move | start | stop | restart | status | logs | health | update | backup | restore <file>" ;;
 esac

@@ -65,6 +65,29 @@ def latest_release(timeout=5):
         return json.loads(r.read().decode("utf-8"))
 
 
+RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=10"
+
+
+def installable_release(timeout=5):
+    """the newest release this app can actually install. A release that's still uploading, or that
+    isn't signed, is skipped (one bad release used to freeze every install on the 'latest' one)."""
+    import trust
+    req = urllib.request.Request(RELEASES_API, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        releases = json.loads(r.read().decode("utf-8"))
+    for rel in releases:
+        tag = rel.get("tag_name") or ""
+        if not tag or rel.get("draft") or rel.get("prerelease"):
+            continue
+        if parse(tag) <= parse(local_version()):
+            return None                       # everything older than this isn't worth installing
+        if not trust.configured("release"):
+            return rel                        # signing isn't set up on this build: newest release
+        if any(a.get("name") == MANIFEST_NAME for a in rel.get("assets") or []):
+            return rel
+    return None
+
+
 def _download(url, progress=None):
     req = urllib.request.Request(url, headers={"User-Agent": UA["User-Agent"]})
     with urllib.request.urlopen(req, timeout=60) as r:
@@ -287,14 +310,14 @@ def check_and_update(cfg=None, restart=True, log=None):
     if cfg.get("auto_update", True) is False and not required_update():
         return None                       # turned off (but a required update still installs)
     try:
-        rel = latest_release()
+        rel = installable_release()
     except Exception as e:                # offline / GitHub down -> just start normally
         if log:
             log.info("update check skipped: %s", e)
         return None
-    tag = rel.get("tag_name") or ""
-    if not tag or parse(tag) <= parse(local_version()):
+    if not rel:
         return None
+    tag = rel.get("tag_name") or ""
     url = rel.get("zipball_url") or f"https://github.com/{REPO}/archive/refs/tags/{tag}.zip"
     manifest = None
     try:

@@ -40,3 +40,12 @@ dist/
 
 # Fluff Bot log
 bot/bot.log
+
+# Fluff Bot runtime files (server + PC)
+bot/backups/
+bot/.bot.lock
+bot/PAUSED
+bot/bot_data.json.corrupt-*
+bot/*.bak-*
+bot/.venv/
+.venv/

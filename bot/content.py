@@ -643,7 +643,7 @@ def _vid(name, title):
 
 POSTS["videos"] = [_e("🎬 feature videos", "quick looks at everything Fluff VR Stats does. "
                      "real in-VR clips are coming too!", PINK)] + [_vid(n, t) for n, t, _ in VIDEOS] + \
-                  [{"content": f"**🎉 the full trailer**\nhttps://wolfiecodesowo.github.io/fluff-vr-stats/trailer.mp4"}]
+                  [{"content": "**🎉 the full trailer**\nhttps://wolfiecodesowo.github.io/fluff-vr-stats/trailer.mp4"}]
 for _n, _t, _ch in VIDEOS:
     POSTS[_ch].append(_vid(_n, "🎬 see it in action"))
 TOPICS["videos"] = "short clips of every feature"

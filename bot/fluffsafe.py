@@ -18,8 +18,10 @@ the panel on MODACK2.
 """
 import asyncio
 import datetime
+import glob
 import hashlib
 import json
+import logging
 import os
 import random
 import sys
@@ -40,6 +42,7 @@ DATA = os.path.join(HERE, "bot_data.json")
 KEY_FILE = os.path.join(HERE, "bot_key.pem")
 CODE_CHARS = N.CODE_CHARS
 MSG_SLOW_S = 3.0
+V1_PER_MIN = 30                 # cap on the unsigned old-app chat path, all senders together
 # after this, PC apps older than v0.4 can't send in global chat any more (they get a "please update" notice).
 # The Quest Edition gets until QUEST_CUTOFF (old Quest versions before v0.7 have to update by hand). Change it in bot_config.json -> "old_cutoff" (unix time) if u need to.
 OLD_CUTOFF = 1792044000          # Oct 15 2026, 00:00 Mountain time (PC)
@@ -53,12 +56,19 @@ except Exception:
     F = None
 
 
-def load_data():
-    try:
-        with open(DATA, encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        d = {}
+BACKUP_DIR = os.path.join(HERE, "backups")
+BACKUP_KEEP = 14                 # newest copies of bot_data.json to keep
+STARTUP_NOTES = []               # problems found before the bot connected; fluffbot DMs these to the owner
+_SAVE_BLOCKED = False            # set when the data file is damaged and was moved aside: never write over it
+log = logging.getLogger("fluffbot")
+
+
+def _read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _fresh(d):
     for k, v in (("keys", {}), ("users", {}), ("bans", {"uids": [], "sids": []}), ("mutes", {}), ("events", {})):
         d.setdefault(k, v)
     d["bans"].setdefault("uids", [])
@@ -66,11 +76,79 @@ def load_data():
     return d
 
 
-def save_data(d):
-    tmp = DATA + ".tmp"
+def _write_private(path, obj):
+    """atomic write: fsync, owner-only permissions, then swap into place"""
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(d, f, indent=1)
-    os.replace(tmp, DATA)
+        json.dump(obj, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+
+
+def _backups():
+    return sorted(glob.glob(os.path.join(BACKUP_DIR, "bot_data-*.json")))
+
+
+def load_data():
+    """a damaged file is never silently replaced with an empty one: it's moved aside and the newest good backup is used"""
+    global _SAVE_BLOCKED
+    if not os.path.exists(DATA):
+        return _fresh({})
+    try:
+        return _fresh(_read_json(DATA))
+    except Exception as e:
+        aside = f"{DATA}.corrupt-{int(time.time())}"
+        try:
+            os.replace(DATA, aside)
+        except OSError:
+            _SAVE_BLOCKED = True             # couldn't even move it: keep the damaged file untouched
+            aside = DATA
+        for path in reversed(_backups()):
+            try:
+                d = _fresh(_read_json(path))
+            except Exception:
+                continue
+            STARTUP_NOTES.append(f"bot_data.json couldn't be read ({e}). I kept the damaged copy at {os.path.basename(aside)} "
+                                 f"and restored the newest good backup ({os.path.basename(path)}). check keys + bans look right.")
+            log.error("bot_data.json unreadable (%s); restored %s", e, path)
+            return d
+        STARTUP_NOTES.append(f"bot_data.json couldn't be read ({e}) and there's no good backup. the damaged copy is "
+                             f"{os.path.basename(aside)}. keys + bans start empty, so people may need a fresh key.")
+        log.error("bot_data.json unreadable (%s) and no backup exists", e)
+        return _fresh({})
+
+
+def save_data(d):
+    if _SAVE_BLOCKED:
+        raise RuntimeError("bot_data.json is damaged and wasn't replaced, see the startup alert")
+    try:
+        _write_private(DATA, d)
+    except Exception:
+        log.exception("couldn't save bot_data.json")
+        raise
+
+
+def maybe_backup(every):
+    """copies bot_data.json into bot/backups/ at most every `every` seconds (keeps the newest BACKUP_KEEP).
+    Only a copy that reads back as valid JSON counts as a backup."""
+    if not os.path.exists(DATA):
+        return
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    existing = _backups()
+    if existing and time.time() - os.path.getmtime(existing[-1]) < every:
+        return
+    d = _read_json(DATA)                      # raises if the live file is damaged (fluffbot alerts the owner)
+    _write_private(os.path.join(BACKUP_DIR, f"bot_data-{time.strftime('%Y%m%d-%H%M%S')}.json"), d)
+    for old in _backups()[:-BACKUP_KEEP]:
+        try:
+            os.remove(old)
+        except OSError:
+            pass
 
 
 def uid_hash(uid):
@@ -370,6 +448,15 @@ def install(bot, env):
         now = time.time()
         if now - state["last_msg"].get("v1:" + sid, 0) < MSG_SLOW_S:
             return
+        # the v1 topic is public and unauthenticated, and the sid is made up by the sender, so the per-sid
+        # limit above can be dodged. This caps the whole path, so a flood can't fill the signed room.
+        recent = state.setdefault("v1_times", [])
+        recent[:] = [t for t in recent if now - t < 60]
+        if len(recent) >= V1_PER_MIN:
+            await bot.alert("v1-flood", f"the unsigned old-app chat path got more than {V1_PER_MIN} messages a minute. "
+                                        "I dropped the extra ones. check #mod-log for the source.", every=1800)
+            return
+        recent.append(now)
         state["last_msg"]["v1:" + sid] = now
         await relay(uuid.uuid4().hex[:16], chat_name(p.get("n"), sid), text, sid,
                     str(p.get("c", "pc"))[:8], None, to_discord=True, to_v1=False)
