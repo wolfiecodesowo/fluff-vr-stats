@@ -57,7 +57,7 @@ except Exception:
 
 
 BACKUP_DIR = os.path.join(HERE, "backups")
-BACKUP_KEEP = 14                 # newest copies of bot_data.json to keep
+BACKUP_KEEP = 30                 # newest copies (one a day = a month) of bot_data.json to keep
 STARTUP_NOTES = []               # problems found before the bot connected; fluffbot DMs these to the owner
 _SAVE_BLOCKED = False            # set when the data file is damaged and was moved aside: never write over it
 log = logging.getLogger("fluffbot")

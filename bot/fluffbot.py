@@ -81,11 +81,22 @@ def load_cfg():
     return cfg
 
 
-def save_cfg(cfg):
-    tmp = CFG_PATH + ".tmp"
+def write_private_json(path, obj):
+    """atomic write, owner-only permissions (these files hold the bot token / the app's AI key)"""
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-    os.replace(tmp, CFG_PATH)
+        json.dump(obj, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+
+
+def save_cfg(cfg):
+    write_private_json(CFG_PATH, cfg)
 
 
 def update_client_cfg(**discord_keys):
@@ -97,10 +108,7 @@ def update_client_cfg(**discord_keys):
         ccfg = {}
     d = ccfg.setdefault("discord", {})
     d.update({k: v for k, v in discord_keys.items() if v})
-    tmp = CLIENT_CFG + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(ccfg, f, indent=2)
-    os.replace(tmp, CLIENT_CFG)
+    write_private_json(CLIENT_CFG, ccfg)
 
 
 CFG = load_cfg()
@@ -352,9 +360,9 @@ class FluffBot(discord.Client):
         await self.wait_until_ready()
 
     async def backup_tick(self):
-        """keeps timestamped copies of bot_data.json (every 6 hours). bot_config.json holds the token, so it's not copied"""
+        """keeps timestamped copies of bot_data.json (once a day). bot_config.json holds the token, so it's not copied"""
         try:
-            fluffsafe.maybe_backup(every=6 * 3600)
+            fluffsafe.maybe_backup(every=24 * 3600)
         except Exception:
             log.exception("backup failed")
             await self.alert("backup", "the automatic backup failed. check the disk space and bot/backups/")

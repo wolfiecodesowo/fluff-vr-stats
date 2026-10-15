@@ -42,7 +42,7 @@ Billing → Budgets & alerts → Create budget → $1 → alert at 50% / 100%. (
 ## how it looks after that
 - **It restarts itself.** If it crashes, systemd restarts it after 15 s. If it hangs, a watchdog restarts it. If it fails 5 times in 5 min it stops and waits, so it doesn't spam Discord.
 - **It watches itself.** Background loops that stop are restarted and the owner is DMed. Anything that needs a human (a bad token, a damaged data file, a failed backup, a raid) also DMs the owner, at most once an hour per problem.
-- **Backups happen by themselves.** Every 6 hours the bot keeps a copy of `bot_data.json` in `bot/backups/` (the newest 14). A damaged data file is moved aside and the newest good backup is restored automatically.
+- **Backups happen by themselves.** Once a day the bot keeps a copy of `bot_data.json` in `bot/backups/` (the newest 30, so about a month). A damaged data file is moved aside and the newest good backup is restored automatically.
 - **A raid turns the key gate on.** More than 10 joins in a minute turns the gate on for 30 minutes and DMs the owner. `/raid off` ends it early.
 - **Pause everything.** `/pause` stops the bot's own posts, welcomes, renames and role sweeps. Moderation and staff commands keep working. `/resume` turns it back on. (On the server you can also do `touch bot/PAUSED`.)
 
