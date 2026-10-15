@@ -1609,7 +1609,8 @@ _LOCK = None
 
 
 def take_lock():
-    """only one copy may run (the PC copy and the server copy would both reply and overwrite each other)"""
+    """only one copy may run on this machine. The lock is a file on this disk, so it can't see the PC copy:
+    stop the PC copy before you start the server one (cloud/README.md step 4)"""
     global _LOCK
     if fcntl is None:
         return
