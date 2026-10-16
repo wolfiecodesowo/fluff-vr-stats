@@ -20,3 +20,8 @@
 - Fixed this pass: magenta outline on the desktop mini-HUD in Normie Mode (hard-keyed edge), rain card alpha 0.92 for legibility.
 - Not done: wider crash/leak/perf audit; Quest signed release (needs `quest/publish_quest.bat` on the owner's PC); signed PC release (CI signs on GitHub release; needs `gh auth login` / RELEASE_KEY secret).
 - Shorts plans: docs/shorts-plans.md (planned, nothing recorded or uploaded).
+
+## Audit pass (2026-10-16, after release)
+- Checked: pyflakes over all PC modules; render timing (dashboard 12.2 ms original vs 9.6 ms Normie, HUD 3.9 vs 2.9 ms); memory after 240 mode flips + rain frames stayed flat (1.7 MB traced); network calls have timeouts.
+- Fixed: devpanel.py unlock error handler referenced `e` after its except block ended (NameError, message never shown); desktop rain no longer animates while the window is minimised.
+- Not covered: full static audit of the 3k-line main.py/ui.py (only lint-level), long-running soak test, Quest on-device profiling.

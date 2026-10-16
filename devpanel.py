@@ -170,7 +170,8 @@ class Panel:
                     time.sleep(1.5)                         # slows down password guessing
                     self.root.after(0, lambda: (msg.config(text="wrong password", fg=RED), go.config(state="normal")))
                 except Exception as e:
-                    self.root.after(0, lambda: (msg.config(text=f"couldn't open the key: {e}"[:80], fg=RED),
+                    why = str(e)         # `e` is gone once this block ends, but the lambda runs later
+                    self.root.after(0, lambda: (msg.config(text=f"couldn't open the key: {why}"[:80], fg=RED),
                                                 go.config(state="normal")))
             threading.Thread(target=work, daemon=True).start()
         go = self.btn(box, "🔓 unlock", unlock, width=14)

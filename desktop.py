@@ -686,6 +686,8 @@ def run():
             s = view["scale"]
             normie = ui.normie_on(cfg)
             tick = int(time.time() * 15) if normie else -1          # the code rain moves ~15x a second
+            if normie and root.state() == "iconic":                   # minimised: don't animate what nobody can see
+                tick = view.get("tick", -1)
             if normie != view.get("normie"):                          # mode just flipped: start from a clean canvas
                 view.update(normie=normie, last=None, img=None, tick=None)
                 canvas.delete("all")
