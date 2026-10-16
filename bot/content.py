@@ -117,17 +117,17 @@ LAYOUT = [
 ]
 
 TOPICS = {
-    "welcome": "hiii welcome to the Fluff VR Stats den :3",
+    "welcome": "hiii welcome to the den :3 Fluff VR Stats is a free wrist buddy for VRChat on PC + Quest",
     "rules": "be cute, be kind <3",
     "announcements": "official news + releases. grab 📢 Update Pings in #get-roles",
     "get_roles": "tap the buttons to pick your roles",
-    "download": "latest version, always",
-    "install": "5 minutes from zero to fluffy wrist",
-    "faq": "check here before asking :3",
+    "download": "PC: the newest release from GitHub · Quest + phone: the .apk from our site. both update themselves",
+    "install": "PC in 5 min, Quest in 3 (SideQuest). stuck? 🩹・troubleshooting",
+    "faq": "the questions everyone asks first (is it free? does it work on Quest? is it safe?)",
     "main": "the main hangout! chat about anything (SFW pls)",
     "memes": "memes, shitposts, cursed VRChat moments",
     "changelog": "every update, what changed",
-    "github": "live feed from the GitHub repo",
+    "github": "every release from github.com/wolfiecodesowo/fluff-vr-stats + the open source projects we build on",
     "modlog": "joins, leaves, deleted + edited messages",
 }
 
@@ -141,14 +141,12 @@ POSTS = {
     "welcome": [
         _e(None, None, PINK, image=BANNER),
         _e("welcome to Fluff VR Stats :3",
-           "the cute, furry, **open source** overlay for **SteamVR + VRChat**!\n\n"
-           "🐾 stats on ur wrist (fps, frametimes, batteries)\n"
-           "🌐 **global chat** with every fluff on PC, desktop + Quest\n"
-           "🎵 music controls you tap with your other hand\n"
-           "🗨️ MagicChatbox-style stats in the VRChat chatbox\n"
-           "🐱 avatar toggles, world info, join alerts\n"
-           "⚡ one-tap FPS boost tweaks\n"
-           "🎨 24 themes, ear styles, a paw laser cursor and sooo much more",
+           "a free, **open source** wrist buddy for **VRChat**, made by one furry who really likes VR :3\n\n"
+           "**on PC (SteamVR):** stats on ur wrist, chatbox lines, avatar toggles, music, FPS boost, 77 mods, 35 themes\n"
+           "**on desktop:** the same menu in its own fluffy window (or full screen with F11)\n"
+           "**on Quest:** a Quest app with the same look, mods, counters, chatbox + global chat\n"
+           "**new:** full-body estimation with no trackers (*better standable*), heart rate, YouTube search, VRChat camera controls\n\n"
+           "🎬 see it for real in 🎬・feature-videos",
            PINK, thumb=LOGO,
            fields=[("first stop", "read 📜・rules, then grab roles in 🎭・get-roles", False),
                    ("get the client", "💾・download → 📖・install-guide", False),
@@ -318,8 +316,13 @@ POSTS = {
              "yes, it's safe. it's a separate SteamVR overlay app. it never touches, injects or "
              "modifies VRChat, so EAC doesn't care. same idea as XSOverlay or OVR Toolkit.", False),
             ("does it work on Quest?",
-             "yes with PCVR: Link, Air Link, Virtual Desktop or ALVR. not standalone Quest.", False),
-            ("does it cost money?", "nope, free + open source forever <3", False),
+             "yes, both ways: with PCVR (Link, Air Link, Virtual Desktop, ALVR) the PC app works, and there's a "
+             "**Quest app** for standalone (install it with SideQuest from our website). the wrist overlay + FPS boost need "
+             "SteamVR, so those are PC only.", False),
+            ("do I need trackers for full body?",
+             "no. *better standable* guesses ur hips + feet from ur headset (PC + Quest). real trackers always win if u have them.", False),
+            ("does it cost money?", "nope, free + open source forever <3 u just grab a free key with /key here "
+             "(it also gives u the 🧪 Beta Tester role)", False),
             ("will it lower my FPS?",
              "barely. it redraws a couple times a second and runs at low priority. "
              "the Boost tab usually gets you more fps than it uses.", False),
@@ -385,6 +388,12 @@ POSTS = {
     ],
     "github": [
         _e("🐙 GitHub feed", f"new releases from **{GITHUB}** get posted here automatically.", PURPLE),
+        _e("💜 built with open source",
+           "**Fluff VR Stats is built on:** discord.py (MIT) · Pillow (HPND) · NumPy (BSD-3) · psutil (BSD-3) · "
+           "OpenVR (BSD-3) · bleak (MIT) · MediaPipe (Apache-2.0)\n"
+           "**Quest phone tracking** uses Google ML Kit (free, but **not** open source ~ Google's terms)\n"
+           "**works with:** Pulsoid, Amethyst, SlimeVR, OVR Toolkit, Standable ~ separate projects, not made by us. thank u all <3",
+           PURPLE),
     ],
     "sneak": [
         _e("👀 sneak peeks", "screenshots + clips of stuff that isn't out yet. shhh :3", PINK),
@@ -630,7 +639,9 @@ VIDEO = "https://wolfiecodesowo.github.io/fluff-vr-stats/videos/"
 VIDEOS = [
     ("wrist_hud", "⌚ ur stats on ur wrist", "wrist"),
     ("menu_tour", "🧭 the SteamVR menu", "menu"),
-    ("themes", "🎨 24 themes + 7 ear styles", "themes"),
+    ("fluff_tour", "🐾 a lil tour of the real app (v0.5.4)", "features"),
+    ("mods", "🧩 77 mods, one click each", "mods"),
+    ("themes", "🎨 35 themes + ear styles", "themes"),
     ("chatbox", "🗨️ chatbox stats over ur head", "chatbox"),
     ("fps_boost", "⚡ one-tap FPS boost", "boost"),
     ("discord_status", "💜 Discord status", "discordlink"),
@@ -641,12 +652,12 @@ def _vid(name, title):
     return {"content": f"**{title}**\n{VIDEO}{name}.mp4"}
 
 
-POSTS["videos"] = [_e("🎬 feature videos", "quick looks at everything Fluff VR Stats does. "
-                     "real in-VR clips are coming too!", PINK)] + [_vid(n, t) for n, t, _ in VIDEOS] + \
+POSTS["videos"] = [_e("🎬 feature videos", "real screen recordings of the app, no mockups. music is an original "
+                     "track made for Fluff. in-VR clips are coming too!", PINK)] + [_vid(n, t) for n, t, _ in VIDEOS] + \
                   [{"content": "**🎉 the full trailer**\nhttps://wolfiecodesowo.github.io/fluff-vr-stats/trailer.mp4"}]
 for _n, _t, _ch in VIDEOS:
     POSTS[_ch].append(_vid(_n, "🎬 see it in action"))
-TOPICS["videos"] = "short clips of every feature"
+TOPICS["videos"] = "real screen recordings of the app. no mockups, no fake footage"
 TOPICS["joins"] = "say hi to the newest fluffs!! (welcomes go here, not in main-chat)"
 POSTS["joins"] = [_e("🎉 new fluffs", "every new member gets a welcome here. "
                      "wave hi in 💬・main-chat!", PINK)]
@@ -668,3 +679,24 @@ POSTS["gchat"] = [_e("🌐 global chat",
     "(PC, desktop + Quest) and on people's wrists in VR, and their messages show up here ✨\n\n"
     "**rules:** be nice · no links (they get blocked) · never share personal info · slow mode 3s\n"
     "turn it on in the app: **Mods > Fun > Global chat**", MINT)]
+
+
+# ---- what works today (honest status; the bot re-posts this with every release)
+POSTS["features"].insert(0, _e("✨ what works today",
+    "**works today**\n"
+    "✅ wrist stats, chatbox, avatar toggles, music, FPS boost, global chat, 77 mods, 35 themes (PC)\n"
+    "✅ desktop mode in its own fluffy window or full screen\n"
+    "✅ Quest app: mods, counters, chatbox, global chat\n"
+    "✅ **better standable** ~ hips + feet from ur headset, chair-style sitting (PC + Quest)\n"
+    "✅ YouTube search (PC + Quest)\n\n"
+    "**works, still being tested ~ tell us how it goes!**\n"
+    "🧪 heart rate (Pulsoid or a Bluetooth strap) · 🧪 webcam full-body on PC · 🧪 OVR Toolkit buddy · "
+    "🧪 VRChat camera controls\n\n"
+    "**still cooking**\n"
+    "🚧 phone camera tracking for Quest (the connection isn't reliable yet)\n"
+    "🚧 Kinect One: Fluff sees it through Amethyst (free), but doesn't talk to the Kinect itself yet", MINT))
+TOPICS.update({
+    "features": "what Fluff does today ~ and what's still cooking (it says which is which)",
+    "bugs": "what happened, what u expected, PC or Quest + version. a screenshot helps a ton",
+    "roadmap": "what's being worked on + what's next. nothing here is promised",
+})

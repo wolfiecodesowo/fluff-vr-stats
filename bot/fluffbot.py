@@ -15,6 +15,7 @@ Run it with run_bot.bat (first time: setup_bot.bat).
 import asyncio
 import collections
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -453,6 +454,10 @@ class FluffBot(discord.Client):
             self._synced_guild = True
             self.tree.copy_global_to(guild=g)
             await self.tree.sync(guild=g)
+        if g is not None and CFG.get("last_release") and CFG.get("refreshed_for") != CFG.get("last_release") \
+                and not paused() and not getattr(self, "_refreshing", False):
+            self._refreshing = True
+            asyncio.create_task(self.refresh_all())
         if g is not None:
             missing = [k for k in CHANNEL_NAMES if self.ch(k) is None]
             if missing:
@@ -784,6 +789,8 @@ class FluffBot(discord.Client):
                 if first or await self.post_release(rel, ping=True):
                     CFG["last_release"] = rel["tag_name"]
                     save_cfg(CFG)
+                    if not first:
+                        await self.after_release(rel)
         except Exception:
             # never let one bad post kill the loop (that's why update posts stopped showing up)
             log.exception("release loop")
@@ -791,6 +798,33 @@ class FluffBot(discord.Client):
     @release_loop.before_loop
     async def _wait2(self):
         await self.wait_until_ready()
+
+    async def after_release(self, rel):
+        """a new Fluff release: grab the bot's own new files (signed), then bring every channel up to date"""
+        changed = []
+        try:
+            changed = await asyncio.to_thread(pull_bot_files, rel)
+        except Exception:
+            log.exception("couldn't update the bot's own files")
+        if "bot/content.py" in changed:
+            reload_content()
+        await self.refresh_all(rel.get("tag_name"))
+        code = [f for f in changed if f.endswith(".py") and f != "bot/content.py"]
+        if code:
+            log.info("new bot code (%s): restarting to use it", ", ".join(code))
+            await self.alert("restart", f"🔄 Fluff Bot updated itself to {rel.get('tag_name')} and is restarting", every=0)
+            restart_self()
+
+    async def refresh_all(self, tag=None):
+        """channel topics + the bot's info posts, straight from content.py. only the bot's own info posts get
+        replaced: member chat, release posts and welcomes are never touched"""
+        g = self.guild()
+        if g is None:
+            return
+        n = await refresh_channels(g)
+        CFG["refreshed_for"] = tag or CFG.get("last_release")
+        save_cfg(CFG)
+        log.info("refreshed %d channel(s) for %s", n, CFG["refreshed_for"])
 
     # a crashing loop stops for good unless something restarts it: the watchdog does, and the owner hears about it
     @bump_loop.error
@@ -826,10 +860,113 @@ class FluffBot(discord.Client):
                 sent += 1
             except discord.HTTPException as err:
                 log.warning("couldn't post the release in #%s: %s", key, err)
+        main = self.ch("main")
+        if main and sent:
+            try:
+                await main.send(f"✨ **Fluff VR Stats {rel['tag_name']} is out!** what's new is in "
+                                f"{self.ch('changelog').mention if self.ch('changelog') else '#changelog'} ~ "
+                                "already have it? it updates by itself :3")
+            except discord.HTTPException as err:
+                log.warning("couldn't post the update note in #main: %s", err)
         if not sent:
             log.warning("release %s wasn't posted anywhere (missing channels? run /setup, it won't delete anything now)",
                         rel.get("tag_name"))
         return sent
+
+
+async def refresh_channels(guild):
+    """every channel's topic + the bot's own info posts from content.py. returns how many channels it touched"""
+    chans, n = {}, 0
+    for key, cid in (CFG.get("channels") or {}).items():
+        c = guild.get_channel(cid)
+        if not isinstance(c, discord.TextChannel):
+            continue
+        try:
+            topic = C.TOPICS.get(key)
+            if topic and c.topic != topic:
+                await c.edit(topic=topic, reason="Fluff Bot: new release")
+                n += 1
+            if key in C.POSTS:
+                await c.purge(limit=50, check=lambda m, k=key: is_info_post(m, k))
+                chans[key] = c
+        except discord.HTTPException as e:
+            log.warning("couldn't refresh #%s: %s", key, e)
+    await post_info(chans)
+    return max(n, len(chans))
+
+
+ROOT = os.path.dirname(HERE)
+# the bot's own files (paths as in the repo). on the hosting site they sit in the same layout
+BOT_FILES = ["bot/fluffbot.py", "bot/fluffsafe.py", "bot/content.py", "fluffnet.py", "fun.py", "gchat.py",
+             "themes.py", "trust.py", "trust.json", "lang.py"]
+RAW_FILE = "https://raw.githubusercontent.com/wolfiecodesowo/fluff-vr-stats/{tag}/{path}"
+
+
+def _get(url, timeout=30):
+    req = urllib.request.Request(url, headers={"User-Agent": "FluffBot"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def pull_bot_files(rel):
+    """Keeps a hosted bot current without re-uploading: downloads its own files from the release and only
+    installs them when every one matches the release's SIGNED file list (same check the app's updater does).
+    All or nothing. A git checkout (ur PC) is left alone ~ git handles that. Returns the repo paths it changed."""
+    if os.path.isdir(os.path.join(ROOT, ".git")):
+        return []
+    import trust
+    tag = rel.get("tag_name")
+    url = next((a.get("browser_download_url") for a in rel.get("assets") or [] if a.get("name") == "fluff-manifest.json"), None)
+    if not (tag and url and trust.HAVE_CRYPTO and trust.configured("release")):
+        log.warning("bot self-update skipped for %s (no signed file list, or trust.json / cryptography missing)", tag)
+        return []
+    man = json.loads(_get(url).decode("utf-8"))
+    if not trust.verify_payload("release", man) or man.get("tag") != tag:
+        log.warning("bot self-update refused: %s's file list isn't signed right", tag)
+        return []
+    staged = []
+    for path in BOT_FILES:
+        want = (man.get("files") or {}).get(path)
+        if not want:
+            continue
+        dest = os.path.join(ROOT, *path.split("/"))
+        try:
+            with open(dest, "rb") as f:
+                if hashlib.sha256(f.read()).hexdigest() == want:
+                    continue
+        except OSError:
+            pass
+        data = _get(RAW_FILE.format(tag=tag, path=path))
+        if hashlib.sha256(data).hexdigest() != want:
+            log.warning("bot self-update refused: %s doesn't match the signed list", path)
+            return []
+        if path.endswith(".py"):
+            compile(data, dest, "exec")            # never install something that won't even start
+        staged.append((path, dest, data))
+    for path, dest, data in staged:
+        tmp = dest + ".new"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, dest)
+    if staged:
+        log.info("bot updated itself to %s: %s", tag, ", ".join(p for p, _, _ in staged))
+    return [p for p, _, _ in staged]
+
+
+def reload_content():
+    import importlib
+    global C, CHANNEL_NAMES
+    C = importlib.reload(C)
+    CHANNEL_NAMES = {key: name for _cat, _acc, items in C.LAYOUT for _kind, key, name in items}
+
+
+def restart_self():
+    """start fresh with the new code (same command the host started us with)"""
+    try:
+        save_cfg(CFG)
+    except Exception:
+        pass
+    os.execv(sys.executable, [sys.executable, "-u"] + sys.argv)
 
 
 def release_ready(rel):
@@ -1108,7 +1245,7 @@ def is_info_post(m, key):
     texts = {spec.get("content") for spec in C.POSTS.get(key, []) if spec.get("content")}
     if m.embeds:
         return any(e.title in titles for e in m.embeds)
-    return bool(m.content) and m.content in texts
+    return bool(m.content) and (m.content in texts or (C.VIDEO in m.content and m.content.startswith("**")))
 
 
 def fetch_all_releases():
@@ -1143,14 +1280,9 @@ async def repost_updates_cmd(inter: discord.Interaction, ping_latest: bool = Fal
 @bot.tree.command(name="refresh-info", description="(staff) re-post the info channels from content.py")
 @staff_only()
 async def refresh_cmd(inter: discord.Interaction):
-    await inter.response.send_message("refreshing… 🐾", ephemeral=True)
-    chans = {}
-    for key, cid in CFG["channels"].items():
-        c = inter.guild.get_channel(cid)
-        if c and key in C.POSTS and isinstance(c, discord.TextChannel):
-            await c.purge(limit=50, check=lambda m, k=key: is_info_post(m, k))
-            chans[key] = c
-    await post_info(chans)
+    await inter.response.send_message("refreshing every channel's topic + info posts… 🐾 (chat stays)", ephemeral=True)
+    n = await refresh_channels(inter.guild)
+    await inter.followup.send(f"done!! {n} channel(s) up to date :3", ephemeral=True)
 
 
 @bot.tree.command(name="download", description="get Fluff VR Stats")
