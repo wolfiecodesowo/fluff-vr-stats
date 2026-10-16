@@ -549,16 +549,14 @@ def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tu
     x0, y0, x1, y1 = [int(round(v)) for v in box]
     w, h = max(8, x1 - x0), max(8, y1 - y0)
     fill = tuple((fill or t["panel"])[:3])
-    if ears_on and t.get("ears", "cat") != "none":
-        es = int(ear_size or max(13, min(22, h * 0.15)))
+    # ears only on big "hero" cards (the window, wrapped cards) ~ on every lil card they turn into wallpaper
+    if ears_on and t.get("ears", "cat") != "none" and (ear_size or 0) >= 40:
+        es = int(ear_size)
         img = _card_ears(w, es, t.get("ears", "cat"), tuple(fur_white(t)[:3]), tuple(t["inner_ear"][:3]),
                          tuple(pencil(t)[:3]))
         _paste_clipped(d._image, img, x0, y0 - img.height + int(es * 0.12))
-    if glow:
-        g = _glow(w, h, int(min(radius, h / 2)), tuple(t["primary"][:3]))
-        _paste_clipped(d._image, g[0], x0 - g[1], y0 - g[1])
     img, pad = _velvet(w, h, int(min(radius, h / 2)), fill, tuple(t["text"][:3]), tuple(t["line"][:3]), True, True,
-                       tuple(mix(fill, t["primary"], 0.55)[:3]) if fill != tuple(t["primary"][:3]) else None)
+                       None)                              # no pink rim on every card: pink means "on"
     _paste_clipped(d._image, img, x0 - pad, y0 - pad)
 
 
