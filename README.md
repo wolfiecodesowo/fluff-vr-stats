@@ -108,6 +108,10 @@ Fluff VR Stats runs as its own little app next to VRChat. It **never touches VRC
 ## 💭 Where did the AI buddy go?
 We took Fluff the AI buddy (AI chat + AI Look) out in **v0.3.0**. Lately there's been a lot of hate and drama around AI, and a lot of people just aren't vibing with it, so for now Fluff VR Stats is **100% AI-free**. This isn't us hating on AI at all, we just want everyone to feel comfy using the app. We're pretty sure this'll blow over soon, and if it does, it might come back as an optional mod :3
 
+## 🕶️ Normie Mode
+
+Want Fluff to look like a normal app? **Settings → general → Normie Mode** (Quest: Settings → look). The mascot, ears, stripe and doodles go away, cards and buttons turn flat and tidy, and a dim code rain runs behind everything (it lights up near your pointer). Turn it off and the original fluffy look comes back untouched. Reduced motion / Power saving freeze the rain.
+
 ## 💾 Install (Windows)
 **Easy way:** download **`FluffVRStats-Setup.exe`** from the [latest release](https://github.com/wolfiecodesowo/fluff-vr-stats/releases/latest) and run it. It comes with everything (its own private Python), no admin needed, and it has a normal uninstaller. Check it against `SHA256SUMS.txt` on the release page if you like.
 > Windows might say "Windows protected your PC" because the .exe isn't code-signed yet. Click **More info → Run anyway**. It's the same open source code you can read here.

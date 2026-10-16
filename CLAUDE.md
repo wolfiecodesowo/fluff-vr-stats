@@ -12,3 +12,11 @@
   Frozen when reduced-motion / power-saving. The floating desktop mini-HUD window does not get rain yet.
 - Tests: `python -m unittest discover -s tests -v`. Preview: `NORMIE=1 python preview.py <dir>`.
 - Not verified: live desktop window / SteamVR (no headset), real DPI scaling. Reliability/perf audit of the wider codebase not done.
+
+## State at end of session (2026-10-16)
+- Branch `normie-mode`, version bumped to v0.5.5 (PC) / 0.11.0-quest (versionCode 21). CHANGELOG + README updated.
+- PC: 19 unittest tests pass; OFF-mode previews pixel-identical to v0.5.4. Desktop window launched and seen working (rain, icon, controls).
+- Quest: `NORMIE` = `Settings.normie`, `FluffDrawable.flat`, `CodeRain.kt`. `gradlew assembleDebug` + `testDebugUnitTest` pass. NOT run on a headset (none connected).
+- Fixed this pass: magenta outline on the desktop mini-HUD in Normie Mode (hard-keyed edge), rain card alpha 0.92 for legibility.
+- Not done: wider crash/leak/perf audit; Quest signed release (needs `quest/publish_quest.bat` on the owner's PC); signed PC release (CI signs on GitHub release; needs `gh auth login` / RELEASE_KEY secret).
+- Shorts plans: docs/shorts-plans.md (planned, nothing recorded or uploaded).

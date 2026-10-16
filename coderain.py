@@ -51,7 +51,7 @@ def _texture(wq, hq, hot=False):
     return tex, tuple(info)
 
 
-def behind(card, now, size=None, origin=(0, 0), card_alpha=0.86, pointer=None):
+def behind(card, now, size=None, origin=(0, 0), card_alpha=0.92, pointer=None):
     """`card` (RGBA) drawn over the code rain. With `size` the rain fills that bigger canvas and the card sits at
     `origin` (desktop window / fullscreen); otherwise the rain fills the card's own box (VR menu + wrist). Returns RGBA."""
     card = card.convert("RGBA")

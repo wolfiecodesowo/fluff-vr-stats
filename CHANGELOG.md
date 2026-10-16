@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.5 + Quest Edition v0.11.0: Normie Mode 🕶️
+- 🕶️ **Normie Mode (PC, desktop mode and Quest):** one switch for a clean, conventional look. Settings → general → **Normie Mode** (on Quest: Settings → look). It applies instantly and is remembered
+  - flat cards and buttons with small corners, one neutral dark palette + a blue accent, clean sans font instead of the hand lettering
+  - the mascot is gone: no sticker logo, no Lil Kitty (wrist, desktop pet, closet preview, wrist/home buttons), no ears, pride stripe, hearts, paw cursor or sparkle trail, no intro, and a plain "F" app icon
+  - switch it off and the original look is back exactly (the PC output is pixel-identical to v0.5.4, checked across every preview screen). ur theme, accent and ears picks are kept while it's on
+- 🌧️ **falling-code wall:** in Normie Mode a dim code rain runs behind the app: the desktop window, the VR menu, the wrist HUD and the Quest app. it lights up around ur pointer / finger. it freezes with Reduced motion or Power saving, and costs about 11 ms a frame at 15 fps on the desktop window
+- 🛡️ **settings are safe:** a missing, mistyped or corrupted `normie` value falls back to off instead of breaking the look; old config files load fine
+- 🪟 **desktop:** the floating mini wrist HUD has a clean edge in Normie Mode (no magenta outline around it)
+- 🧪 **first automated tests:** `python -m unittest discover -s tests -v` (19 tests: config repair, both modes render on every tab, 30 rapid toggles leave no residue, the rain). `NORMIE=1 python preview.py out/` renders every screen in Normie Mode
+- Not in this release: Quest was compiled + its unit tests pass, but it hasn't been run on a headset yet
+
 ## v0.5.4: Fluff gets its own window 🪟
 - 🐾 **no more boring Windows frame:** in desktop mode the window IS the fluffy card now, ears + fuzz and all, with ur desktop showing around it. grab the ears to move it, the lil — ⛶ ✕ buttons between the ears do the rest
 - ⛶ **full screen:** press **F11** (or ⛶) and Fluff fills ur whole screen like a real app. **Esc** goes back

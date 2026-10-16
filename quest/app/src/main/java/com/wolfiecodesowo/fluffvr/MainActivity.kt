@@ -87,7 +87,8 @@ class MainActivity : Activity() {
         Th("Cozy Cabin", Color.rgb(34, 22, 16), Color.rgb(240, 160, 90), intArrayOf(Color.rgb(180, 90, 50), Color.rgb(240, 160, 90), Color.rgb(250, 220, 170), Color.rgb(110, 70, 50))),
         Th("Candy Corn", Color.rgb(30, 18, 12), Color.rgb(255, 170, 40), intArrayOf(Color.rgb(255, 230, 120), Color.rgb(255, 170, 40), Color.rgb(255, 110, 30), Color.rgb(255, 250, 240))),
     )
-    private val th get() = THEMES[s.theme.coerceIn(0, THEMES.size - 1)]
+    private val NORMIE_TH = Th("Normie", Color.rgb(30, 33, 40), Color.rgb(74, 144, 226))
+    private val th get() = if (s.normie) NORMIE_TH else THEMES[s.theme.coerceIn(0, THEMES.size - 1)]
     private fun lum(c: Int) = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255
     private val light get() = lum(th.bg) > 0.6
     private val BG get() = th.bg
@@ -109,8 +110,10 @@ class MainActivity : Activity() {
     private val client by lazy { if ((Build.MANUFACTURER ?: "").lowercase().let { "oculus" in it || "meta" in it }) "quest" else "phone" }
 
     // the PC menu's fonts: Gochi Hand for titles + headings + buttons, Nunito for text
-    private val fTitle by lazy { resources.getFont(R.font.gochi) }
-    private val fHead by lazy { resources.getFont(R.font.gochi) }
+    private val fGochi by lazy { resources.getFont(R.font.gochi) }
+    private val fNunitoBold by lazy { resources.getFont(R.font.nunito) }
+    private val fTitle get() = if (s.normie) fNunitoBold else fGochi          // Normie Mode: clean sans instead of the hand lettering
+    private val fHead get() = if (s.normie) fNunitoBold else fGochi
     private val fBody by lazy { resources.getFont(R.font.nunito) }
     private val fBody2 by lazy { resources.getFont(R.font.nunito_semi) }
 
@@ -154,8 +157,19 @@ class MainActivity : Activity() {
         Updater.check(this, s.autoUpdate)
     }
 
+    override fun onPause() { super.onPause(); CodeRain.paused = true }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {    // the rain lights up under finger / VR laser
+        if (s.normie) {
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_UP || ev.actionMasked == android.view.MotionEvent.ACTION_CANCEL) CodeRain.pointerX = -1f
+            else { CodeRain.pointerX = ev.rawX; CodeRain.pointerY = ev.rawY }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
+        CodeRain.paused = false
         // back from the "allow installs" screen -> try the install again
         if (Updater.state == "need_permission" && packageManager.canRequestPackageInstalls()) { Updater.state = "ready"; Updater.install(this) }
         if (::body.isInitialized && tab in listOf("Home", "Settings", "Music")) build()   // back from a permission screen: show the new ✓
@@ -347,10 +361,13 @@ class MainActivity : Activity() {
         gchatList = null; kittyView = null; kittyText = null; gchatSig = -1; bodyLive = null; ytList = null; camView = null; camHint = null; camShown = null
         val d = resources.displayMetrics.density
         val wideNow = wide
+        FluffDrawable.flat = s.normie                       // Normie Mode: every card made below is flat
+        window.statusBarColor = BG; window.navigationBarColor = BG
         // the window: a big furry card with ears + the pride stripe across its top (the PC menu's frame)
         val outer = android.widget.FrameLayout(this).apply { setBackgroundColor(FluffDrawable.blend(BG, Color.BLACK, 0.45f)) }
         val frameCard = FluffDrawable(BG, INK, INNER_EAR, dp(30).toFloat(), d, s.ears, false, 3, PINK, false, if (wideNow) 34f else 24f, false)
-        val frameBg = FrameDrawable(frameCard, STRIPE, dp(30).toFloat(), d, PawBackground(PINK, STRIPE[4], TEXT, d))
+        val frameBg = FrameDrawable(frameCard, STRIPE, dp(30).toFloat(), d,
+            if (s.normie) CodeRain(d) else PawBackground(PINK, STRIPE[4], TEXT, d))
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; background = frameBg
             setPadding(frameCard.insetSide + dp(14), frameCard.insetTop + frameBg.stripeH + dp(8), frameCard.insetSide + dp(14), frameCard.insetBottom + dp(10))
@@ -359,15 +376,18 @@ class MainActivity : Activity() {
 
         // header: sticker logo + hand-lettered name :3 + tagline, greeting + pills on the right
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) },
+        if (!s.normie) head.addView(ImageView(this).apply { setImageResource(R.drawable.logo) },
             LinearLayout.LayoutParams(dp(if (wideNow) 78 else 54), dp(if (wideNow) 78 else 54)).apply { if (wideNow) { leftMargin = dp(36); rightMargin = dp(42) } })
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(if (wideNow) 0 else 10), 0, 0, 0) }
         val tl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
         tl.addView(text("Fluff VR Stats", if (wideNow) 32f else 26f, TEXT, fTitle))
-        tl.addView(text(" :3", if (wideNow) 32f else 26f, PINK, fTitle))
-        tl.addView(text(" ///", 16f, FluffDrawable.blend(PINK, Color.rgb(255, 120, 160), 0.4f), fTitle).apply { setPadding(0, 0, 0, dp(6)) })
+        if (!s.normie) {
+            tl.addView(text(" :3", if (wideNow) 32f else 26f, PINK, fTitle))
+            tl.addView(text(" ///", 16f, FluffDrawable.blend(PINK, Color.rgb(255, 120, 160), 0.4f), fTitle).apply { setPadding(0, 0, 0, dp(6)) })
+        }
         titles.addView(tl)
-        titles.addView(text(if (client == "phone") "stats + mods + cozy vibes · phone remote" else "stats + mods + cozy vibes for VRChat on Quest", 14f, SUB, fBody2))
+        titles.addView(text(if (s.normie) (if (client == "phone") "Performance stats and tools for VRChat · phone remote" else "Performance stats and tools for VRChat on Quest")
+            else if (client == "phone") "stats + mods + cozy vibes · phone remote" else "stats + mods + cozy vibes for VRChat on Quest", 14f, SUB, fBody2))
         head.addView(titles, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
         if (wideNow) right.addView(text(greetingWord() + (s.gchatName.takeIf { it.isNotEmpty() }?.let { ", $it" } ?: "") + " ~", 22f, TEXT, fHead)
@@ -414,7 +434,7 @@ class MainActivity : Activity() {
             root.addView(content, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
             root.addView(dock(), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         }
-        root.addView(text("mrrp~", 15f, SUB, fTitle).apply { setPadding(dp(8), dp(2), 0, 0) })
+        if (!s.normie) root.addView(text("mrrp~", 15f, SUB, fTitle).apply { setPadding(dp(8), dp(2), 0, 0) })
         setContentView(outer)
         refresher.run()
     }
@@ -619,6 +639,7 @@ class MainActivity : Activity() {
     }
 
     private fun kittyCard() {
+        if (s.normie) return                                  // the mascot rests in Normie Mode
         val c = card(body, "🐾 ${s.kittyName}")
         val r = row(c, wrap = false)
         kittyView = ImageView(this).apply {
@@ -1512,11 +1533,15 @@ class MainActivity : Activity() {
         chip(r, "send test message", false) { Osc.chatbox(s.host, s.port, "hiii from Fluff VR Stats :3 🐾") }
 
         val th = card(body, "🎨 look")
-        th.addView(text("${THEMES.size} themes ~ the first 5 are the classic pride look", 13f, SUB).apply { setPadding(0, 0, 0, dp(6)) })
+        switchRow(th, "Normie Mode", "clean standard look, hides the mascot + decorations, code-rain background", s.normie) { s.normie = !s.normie }
+        if (s.normie) { th.addView(text("themes and ears are paused while Normie Mode is on (ur picks are kept)", 13f, SUB).apply { setPadding(0, dp(6), 0, 0) }) }
+        else {
+        th.addView(text("${THEMES.size} themes ~ the first 5 are the classic pride look", 13f, SUB).apply { setPadding(0, dp(6), 0, dp(6)) })
         var tr = row(th)
         THEMES.forEachIndexed { i, t -> if (i == 5) { tr = row(th); tr.setPadding(0, dp(4), 0, 0) }; if (i == 10) tr = row(th); swatch(tr, i, t) }
         val er = row(th); er.setPadding(0, dp(6), 0, 0)
         for (e in listOf("cat", "fox", "wolf", "bunny", "bear")) chip(er, "$e ears", s.ears == e) { s.ears = e }
+        }
 
         val g = card(body, "🌐 global chat")
         val nm = edit(s.gchatName, "ur name in global chat")

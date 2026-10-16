@@ -146,6 +146,7 @@ class FrameDrawable(private val card: FluffDrawable, private val stripe: IntArra
         val clip = Path().apply { addRoundRect(r, radius, radius, Path.Direction.CW) }
         c.clipPath(clip)
         inner?.let { it.setBounds(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); it.draw(c) }
+        if (FluffDrawable.flat) { c.restore(); return }          // Normie Mode: no stripe, no ink frame
         val h = 9 * d
         val w = r.width() / stripe.size
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -175,7 +176,7 @@ class HeartSwitch(private val on: Boolean, private val accent: Int, private val 
         val kx = if (on) b.right - k - 3.5f * d else b.left + 3.5f * d
         p.color = 0xFFFFFFFF.toInt()
         c.drawOval(RectF(kx, b.top + 3.5f * d, kx + k, b.top + 3.5f * d + k), p)
-        if (on) {
+        if (on && !FluffDrawable.flat) {
             p.color = accent
             val x = kx + k / 2; val y = b.top + 3.5f * d + k / 2 + d; val r = k * 0.2f
             val path = Path()

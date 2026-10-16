@@ -649,7 +649,13 @@ def run():
             return
         store["last"] = img
         pic = img.resize(size, Image.BILINEAR) if img.size != size else img
-        if pic.mode == "RGBA":
+        if pic.mode == "RGBA" and ui.normie_on(cfg):
+            # flat Normie cards have 1px anti-aliased edges; blending them with the see-through key colour left a
+            # magenta outline, so the edge is cut hard instead
+            key = Image.new("RGB", pic.size, (255, 0, 254))
+            key.paste(pic.convert("RGB"), mask=pic.getchannel("A").point(lambda v: 255 if v >= 100 else 0))
+            pic = key
+        elif pic.mode == "RGBA":
             bg = Image.new("RGBA", pic.size, (255, 0, 254, 255))
             bg.alpha_composite(pic)
             pic = bg.convert("RGB")

@@ -18,7 +18,7 @@ class FluffDrawable(
     private val accent: Int = inner, private val glow: Boolean = false,
     private val earSize: Float = 13f, private val outline: Boolean = false,
 ) : Drawable() {
-    val earH = if (ears == "none") 0f else earSize * d
+    val earH = if (ears == "none" || flat) 0f else earSize * d
     val insetTop get() = (earH + 3 * d).toInt()
     val insetSide get() = (6 * d).toInt()
     val insetBottom get() = (6 * d).toInt()
@@ -35,6 +35,13 @@ class FluffDrawable(
     override fun draw(c: Canvas) {
         val b = bounds
         val r = RectF(b.left + insetSide.toFloat(), b.top + insetTop.toFloat(), b.right - insetSide.toFloat(), b.bottom - insetBottom.toFloat())
+        if (flat) {          // Normie Mode: flat fill + 1dp border, small corners, nothing else
+            val rf = minOf(radius, 10f * d, r.height() / 2)
+            c.drawRoundRect(r, rf, rf, pFill.apply { shader = null; color = fill })
+            c.drawRoundRect(RectF(r.left + 0.5f * d, r.top + 0.5f * d, r.right - 0.5f * d, r.bottom - 0.5f * d), rf, rf,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(fill, 0xFFFFFFFF.toInt(), 0.14f); style = Paint.Style.STROKE; strokeWidth = d })
+            return
+        }
         val shapes = ArrayList<Path>()
         val rr = minOf(radius, r.height() / 2)
         shapes += Path().apply { addRoundRect(r, rr, rr, Path.Direction.CW) }
@@ -136,6 +143,9 @@ class FluffDrawable(
     @Deprecated("Deprecated in Java") override fun getOpacity() = PixelFormat.TRANSLUCENT
 
     companion object {
+        /** set by MainActivity.build() from Settings.normie before any card is made */
+        @JvmStatic var flat = false
+
         fun blend(a: Int, b: Int, k: Float): Int {
             fun ch(sh: Int) = (((a shr sh) and 255) * (1 - k) + ((b shr sh) and 255) * k).toInt()
             return (255 shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
