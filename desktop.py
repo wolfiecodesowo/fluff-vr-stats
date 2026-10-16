@@ -194,6 +194,26 @@ class DesktopApp(core.App):
 
 
 # ---------------------------------------------------------------------- window ---
+ICO = os.path.join(HERE, "assets", "fluff.ico")
+
+
+def app_identity():
+    """Windows groups windows by app id: without our own, the taskbar shows Python's icon"""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wolfiecodesowo.FluffVRStats")
+        except Exception:
+            pass
+
+
+def set_icon(root):
+    try:
+        root.iconbitmap(default=ICO)          # the mascot, on the taskbar + alt-tab
+    except Exception:
+        pass
+
+
 def run():
     import tkinter as tk
     from tkinter import simpledialog
@@ -219,35 +239,138 @@ def run():
             app.quit = True
     threading.Thread(target=worker, daemon=True, name="fluff-desktop").start()
 
+    app_identity()
     root = tk.Tk()
-    root.title("Fluff VR Stats :3  (desktop)")
-    try:
-        root.iconphoto(True, ImageTk.PhotoImage(Image.open(os.path.join(HERE, "assets", "logo.gif")).convert("RGBA").resize((64, 64))))
-    except Exception:
-        pass
+    root.title("Fluff VR Stats :3")
+    set_icon(root)
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     scale = min(1.0, sw * 0.8 / ui.DASH_W, sh * 0.8 / ui.DASH_H)
     W, H = int(ui.DASH_W * scale), int(ui.DASH_H * scale)
-    root.configure(bg="#160e22")
-    canvas = tk.Canvas(root, width=W, height=H, bg="#160e22", highlightthickness=0, cursor="hand2")
+    # window styles: "fluffy" = no Windows frame, the window IS the furry card (ears + fuzz, see-through around it)
+    #                "fullscreen" = the whole screen, card in the middle · "classic" = a normal Windows window
+    BG, HOLE = "#160e22", "#ff00fe"
+    BG_RGB, HOLE_RGB = (22, 14, 34), (255, 0, 254)
+    root.configure(bg=BG)
+    canvas = tk.Canvas(root, width=W, height=H, bg=BG, highlightthickness=0, cursor="hand2")
     canvas.pack(fill="both", expand=True)
-    view = {"scale": scale, "img": None, "item": None, "last": None, "W": W, "H": H}
+    view = {"scale": scale, "img": None, "item": None, "last": None, "W": W, "H": H, "ox": 0, "oy": 0,
+            "mode": dcfg.get("window", "fluffy"), "home": None}
+    drag = {}
 
     def to_dash(e):
-        return e.x / view["scale"], e.y / view["scale"]
+        return (e.x - view["ox"]) / view["scale"], (e.y - view["oy"]) / view["scale"]
+
+    def m_down(e):
+        x, y = to_dash(e)
+        if view["mode"] == "fluffy" and y < 60:          # grab the ears / top fuzz to move the window
+            drag["at"] = (e.x_root - root.winfo_x(), e.y_root - root.winfo_y())
+            return
+        drag.clear()
+        app.events.put(("click", x, y))
+
+    def m_drag(e):
+        if "at" in drag:
+            dx, dy = drag["at"]
+            root.geometry(f"+{e.x_root - dx}+{e.y_root - dy}")
 
     canvas.bind("<Motion>", lambda e: app.events.put(("move", *to_dash(e))))
     canvas.bind("<Leave>", lambda e: app.events.put(("leave",)))
-    canvas.bind("<Button-1>", lambda e: app.events.put(("click", *to_dash(e))))
+    canvas.bind("<Button-1>", m_down)
+    canvas.bind("<B1-Motion>", m_drag)
+    canvas.bind("<ButtonRelease-1>", lambda e: drag.clear())
     canvas.bind("<MouseWheel>", lambda e: app.events.put(("scroll", e.delta / 120)))
     canvas.bind("<Button-4>", lambda e: app.events.put(("scroll", 1)))
     canvas.bind("<Button-5>", lambda e: app.events.put(("scroll", -1)))
 
     def on_resize(e):
         s = min(e.width / ui.DASH_W, e.height / ui.DASH_H)
-        if abs(s - view["scale"]) > 0.01:
-            view["scale"], view["last"] = s, None
+        ox, oy = int((e.width - ui.DASH_W * s) / 2), int((e.height - ui.DASH_H * s) / 2)
+        if abs(s - view["scale"]) > 0.01 or (ox, oy) != (view["ox"], view["oy"]):
+            view["scale"], view["ox"], view["oy"], view["last"], view["img"] = s, ox, oy, None, None
     canvas.bind("<Configure>", on_resize)
+
+    def frameless(on):
+        """take Windows' title bar + border off (or put them back), keeping our taskbar button"""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            hwnd = u.GetParent(root.winfo_id())
+            st = u.GetWindowLongW(hwnd, -16)
+            frame = 0x00C00000 | 0x00040000              # WS_CAPTION | WS_THICKFRAME
+            u.SetWindowLongW(hwnd, -16, (st & ~frame) if on else (st | frame))
+            u.SetWindowLongW(hwnd, -20, u.GetWindowLongW(hwnd, -20) | 0x00040000)   # WS_EX_APPWINDOW
+            u.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)   # just redraw the frame
+        except Exception as e:
+            core.log.warning("couldn't change the window frame: %s", e)
+
+    def set_mode(mode):
+        old = view["mode"]
+        if old == "fullscreen" and mode != "fullscreen":
+            root.attributes("-fullscreen", False)
+        view["mode"] = mode
+        dcfg["window"] = mode
+        app.state.dirty_cfg = True
+        keyed = mode == "fluffy"
+        try:
+            root.attributes("-transparentcolor", HOLE if keyed else "")
+        except tk.TclError:
+            pass
+        canvas.config(bg=HOLE if keyed else BG)
+        root.configure(bg=HOLE if keyed else BG)
+        root.config(menu=bar if mode == "classic" else "")
+        frameless(mode != "classic")
+        if mode == "fullscreen":
+            root.attributes("-fullscreen", True)
+        elif old == "fullscreen" and view["home"]:
+            root.geometry(view["home"])
+        view["last"], view["img"] = None, None
+        place_controls()
+
+    def flatten(f, size):
+        """the card as one picture: outside the fuzz is see-through in fluffy mode, dark otherwise"""
+        pic = f.resize(size, Image.BILINEAR) if f.size != size else f
+        if pic.mode != "RGBA":
+            return pic.convert("RGB")
+        base = Image.new("RGB", pic.size, BG_RGB)
+        a = pic.getchannel("A")
+        base.paste(pic.convert("RGB"), mask=a)
+        if view["mode"] == "fluffy":
+            base.paste(HOLE_RGB, mask=a.point(lambda v: 255 if v < 110 else 0))
+        return base
+
+    # lil window buttons, floating between the ears (no Windows title bar to hold them)
+    ctl = tk.Frame(canvas, bg=BG)
+
+    def ctl_btn(text, cmd):
+        b = tk.Label(ctl, text=text, font=("Segoe UI", 10, "bold"), fg="#f3e9f7", bg="#2c2038", padx=9, pady=1,
+                     cursor="hand2")
+        b.bind("<Button-1>", lambda e: cmd())
+        b.bind("<Enter>", lambda e: b.config(bg="#ff96ca", fg="#1e1426"))
+        b.bind("<Leave>", lambda e: b.config(bg="#2c2038", fg="#f3e9f7"))
+        b.pack(side="left", padx=2)
+
+    def toggle_full():
+        if view["mode"] == "fullscreen":
+            set_mode(dcfg.get("window_before_full", "fluffy"))
+        else:
+            dcfg["window_before_full"] = view["mode"]
+            view["home"] = root.geometry()
+            set_mode("fullscreen")
+
+    ctl_btn("—", lambda: root.iconify())
+    ctl_btn("⛶", toggle_full)
+    ctl_btn("✕", lambda: close())
+
+    def place_controls():
+        if view["mode"] == "classic":
+            ctl.place_forget()
+            return
+        x = view["ox"] + int((ui.DASH_W - 300) * view["scale"])
+        y = view["oy"] + int(18 * view["scale"])
+        ctl.place(x=x, y=y)
+    canvas.bind("<Configure>", lambda e: place_controls(), add="+")
 
     # ---- kitty: tiny always-on-top desktop pet
     kwin = tk.Toplevel(root)
@@ -462,26 +585,41 @@ def run():
         cfg["launch_mode"] = "ask"
         app.state.dirty_cfg = True
 
-    menu = tk.Menu(root)
-    m1 = tk.Menu(menu, tearoff=0)
-    m1.add_command(label="Lil Kitty on desktop (on/off)", command=lambda: toggle("kitty"))
-    m1.add_command(label="Floating wrist menu (on/off)   F9", command=lambda: toggle("hud"))
-    m1.add_command(label="Zoom magnifier (on/off)   F10", command=lambda: app.events.put(("hud", "zoom")))
-    menu.add_cascade(label="View", menu=m1)
-    m2 = tk.Menu(menu, tearoff=0)
-    m2.add_command(label="Switch to VR mode", command=switch_vr)
-    m2.add_command(label="Ask VR or Desktop every launch", command=ask_each_time)
-    menu.add_cascade(label="Mode", menu=m2)
-    try:
-        import devpanel                     # owner only: shows up just on a PC that has the mod key
-        if devpanel.available():
-            m3 = tk.Menu(menu, tearoff=0)
-            m3.add_command(label="Dev panel (kick / mute / ban)…",
-                           command=lambda: subprocess.Popen([sys.executable, os.path.join(HERE, "devpanel.py")], cwd=HERE))
-            menu.add_cascade(label="Dev", menu=m3)
-    except Exception:
-        pass
-    root.config(menu=menu)
+    def make_menu(popup):
+        menu = tk.Menu(root, tearoff=0)
+        m1 = tk.Menu(menu, tearoff=0)
+        m1.add_command(label="Lil Kitty on desktop (on/off)", command=lambda: toggle("kitty"))
+        m1.add_command(label="Floating wrist menu (on/off)   F9", command=lambda: toggle("hud"))
+        m1.add_command(label="Zoom magnifier (on/off)   F10", command=lambda: app.events.put(("hud", "zoom")))
+        menu.add_cascade(label="View", menu=m1)
+        mw = tk.Menu(menu, tearoff=0)
+        mw.add_command(label="Fluffy window (no frame)", command=lambda: set_mode("fluffy"))
+        mw.add_command(label="Full screen   F11", command=toggle_full)
+        mw.add_command(label="Normal Windows window", command=lambda: set_mode("classic"))
+        menu.add_cascade(label="Window", menu=mw)
+        m2 = tk.Menu(menu, tearoff=0)
+        m2.add_command(label="Switch to VR mode", command=switch_vr)
+        m2.add_command(label="Ask VR or Desktop every launch", command=ask_each_time)
+        menu.add_cascade(label="Mode", menu=m2)
+        try:
+            import devpanel                     # owner only: shows up just on a PC that has the mod key
+            if devpanel.available():
+                m3 = tk.Menu(menu, tearoff=0)
+                m3.add_command(label="Dev panel (kick / mute / ban)…",
+                               command=lambda: subprocess.Popen([sys.executable, os.path.join(HERE, "devpanel.py")], cwd=HERE))
+                menu.add_cascade(label="Dev", menu=m3)
+        except Exception:
+            pass
+        if popup:
+            menu.add_separator()
+            menu.add_command(label="Minimize", command=lambda: root.iconify())
+            menu.add_command(label="Close Fluff", command=lambda: close())
+        return menu
+
+    bar, pop = make_menu(False), make_menu(True)
+    canvas.bind("<Button-3>", lambda e: pop.tk_popup(e.x_root, e.y_root))
+    root.bind("<F11>", lambda e: toggle_full())
+    root.bind("<Escape>", lambda e: toggle_full() if view["mode"] == "fullscreen" else None)
 
     def close():
         app.events.put(("quit",))
@@ -517,15 +655,13 @@ def run():
             s = view["scale"]
             if f is not view["last"]:
                 size = (int(ui.DASH_W * s), int(ui.DASH_H * s))
-                pic = f.convert("RGB")
-                if pic.size != size:
-                    pic = pic.resize(size, Image.BILINEAR)
+                pic = flatten(f, size)
                 if view["img"] is not None and (view["img"].width(), view["img"].height()) == size:
                     view["img"].paste(pic)                  # reuse the same picture = much faster
                 else:
                     view["img"] = ImageTk.PhotoImage(pic)
                     canvas.delete("all")
-                    canvas.create_image(0, 0, image=view["img"], anchor="nw")
+                    canvas.create_image(view["ox"], view["oy"], image=view["img"], anchor="nw")
                 view["last"] = f
         k = app.frames.get("kitty")
         if k is not None and cfg["modules"].get("wrist_kitty", True):
@@ -577,6 +713,8 @@ def run():
 
     hwin.withdraw()
     zwin.withdraw()
+    root.update_idletasks()
+    set_mode(view["mode"] if view["mode"] in ("fluffy", "fullscreen", "classic") else "fluffy")
     root.after(100, refresh)
     print("  Fluff VR Stats :3 is running in desktop mode! (close the window to quit)")
     root.mainloop()
@@ -590,8 +728,10 @@ def pick_mode(cfg):
     import tkinter as tk
     from PIL import Image, ImageTk
     choice = {"mode": None}
+    app_identity()
     root = tk.Tk()
     root.title("Fluff VR Stats :3")
+    set_icon(root)
     root.configure(bg="#22162e")
     root.resizable(False, False)
     try:
