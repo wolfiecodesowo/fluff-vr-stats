@@ -454,7 +454,7 @@ class FluffBot(discord.Client):
             self._synced_guild = True
             self.tree.copy_global_to(guild=g)
             await self.tree.sync(guild=g)
-        if g is not None and CFG.get("last_release") and CFG.get("refreshed_for") != CFG.get("last_release") \
+        if g is not None and CFG.get("last_release") and CFG.get("refreshed_sig") != content_sig() \
                 and not paused() and not getattr(self, "_refreshing", False):
             self._refreshing = True
             asyncio.create_task(self.refresh_all())
@@ -811,6 +811,8 @@ class FluffBot(discord.Client):
         await self.refresh_all(rel.get("tag_name"))
         code = [f for f in changed if f.endswith(".py") and f != "bot/content.py"]
         if code:
+            async with REFRESH_LOCK:             # don't restart in the middle of a refresh
+                pass
             log.info("new bot code (%s): restarting to use it", ", ".join(code))
             await self.alert("restart", f"🔄 Fluff Bot updated itself to {rel.get('tag_name')} and is restarting", every=0)
             restart_self()
@@ -821,9 +823,11 @@ class FluffBot(discord.Client):
         g = self.guild()
         if g is None:
             return
-        n = await refresh_channels(g)
-        CFG["refreshed_for"] = tag or CFG.get("last_release")
-        save_cfg(CFG)
+        async with REFRESH_LOCK:                 # never two at once (they'd delete each other's posts)
+            n = await refresh_channels(g)
+            CFG["refreshed_for"] = tag or CFG.get("last_release")
+            CFG["refreshed_sig"] = content_sig()
+            save_cfg(CFG)
         log.info("refreshed %d channel(s) for %s", n, CFG["refreshed_for"])
 
     # a crashing loop stops for good unless something restarts it: the watchdog does, and the owner hears about it
@@ -890,9 +894,26 @@ async def refresh_channels(guild):
                 await c.purge(limit=50, check=lambda m, k=key: is_info_post(m, k))
                 chans[key] = c
         except discord.HTTPException as e:
-            log.warning("couldn't refresh #%s: %s", key, e)
-    await post_info(chans)
+            log.warning("couldn't clear #%s: %s", key, e)
+        if key in C.POSTS:
+            try:
+                await post_info({key: c})          # straight away, even if clearing hiccuped
+                chans[key] = c
+            except discord.HTTPException as e:
+                log.warning("couldn't post in #%s: %s", key, e)
     return max(n, len(chans))
+
+
+REFRESH_LOCK = asyncio.Lock()
+
+
+def content_sig():
+    """fingerprint of the channel text the bot is running with"""
+    try:
+        with open(os.path.join(HERE, "content.py"), "rb") as f:
+            return hashlib.sha256(f.read().replace(b"\r\n", b"\n")).hexdigest()[:16]
+    except OSError:
+        return ""
 
 
 ROOT = os.path.dirname(HERE)
