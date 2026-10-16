@@ -37,13 +37,17 @@ jobs:
         env:
           RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
         run: |
-          if (-not $env:RELEASE_KEY) { Write-Host "no RELEASE_KEY secret, skipping signing (sign it from ur PC with tools/sign_release.py)"; exit 0 }
+          # an unsigned release is refused by every install's updater, so this must fail the job loudly
+          if (-not $env:RELEASE_KEY) { Write-Host "::error::no RELEASE_KEY secret: $env:TAG is UNSIGNED and updates will refuse it. add the secret, then re-run this workflow"; exit 1 }
           python -m pip install cryptography
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::couldn't install cryptography"; exit 1 }
           $keyfile = Join-Path $env:RUNNER_TEMP "release_key.pem"
           Set-Content -Path $keyfile -Value $env:RELEASE_KEY -NoNewline
           $env:RELEASE_KEY_FILE = $keyfile
           python tools/sign_release.py $env:TAG --upload
+          $signed = $LASTEXITCODE
           Remove-Item $keyfile
+          if ($signed -ne 0) { Write-Host "::error::signing $env:TAG failed"; exit 1 }
 
       - name: install Inno Setup
         shell: pwsh
@@ -65,3 +69,12 @@ jobs:
           $exe = Get-ChildItem dist\FluffVRStats-Setup-*.exe | Select-Object -First 1
           (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $exe.Name | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
           gh release upload $env:TAG $exe.FullName dist\SHA256SUMS.txt --clobber
+
+      - name: check the release is complete (manifest + installer)
+        shell: pwsh
+        run: |
+          $names = @(gh release view $env:TAG --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::couldn't read the release $env:TAG"; exit 1 }
+          if ($names -notcontains 'fluff-manifest.json') { Write-Host "::error::$env:TAG has no fluff-manifest.json, so updaters will refuse it"; exit 1 }
+          if (-not ($names | Where-Object { $_ -like 'FluffVRStats-Setup-*.exe' })) { Write-Host "::error::$env:TAG has no installer .exe"; exit 1 }
+          Write-Host "release $env:TAG is complete and signed"

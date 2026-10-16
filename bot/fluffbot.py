@@ -13,13 +13,21 @@ Fluff Bot: the official Discord bot for Fluff VR Stats :3
 Run it with run_bot.bat (first time: setup_bot.bat).
 """
 import asyncio
+import collections
 import datetime
 import json
 import logging
 import os
 import re
+import socket
 import sys
+import time
 import urllib.request
+
+try:
+    import fcntl               # one copy at a time (Linux server); Windows just skips the lock
+except ImportError:
+    fcntl = None
 
 import discord
 from discord import app_commands
@@ -36,6 +44,13 @@ except Exception:               # (bot copied somewhere without the app next to 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(HERE, "bot_config.json")
 CLIENT_CFG = os.path.join(os.path.dirname(HERE), "config.json")
+LOCK_PATH = os.path.join(HERE, ".bot.lock")
+PAUSE_FILE = os.path.join(HERE, "PAUSED")     # kill switch: `touch bot/PAUSED` pauses automation, delete it to resume
+EXIT_CONFIG = 3        # no/bad token or intents off: systemd won't restart these (RestartPreventExitStatus)
+EXIT_RUNNING = 4       # another copy already holds the lock
+RAID_JOINS = 10        # this many joins inside RAID_WINDOW seconds = raid tripwire
+RAID_WINDOW = 60
+RAID_HOLD = 1800       # how long the gate stays on after a trip (seconds)
 REPO_API = "https://api.github.com/repos/wolfiecodesowo/fluff-vr-stats/releases/latest"
 PRESENCE_NAMES = ("fluff vr stats",)
 THREAD_CHANNELS = {"support", "suggestions", "bugs"}
@@ -66,11 +81,22 @@ def load_cfg():
     return cfg
 
 
-def save_cfg(cfg):
-    tmp = CFG_PATH + ".tmp"
+def write_private_json(path, obj):
+    """atomic write, owner-only permissions (these files hold the bot token / the app's AI key)"""
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-    os.replace(tmp, CFG_PATH)
+        json.dump(obj, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+
+
+def save_cfg(cfg):
+    write_private_json(CFG_PATH, cfg)
 
 
 def update_client_cfg(**discord_keys):
@@ -82,10 +108,7 @@ def update_client_cfg(**discord_keys):
         ccfg = {}
     d = ccfg.setdefault("discord", {})
     d.update({k: v for k, v in discord_keys.items() if v})
-    tmp = CLIENT_CFG + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(ccfg, f, indent=2)
-    os.replace(tmp, CLIENT_CFG)
+    write_private_json(CLIENT_CFG, ccfg)
 
 
 CFG = load_cfg()
@@ -193,28 +216,156 @@ class CloseTicket(discord.ui.View):
         await t.edit(archived=True, locked=True)
 
 
+def sd_notify(msg):
+    """tells systemd we're alive (WatchdogSec in the unit). does nothing outside systemd"""
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.sendto(msg.encode(), addr)
+    except OSError:
+        pass
+
+
+def paused():
+    """kill switch: /pause (owner) or the bot/PAUSED file. stops automation, staff commands still work"""
+    return bool(CFG.get("paused")) or os.path.exists(PAUSE_FILE)
+
+
 class FluffBot(discord.Client):
     def __init__(self):
         super().__init__(intents=intents, activity=discord.Game("Fluff VR Stats :3"))
         self.tree = app_commands.CommandTree(self)
+        self._alerts = {}                          # key -> last time we DMed the owner about it
+        self._tasks = set()                        # keeps background tasks alive + their errors visible
+        self._joins = collections.deque(maxlen=60)  # join timestamps for the raid tripwire
 
     async def setup_hook(self):
         self.add_view(RoleButtons())
         self.add_view(TicketPanel())
         self.add_view(CloseTicket())
-        gid = CFG.get("guild_id")
-        if gid:
-            g = discord.Object(id=int(gid))
-            self.tree.copy_global_to(guild=g)
-            await self.tree.sync(guild=g)
-        else:
-            await self.tree.sync()
+        if not await self.sync_commands():
+            self.bg(self.retry_sync(), "command sync retry")   # the bot still runs without it
         self.stats_loop.start()
         self.release_loop.start()
         self.bump_loop.start()
+        self.watchdog.start()
         if G is not None:
-            self.gchat_task = asyncio.create_task(self.gchat_listen())
-        asyncio.create_task(self.safe_start())
+            self.bg(self.gchat_listen(), "global chat relay")
+        self.bg(self.safe_start(), "safe-chat startup")
+
+    def bg(self, coro, name):
+        """run a background task; if it dies, log it and tell the owner instead of failing silently"""
+        t = asyncio.create_task(coro, name=name)
+        self._tasks.add(t)
+
+        def done(task):
+            self._tasks.discard(task)
+            if not task.cancelled() and task.exception():
+                log.error("background task %s died", name, exc_info=task.exception())
+                asyncio.create_task(self.alert(f"task:{name}", f"`{name}` stopped with an error: {task.exception()}"))
+        t.add_done_callback(done)
+        return t
+
+    async def alert(self, key, text, every=3600):
+        """DMs the server owner about something that needs a human. at most once per `every` seconds per key"""
+        now = time.time()
+        if now - self._alerts.get(key, 0) < every:
+            return
+        self._alerts[key] = now
+        log.error("ALERT %s: %s", key, text)
+        g = self.guild()
+        if g is None:
+            return
+        try:
+            owner = g.owner or await g.fetch_member(g.owner_id)
+            await owner.send(f"🚨 **Fluff Bot** · {text}")
+        except Exception as e:
+            log.warning("couldn't DM the owner about %s: %s", key, e)
+
+    async def trip_raid(self, joins):
+        """lots of joins in a few seconds: turn the key gate on for a while and tell the owner"""
+        CFG["raid_until"] = time.time() + RAID_HOLD
+        CFG["raid_prev_gate"] = bool(CFG.get("gate"))
+        save_cfg(CFG)
+        g = self.guild()
+        if g is not None and not CFG.get("gate") and getattr(self, "apply_gate", None):
+            try:
+                await self.apply_gate(g, True)
+            except Exception:
+                log.exception("raid: couldn't turn the gate on")
+        await self.alert("raid", f"{joins} people joined in {RAID_WINDOW}s. I turned the key gate on for "
+                                 f"{RAID_HOLD // 60} min. use /raid off to end it early.", every=600)
+        await self.modlog(f"🚨 raid tripwire: {joins} joins in {RAID_WINDOW}s, gate on for {RAID_HOLD // 60} min", C.GOLD)
+
+    async def end_raid(self, why):
+        prev = CFG.pop("raid_prev_gate", False)
+        CFG.pop("raid_until", None)
+        save_cfg(CFG)
+        g = self.guild()
+        if g is not None and not prev and CFG.get("gate") and getattr(self, "apply_gate", None):
+            try:
+                await self.apply_gate(g, False)            # the gate was off before the raid, so put it back off
+            except Exception:
+                log.exception("raid: couldn't turn the gate off")
+        await self.modlog(f"✅ raid mode ended ({why})", C.MINT)
+
+    async def sync_commands(self):
+        """a failed sync (Discord 403 / outage) must not stop the bot from starting"""
+        try:
+            gid = CFG.get("guild_id")
+            if gid:
+                g = discord.Object(id=int(gid))
+                self.tree.copy_global_to(guild=g)
+                await self.tree.sync(guild=g)
+            else:
+                await self.tree.sync()
+            return True
+        except discord.HTTPException as e:
+            log.warning("command sync failed (%s); the bot keeps running and will retry", e)
+            return False
+
+    async def retry_sync(self):
+        delay = 60
+        while not self.is_closed():
+            await asyncio.sleep(delay)
+            if await self.sync_commands():
+                log.info("command sync worked on retry")
+                return
+            delay = min(3600, delay * 2)
+
+    async def _loop_failed(self, name, exc):
+        log.error("%s loop hit an error", name, exc_info=exc)
+        await self.alert(f"loop:{name}", f"the `{name}` loop hit an error and will be restarted: {exc}")
+
+    @tasks.loop(minutes=2)
+    async def watchdog(self):
+        """restarts any background loop that stopped, and tells systemd we're alive (WatchdogSec)"""
+        for name in ("stats_loop", "release_loop", "bump_loop"):
+            loop = getattr(self, name)
+            if not loop.is_running():
+                log.warning("%s was stopped, restarting it", name)
+                loop.start()
+                await self.alert(f"restart:{name}", f"`{name}` had stopped, so I restarted it")
+        if CFG.get("raid_until") and time.time() >= CFG["raid_until"]:
+            await self.end_raid("timer ran out")
+        sd_notify("WATCHDOG=1")
+        await self.backup_tick()
+
+    @watchdog.before_loop
+    async def _wait_wd(self):
+        await self.wait_until_ready()
+
+    async def backup_tick(self):
+        """keeps timestamped copies of bot_data.json (once a day). bot_config.json holds the token, so it's not copied"""
+        try:
+            fluffsafe.maybe_backup(every=24 * 3600)
+        except Exception:
+            log.exception("backup failed")
+            await self.alert("backup", "the automatic backup failed. check the disk space and bot/backups/")
 
     # ---- helpers
     def guild(self):
@@ -287,6 +438,8 @@ class FluffBot(discord.Client):
     # ---- events
     async def on_ready(self):
         log.info("logged in as %s (app id %s)", self.user, self.application_id)
+        for note in fluffsafe.STARTUP_NOTES:       # problems found before we connected (e.g. a damaged data file)
+            await self.alert(f"startup:{note[:30]}", note, every=0)
         if not CFG.get("app_id"):
             CFG["app_id"] = str(self.application_id)
             save_cfg(CFG)
@@ -328,8 +481,13 @@ class FluffBot(discord.Client):
             pass
 
     async def on_member_join(self, m):
+        now = time.time()
+        self._joins.append(now)
+        recent = sum(1 for t in self._joins if now - t < RAID_WINDOW)
+        if recent >= RAID_JOINS and not CFG.get("raid_until"):
+            await self.trip_raid(recent)
         role = self.role("member")
-        if CFG.get("gate"):              # key gate: they get 🐾 Fluff when they grab their key (fluffsafe.py)
+        if CFG.get("gate") or CFG.get("raid_until") or paused():   # key gate: they get 🐾 Fluff when they grab their key (fluffsafe.py)
             role = None
             gate = self.ch("gate")
             try:
@@ -343,7 +501,7 @@ class FluffBot(discord.Client):
             except discord.HTTPException:
                 pass
         main = self.ch("joins") or self.ch("main")
-        if main:
+        if main and not paused():
             e = discord.Embed(description=f"welcome {m.mention}!! 🐾 grab the client in "
                                           f"{self.ch('download').mention if self.ch('download') else '#download'} "
                                           f"and say hi :3", color=C.PINK)
@@ -414,6 +572,9 @@ class FluffBot(discord.Client):
             try:
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=90)) as s:
                     async with s.get(f"{G.BASE}/{G.TOPIC}/json?since={since}", headers=G.UA) as r:
+                        if r.status != 200:          # an ntfy error is not a normal reconnect: say so
+                            log.warning("global chat relay: ntfy answered %s, retrying", r.status)
+                            raise ConnectionError(f"ntfy status {r.status}")
                         async for raw in r.content:
                             line = raw.decode("utf-8", "ignore").strip()
                             if not line:
@@ -550,20 +711,24 @@ class FluffBot(discord.Client):
     @tasks.loop(minutes=1)
     async def bump_loop(self):
         g = self.guild()
-        if not g:
+        if not g or paused():
             return
         if not getattr(self, "_bump_ready", False):
             self._bump_ready = True
             await self.ensure_bump(g)
         b = self.bump_data()
         if b.get("last") and not b.get("reminded") and datetime.datetime.now().timestamp() >= b["last"] + self.BUMP_COOLDOWN:
-            b["reminded"] = True
-            save_cfg(CFG)
             c, r = self.ch("bump"), self.role("bumper")
             if c:
                 e = discord.Embed(title="🔔 bump time!!", description="type `/bump` (the **DISBOARD** one) to push us up the list "
                                   "so more fluffs find us :3", color=C.MINT)
-                await c.send(content=r.mention if r else None, embed=e, allowed_mentions=discord.AllowedMentions(roles=True))
+                try:
+                    await c.send(content=r.mention if r else None, embed=e, allowed_mentions=discord.AllowedMentions(roles=True))
+                except discord.HTTPException as err:
+                    log.warning("bump reminder didn't send (%s), will try again next minute", err)
+                    return                                  # only mark it done once it really went out
+            b["reminded"] = True
+            save_cfg(CFG)
 
     @bump_loop.before_loop
     async def _wait3(self):
@@ -573,7 +738,7 @@ class FluffBot(discord.Client):
     @tasks.loop(minutes=10)      # Discord allows 2 channel renames per 10 min
     async def stats_loop(self):
         g = self.guild()
-        if not g:
+        if not g or paused():
             return
         invr = sum(1 for m in g.members if not m.bot and self.using_fluff(m))
         names = {"stat_members": f"🐾 Members: {sum(1 for m in g.members if not m.bot)}",
@@ -605,12 +770,16 @@ class FluffBot(discord.Client):
 
     @tasks.loop(minutes=5)
     async def release_loop(self):
+        if paused():
+            return
         try:
             rel = await asyncio.to_thread(fetch_release)
             if not rel or not rel.get("tag_name") or rel.get("draft"):
                 return
             if rel["tag_name"] != CFG.get("last_release"):
                 first = CFG.get("last_release") is None
+                if not first and not release_ready(rel):
+                    return                 # still uploading (or unsigned): announce it once it's complete
                 # only remember it once it's really posted somewhere (else we'd never try again)
                 if first or await self.post_release(rel, ping=True):
                     CFG["last_release"] = rel["tag_name"]
@@ -622,6 +791,23 @@ class FluffBot(discord.Client):
     @release_loop.before_loop
     async def _wait2(self):
         await self.wait_until_ready()
+
+    # a crashing loop stops for good unless something restarts it: the watchdog does, and the owner hears about it
+    @bump_loop.error
+    async def _bump_err(self, exc):
+        await self._loop_failed("bump", exc)
+
+    @stats_loop.error
+    async def _stats_err(self, exc):
+        await self._loop_failed("stats", exc)
+
+    @release_loop.error
+    async def _release_err(self, exc):
+        await self._loop_failed("release", exc)
+
+    @watchdog.error
+    async def _watchdog_err(self, exc):
+        await self._loop_failed("watchdog", exc)
 
     async def post_release(self, rel, ping=False):
         e = discord.Embed(title=f"🎉 {rel.get('name') or rel['tag_name']}", url=rel.get("html_url"),
@@ -644,6 +830,12 @@ class FluffBot(discord.Client):
             log.warning("release %s wasn't posted anywhere (missing channels? run /setup, it won't delete anything now)",
                         rel.get("tag_name"))
         return sent
+
+
+def release_ready(rel):
+    """a release is only announced once its installer and signed manifest are both attached"""
+    names = {a.get("name", "") for a in rel.get("assets") or []}
+    return "fluff-manifest.json" in names and any(n.startswith("FluffVRStats-Setup-") and n.endswith(".exe") for n in names)
 
 
 def fetch_release():
@@ -1055,6 +1247,47 @@ async def slowmode_cmd(inter: discord.Interaction, seconds: app_commands.Range[i
     await inter.response.send_message(f"slowmode: {seconds}s", ephemeral=True)
 
 
+# ---- owner controls: pause the bot's own automation, end a raid early
+@bot.tree.command(name="pause", description="(owner) pause the bot's automation until /resume")
+async def pause_cmd(inter: discord.Interaction):
+    if inter.user.id != inter.guild.owner_id:
+        return await inter.response.send_message("only the server owner can do this", ephemeral=True)
+    CFG["paused"] = True
+    save_cfg(CFG)
+    await bot.modlog(f"⏸️ {inter.user.mention} paused the bot's automation", C.GOLD)
+    await inter.response.send_message("⏸️ paused. no auto posts, welcomes, renames or role sweeps until `/resume`. "
+                                      "moderation + staff commands still work :3", ephemeral=True)
+
+
+@bot.tree.command(name="resume", description="(owner) turn the bot's automation back on")
+async def resume_cmd(inter: discord.Interaction):
+    if inter.user.id != inter.guild.owner_id:
+        return await inter.response.send_message("only the server owner can do this", ephemeral=True)
+    CFG["paused"] = False
+    save_cfg(CFG)
+    if os.path.exists(PAUSE_FILE):
+        os.remove(PAUSE_FILE)
+    await bot.modlog(f"▶️ {inter.user.mention} resumed the bot's automation", C.MINT)
+    await inter.response.send_message("▶️ back on!! 🐾", ephemeral=True)
+
+
+@bot.tree.command(name="raid", description="(staff) check or end raid mode")
+@app_commands.describe(action="status = see it, off = end raid mode now")
+@app_commands.choices(action=[app_commands.Choice(name="status", value="status"),
+                              app_commands.Choice(name="off", value="off")])
+@staff_only()
+async def raid_cmd(inter: discord.Interaction, action: app_commands.Choice[str]):
+    until = CFG.get("raid_until")
+    if action.value == "off":
+        if not until:
+            return await inter.response.send_message("raid mode isn't on ✨", ephemeral=True)
+        await bot.end_raid(f"ended by {inter.user.display_name}")
+        return await inter.response.send_message("raid mode ended. the gate is back to how it was :3", ephemeral=True)
+    if not until:
+        return await inter.response.send_message("no raid right now ✨", ephemeral=True)
+    await inter.response.send_message(f"🚨 raid mode is on until <t:{int(until)}:t> (<t:{int(until)}:R>)", ephemeral=True)
+
+
 # ---- client info commands (all post the same embeds as the info channels)
 def _info_cmd(name, key, desc, idx=0):
     @bot.tree.command(name=name, description=desc)
@@ -1380,21 +1613,50 @@ import fluffsafe  # noqa: E402  app keys, safe chat relay, bans, reports, tester
 fluffsafe.install(bot, {"C": C, "G": G, "CFG": CFG, "staff_only": staff_only, "log": log, "save_cfg": save_cfg})
 
 
+_LOCK = None
+
+
+def take_lock():
+    """only one copy may run on this machine. The lock is a file on this disk, so it can't see the PC copy:
+    stop the PC copy before you start the server one (cloud/README.md step 4)"""
+    global _LOCK
+    if fcntl is None:
+        return
+    f = open(LOCK_PATH, "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.seek(0)
+        who = f.read().strip() or "unknown"
+        log.error("another Fluff Bot is already running (%s). stop that copy first.", who)
+        sys.exit(EXIT_RUNNING)
+    f.seek(0)
+    f.truncate()
+    f.write(f"{socket.gethostname()} pid {os.getpid()} since {datetime.datetime.now():%Y-%m-%d %H:%M}\n")
+    f.flush()
+    _LOCK = f                      # held open for the life of the process
+
+
+def fail(msg, code):
+    """print the reason, then exit. only waits for Enter when someone is watching the window"""
+    log.error(msg)
+    if sys.stdin is not None and sys.stdin.isatty():
+        input("  press Enter to close")
+    sys.exit(code)
+
+
 def main():
+    take_lock()
     token = (CFG.get("token") or os.environ.get("FLUFFBOT_TOKEN") or "").strip()
     if not token:
-        print("  no bot token yet! double-click setup_bot.bat first :3")
-        input("  press Enter to close")
-        sys.exit(1)
+        fail("no bot token yet! run setup_bot.bat first :3", EXIT_CONFIG)
     try:
         bot.run(token, log_handler=None)
     except discord.PrivilegedIntentsRequired:
-        print("\n  >w< turn on the 3 switches in the Developer Portal → your app → Bot → "
-              "Privileged Gateway Intents (Presence, Server Members, Message Content), then run again.\n")
-        input("  press Enter to close")
+        fail("turn on the 3 Privileged Gateway Intents in the Developer Portal (Presence, Server Members, "
+             "Message Content), then start the bot again", EXIT_CONFIG)
     except discord.LoginFailure:
-        print("\n  that token didn't work. run setup_bot.bat again and paste a fresh one.\n")
-        input("  press Enter to close")
+        fail("that token didn't work. run setup_bot.bat again and paste a fresh one", EXIT_CONFIG)
 
 
 if __name__ == "__main__":
