@@ -3008,7 +3008,8 @@ class App:
                                   st.hover_box, th)
             if th.get("normie"):                     # code rain wall behind the menu
                 import coderain
-                frame = coderain.behind(frame, 0 if (self.cfg.get("a11y", {}).get("reduced_motion") or getattr(st, "power_saving", False)) else now)
+                frame = coderain.behind(frame, 0 if (self.cfg.get("a11y", {}).get("reduced_motion") or getattr(st, "power_saving", False)) else now,
+                                       pointer=st.cursor)
             if self.cfg.get("cursor", "paw") != "steamvr":
                 calm = self.cfg.get("a11y", {}).get("reduced_motion")
                 trail = [] if calm else [(x, y, now - t0) for x, y, t0 in st.trail]

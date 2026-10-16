@@ -679,7 +679,7 @@ def run():
         if f is not None:
             s = view["scale"]
             normie = ui.normie_on(cfg)
-            tick = int(time.time() * 12) if normie else -1          # the code rain moves ~12x a second
+            tick = int(time.time() * 15) if normie else -1          # the code rain moves ~15x a second
             if normie != view.get("normie"):                          # mode just flipped: start from a clean canvas
                 view.update(normie=normie, last=None, img=None, tick=None)
                 canvas.delete("all")
@@ -689,7 +689,8 @@ def run():
                     import coderain
                     cs = (max(1, canvas.winfo_width()), max(1, canvas.winfo_height()))
                     card = f.resize(size, Image.BILINEAR) if f.size != size else f
-                    pic = coderain.behind(card, time.time(), cs, (view["ox"], view["oy"])).convert("RGB")
+                    ptr = (canvas.winfo_pointerx() - canvas.winfo_rootx(), canvas.winfo_pointery() - canvas.winfo_rooty())
+                    pic = coderain.behind(card, time.time(), cs, (view["ox"], view["oy"]), pointer=ptr).convert("RGB")
                     size, origin = cs, (0, 0)
                 else:
                     pic = flatten(f, size)
