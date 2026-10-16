@@ -6,6 +6,7 @@ from main import State, load_cfg
 
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
 cfg = load_cfg()
+cfg["style"]["normie"] = os.environ.get("NORMIE") == "1"      # NORMIE=1 python preview.py out/ renders Normie Mode
 for k in cfg["modules"]:
     cfg["modules"][k] = True
 random.seed(3)
@@ -147,38 +148,38 @@ for tab in ui.TABS:
     st.tab = tab
     st.logo_frame = None
     img, _ = ui.render_dashboard(st)
-    img = ui.add_logo(img, 0, st.anim_slots)
+    img = ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg))
     name = "thanks" if tab == "<3" else tab.lower()
     if tab == "Home":
         st.gchat.unread = 2
     img.save(os.path.join(out, f"preview_dash_{name}.png"))
 st.tab, st.music_page = "Music", "youtube"
 img, _ = ui.render_dashboard(st)
-ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_dash_youtube.png"))
+ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, "preview_dash_youtube.png"))
 st.music_page = "player"
 for page, _ in __import__("ui_fun").FUN_PAGES:
     st.tab, st.fun_page = "Fun", page
     img, _ = ui.render_dashboard(st)
-    ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_fun_{page}.png"))
+    ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, f"preview_fun_{page}.png"))
 for page, _ in __import__("ui_fun").SET_PAGES:
     st.tab, st.set_page = "Settings", page
     img, _ = ui.render_dashboard(st)
-    ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_settings_{page}.png"))
+    ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, f"preview_settings_{page}.png"))
 st.tab = "Home"
 st.whatsnew = ("v0.4.0: the big safety + fun update", ["🔐 global chat is safe now: Fluff Bot checks every message",
                "🎁 Fluff Wrapped: ur month in VR as a card", "🏅 37 badges", "🌍 12 languages"])
 img, _ = ui.render_dashboard(st)
-ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_whatsnew.png"))
+ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, "preview_whatsnew.png"))
 st.whatsnew = None
 st.checklist, st.conflicts = True, ["MagicChatbox"]
 img, _ = ui.render_dashboard(st)
-ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_checklist.png"))
+ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, "preview_checklist.png"))
 st.checklist = None
 _FakeAccess.locked = lambda self, now=None: True
 _FakeAccess.linked = False
 _FakeAccess.status = "no key yet"
 img, _ = ui.render_dashboard(st)
-ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, "preview_keylock.png"))
+ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, "preview_keylock.png"))
 _FakeAccess.locked = lambda self, now=None: False
 _FakeAccess.linked = True
 _fun.render_wrapped(st.fun, cfg, "wolfie").save(os.path.join(out, "preview_wrapped_card.png"))
@@ -189,14 +190,14 @@ for code in (sys.argv[2].split(",") if len(sys.argv) > 2 else []):
     for tab in ("Home", "Settings", "Mods", "Fun"):
         st.tab, st.set_page, st.fun_page = tab, "general", "badges"
         img, _ = ui.render_dashboard(st)
-        ui.add_logo(img, 0, st.anim_slots).save(os.path.join(out, f"preview_lang_{code}_{tab.lower()}.png"))
+        ui.add_logo(img, 0, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, f"preview_lang_{code}_{tab.lower()}.png"))
     ui.render_hud(st).save(os.path.join(out, f"preview_lang_{code}_hud.png"))
 _lang.set_lang("en")
 # error card examples
 st.tab = "Stats"
 st.errors.append({"text": "desktop screen: OSError: monitor 2 unplugged", "time": time.time()})
 img, _ = ui.render_dashboard(st)
-ui.add_logo(img, 3, st.anim_slots).save(os.path.join(out, "preview_dash_error.png"))
+ui.add_logo(img, 3, st.anim_slots, ui.normie_on(cfg)).save(os.path.join(out, "preview_dash_error.png"))
 st.alert = {"text": "oops! desktop screen hiccuped, still running :3", "kind": "error", "until": time.time() + 9}
 ui.render_hud(st).save(os.path.join(out, "preview_hud_error.png"))
 st.alert = None

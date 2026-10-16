@@ -21,7 +21,7 @@ FONT_DIR = os.path.join(HERE, "fonts")
 # themes live in themes.py (presets, custom accent/background, ear styles)
 from logo import sticker_frames, ERROR_ART, THANKS_ART
 from themes import (mix, get_theme, theme_key, from_key, PRESETS, ACCENTS, BACKGROUNDS,
-                    EAR_STYLES, preset_preview)
+                    EAR_STYLES, preset_preview, normie_on, mascot_on)
 import gchat as gchat_names
 
 OWNER_GOLD = (255, 205, 70)       # the owner's chat bubble + name (global chat)
@@ -83,6 +83,8 @@ def _first_font(names):
 # Gochi Hand = hand-lettered marker look for titles/numbers; Nunito keeps small text readable
 TITLE_FONT = _first_font(["GochiHand-Regular.ttf", "Fredoka-Bold.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"])
 HEAD_FONT = _first_font(["GochiHand-Regular.ttf", "Fredoka-SemiBold.ttf", "seguisb.ttf", "DejaVuSans-Bold.ttf"])
+NORMIE_TITLE_FONT = _first_font(["Nunito-Bold.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"])
+NORMIE_HEAD_FONT = _first_font(["Nunito-Bold.ttf", "seguisb.ttf", "DejaVuSans-Bold.ttf"])
 BODY_FONT = _first_font(["Nunito-Bold.ttf", "segoeui.ttf", "DejaVuSans.ttf"])
 BODY2_FONT = _first_font(["Nunito-SemiBold.ttf", "segoeui.ttf", "DejaVuSans.ttf"])
 
@@ -143,9 +145,14 @@ def _cached_text(self, xy, text, fill=None, font=None, anchor=None, spacing=4,
 ImageDraw.ImageDraw.text = _cached_text
 
 
-@lru_cache(maxsize=64)
 def font(kind, size):
-    path = {"title": TITLE_FONT, "head": HEAD_FONT,
+    """Normie Mode swaps the hand-lettered title/head fonts for the clean Nunito/system sans."""
+    return _font(kind, size, bool(_CUR.get("normie")))
+
+
+@lru_cache(maxsize=128)
+def _font(kind, size, normie):
+    path = {"title": NORMIE_TITLE_FONT if normie else TITLE_FONT, "head": NORMIE_HEAD_FONT if normie else HEAD_FONT,
             "body": BODY_FONT, "body2": BODY2_FONT}[kind]
     try:
         return ImageFont.truetype(path, size)
@@ -275,7 +282,10 @@ def ellipsize(text, fnt, width):
 
 # ------------------------------------------------------- cute primitives ---
 def paw(d, cx, cy, r, fill):
-    """Paw print: pad + 4 toe beans."""
+    """Paw print: pad + 4 toe beans (a plain dot in Normie Mode)."""
+    if _CUR.get("normie"):
+        d.ellipse([cx - r * 0.55, cy - r * 0.55, cx + r * 0.55, cy + r * 0.55], fill=fill)
+        return
     d.ellipse([cx - r, cy - r * 0.6, cx + r, cy + r * 0.9], fill=fill)
     for dx, dy, s in ((-0.95, -0.95, 0.38), (-0.35, -1.45, 0.4),
                       (0.35, -1.45, 0.4), (0.95, -0.95, 0.38)):
@@ -291,6 +301,8 @@ def heart(d, cx, cy, r, fill):
 
 
 def sparkle(d, cx, cy, r, fill):
+    if _CUR.get("normie"):
+        return
     d.polygon([(cx, cy - r), (cx + r * 0.25, cy - r * 0.25), (cx + r, cy),
                (cx + r * 0.25, cy + r * 0.25), (cx, cy + r),
                (cx - r * 0.25, cy + r * 0.25), (cx - r, cy),
@@ -436,10 +448,16 @@ def text_c(d, xy, txt, fnt, fill, anchor="la"):
 _CUR = {}   # theme currently being drawn (for the soft lineart on inner panels)
 
 
-def pill(d, box, fill, outline=None, width=2):
-    """Glossy velvet pill: soft vertical gradient + a thin light rim on top."""
+def pill(d, box, fill, outline=None, width=2, full=False):
+    """Glossy velvet pill: soft vertical gradient + a thin light rim on top.
+    Normie Mode: flat rounded rectangle with a 1px border (`full` keeps toggle switches fully round)."""
     x0, y0, x1, y1 = [int(round(v)) for v in box]
     w, h = x1 - x0, y1 - y0
+    if _CUR.get("normie") and w >= 4 and h >= 4 and fill is not None and hasattr(d, "_image"):
+        bd = _CUR["line_soft"] if outline in (None, False) else outline
+        img, pad = _flat(w, h, h // 2 if full else int(min(NORMIE_RADIUS - 2, h / 2)), tuple(fill[:3]), tuple(bd[:3]))
+        _paste_clipped(d._image, img, x0 - pad, y0 - pad)
+        return
     if w < 4 or h < 4 or fill is None or not hasattr(d, "_image"):
         r = (box[3] - box[1]) / 2
         d.rounded_rectangle(box, radius=r, fill=fill, outline=None if outline is False else outline, width=width)
@@ -449,6 +467,19 @@ def pill(d, box, fill, outline=None, width=2):
     img = _velvet(w, h, h // 2, tuple(fill[:3]), tuple(t.get("text", (255, 255, 255))[:3]),
                   tuple(t.get("line", (0, 0, 0))[:3]), rim, False, None)
     _paste_clipped(d._image, img[0], x0 - img[1], y0 - img[1])
+
+
+NORMIE_RADIUS = 10
+
+
+@lru_cache(maxsize=1500)
+def _flat(w, h, radius, fill, border):
+    """Normie Mode card/button: flat fill, 1px border, anti-aliased corners. Returns (RGBA, pad)."""
+    S = 3
+    img = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rounded_rectangle([0, 0, w * S - 1, h * S - 1], radius=radius * S,
+                                          fill=fill + (255,), outline=border + (255,), width=S)
+    return img.resize((w, h), Image.LANCZOS), 0
 
 
 @lru_cache(maxsize=1500)
@@ -549,6 +580,10 @@ def fluff_card(d, box, t, radius=20, fill=None, ears_on=False, ear_size=None, tu
     x0, y0, x1, y1 = [int(round(v)) for v in box]
     w, h = max(8, x1 - x0), max(8, y1 - y0)
     fill = tuple((fill or t["panel"])[:3])
+    if t.get("normie"):
+        img, pad = _flat(w, h, int(min(NORMIE_RADIUS, h / 2)), fill, tuple(t["line_soft"][:3]))
+        _paste_clipped(d._image, img, x0 - pad, y0 - pad)
+        return
     # ears only on big "hero" cards (the window, wrapped cards) ~ on every lil card they turn into wallpaper
     if ears_on and t.get("ears", "cat") != "none" and (ear_size or 0) >= 40:
         es = int(ear_size)
@@ -602,11 +637,11 @@ def panel(d, box, radius, t, fill=None, ears_on=False):
 
 def switch(d, x, y, on, t, scale=1.0):
     w, h = 54 * scale, 30 * scale
-    pill(d, [x, y, x + w, y + h], t["primary"] if on else t["panel2"])
+    pill(d, [x, y, x + w, y + h], t["primary"] if on else t["panel2"], full=True)
     k = h - 8 * scale
     kx = x + w - k - 4 * scale if on else x + 4 * scale
     d.ellipse([kx, y + 4 * scale, kx + k, y + 4 * scale + k], fill=(255, 255, 255))
-    if on:
+    if on and not t.get("normie"):
         heart(d, kx + k / 2, y + 4 * scale + k / 2 + 1, k * 0.28, t["primary"])
 
 
@@ -871,6 +906,8 @@ def doodle_heart(d, cx, cy, r, fill, line):
 
 
 def doodle_star(d, cx, cy, r, fill, line):
+    if _CUR.get("normie"):
+        return
     pts = []
     for i in range(10):
         ang = -math.pi / 2 + i * math.pi / 5
@@ -879,9 +916,30 @@ def doodle_star(d, cx, cy, r, fill, line):
     d.polygon(pts, fill=fill, outline=line, width=2)
 
 
+def _normie_bg(t, w, h, box, radius):
+    """Normie Mode window/HUD backdrop: one flat rounded panel with a soft border. No ears, fur or glow."""
+    x0, y0, x1, y1 = box
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    card, _ = _flat(x1 - x0, y1 - y0, radius, tuple(t["bg"][:3]), tuple(t["line_soft"][:3]))
+    img.alpha_composite(card, (x0, y0))
+    return img
+
+
+def make_normie_tile(s=256):
+    """Normie Mode app icon: plain rounded tile with an F (no mascot)."""
+    t = from_key(theme_key({"style": {"normie": True}}))
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([s // 16, s // 16, s - s // 16, s - s // 16], radius=s // 6, fill=t["primary"])
+    d.text((s / 2, s / 2 + s // 64), "F", font=font("title", int(s * 0.58)), fill=t["on_primary"], anchor="mm")
+    return img
+
+
 @lru_cache(maxsize=16)
 def hud_bg(key, w, h):
     t = from_key(key)
+    if t.get("normie"):
+        return _normie_bg(t, w, h, (14, HUD_EAR, HUD_W - 14, h - 18), 14)
     img = furry_frame(key, w, h, (14, HUD_EAR, HUD_W - 14, h - 18), 26, HUD_EAR, tail=True).copy()
     glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))            # soft ambient accent glow inside the card
     ImageDraw.Draw(glow).ellipse([-200, HUD_EAR - 120, 380, HUD_EAR + 300], fill=t["primary"][:3] + (36,))
@@ -898,6 +956,8 @@ def hud_bg(key, w, h):
 @lru_cache(maxsize=8)
 def dash_bg(key, w, h):
     t = from_key(key)
+    if t.get("normie"):
+        return _normie_bg(t, w, h, (16, 60, w - 16, h - 18), 14)
     img = furry_frame(key, w, h, (16, 60, w - 16, h - 18), 36, 60).copy()
     # soft ambient glow (accent top-left, 2nd stripe color bottom-right) + faint paw prints, inside the card
     glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -1167,7 +1227,7 @@ def render_hud(state):
     rows = []
     if state.alert and time.time() < state.alert["until"]:
         rows.append(("alert", 84 if state.alert.get("kind") == "error" else 66))
-    if mods.get("wrist_pet"):
+    if mods.get("wrist_pet") and not t.get("normie"):
         rows.append(("pet", 74))
     if mods["fps"] or mods["clock"]:
         rows.append(("top", 92))
@@ -1196,7 +1256,8 @@ def render_hud(state):
         recent = [mm for mm in gc.visible(2) if time.time() - mm["time"] < 90]
         if recent:
             rows.append(("gchat", 46 + 25 * len(recent), recent))
-    acts = [a for a in cfg.get("wrist_actions", []) if a in WRIST_ACTIONS][:6]
+    acts = [a for a in cfg.get("wrist_actions", []) if a in WRIST_ACTIONS
+            and not (t.get("normie") and a in ("kitty", "pat"))][:6]      # the mascot buttons rest in Normie Mode
     if mods.get("wrist_buttons", True) and acts:
         rows.append(("buttons", 86, acts))
     style = cfg.get("hud_style", "full")
@@ -1231,11 +1292,14 @@ def render_hud(state):
             d.rounded_rectangle([x, y, R, y + bh], radius=20, fill=col)
             ink = (40, 24, 40) if sum(col[:3]) > 560 else (255, 255, 255)
             text_x = x + 54
-            if al.get("kind") == "error":
+            if al.get("kind") == "error" and not t.get("normie"):
                 fr, _ = sticker_frames(bh - 6, ERROR_ART)
                 if fr:
                     img.alpha_composite(fr[0], (int(x + 4), int(y + 3)))
                     text_x = x + 14 + fr[0].width
+            elif t.get("normie"):
+                d.ellipse([x + 20, y + 20, x + 36, y + 36], outline=ink, width=3)
+                text_x = x + 50
             elif al.get("kind") == "warn":
                 sparkle(d, x + 28, y + 28, 13, ink)
             else:
@@ -1246,7 +1310,7 @@ def render_hud(state):
             for i, ln in enumerate(lines):
                 d.text((text_x, ty + i * 22), ln, font=f, fill=ink, anchor="lm")
         elif kind == "pet":
-            frames, _ = sticker_frames(64)
+            frames, _ = ([], 100) if t.get("normie") else sticker_frames(64)
             if frames:
                 img.alpha_composite(frames[int(time.time() * 2) % len(frames)], (int(x), int(y)))
             bx = x + 78
@@ -1421,10 +1485,12 @@ LOGO_H, LOGO_POS = 92, (56, 72)
 SIDE_X0, SIDE_X1 = 30, 196        # left sidebar
 
 
-def add_logo(base, frame_idx, slots=()):
+def add_logo(base, frame_idx, slots=(), normie=False):
     """Paste the animated bits (logo + any stickers/hearts listed in `slots`) onto a
     dashboard that was rendered without them. Cheap enough to run at ~10 fps."""
     img = base.copy()
+    if normie:                  # Normie Mode: no mascot stickers or floating hearts at all
+        return img
     for slot in [("sticker", LOGO_H, LOGO_POS, None, False)] + list(slots):
         try:
             kind = slot[0]
@@ -1436,7 +1502,7 @@ def add_logo(base, frame_idx, slots=()):
                     img.alpha_composite(frames[frame_idx % len(frames)], (pos[0], y))
             elif kind == "owner_name":   # the owner's rainbow name in global chat
                 _owner_name_fx(img, slot)
-            elif kind == "hearts":       # little hearts floating up after a floof pat
+            elif kind == "hearts" and not normie:       # little hearts floating up after a floof pat
                 _, start, (hx, hy), t = slot
                 k = time.time() - start
                 if 0 <= k < 1.4:
@@ -1574,6 +1640,18 @@ def draw_cursor(img, pos, trail, clicks, t, style="paw"):
     if pos is None and not clicks:
         return img
     d = ImageDraw.Draw(img)
+    if t.get("normie"):                             # plain dot + a simple ring on click
+        for (x, y, age) in clicks:
+            k = age / 0.4
+            if k < 1:
+                r = 8 + 14 * k
+                d.ellipse([x - r, y - r, x + r, y + r], outline=mix(t["primary"], t["panel"], k), width=2)
+        if pos is not None:
+            x, y = pos
+            d.ellipse([x - 8, y - 8, x + 8, y + 8], fill=t["line"])
+            d.ellipse([x - 6, y - 6, x + 6, y + 6], fill=t["primary"])
+            d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=t["on_primary"])
+        return img
     for (x, y, age) in trail:                       # fading sparkle trail
         k = max(0.0, 1 - age / 0.45)
         if k > 0.05:
@@ -1611,6 +1689,9 @@ def draw_hover(img, box, t):
     d = ImageDraw.Draw(img)
     x0, y0, x1, y1 = box
     r = min(22, (y1 - y0) / 2)
+    if t.get("normie"):
+        d.rounded_rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], radius=min(r, NORMIE_RADIUS) + 2, outline=t["primary"], width=2)
+        return img
     d.rounded_rectangle([x0 - 4, y0 - 4, x1 + 4, y1 + 4], radius=r + 4, outline=t["line"], width=6)
     d.rounded_rectangle([x0 - 3, y0 - 3, x1 + 3, y1 + 3], radius=r + 3, outline=t["primary"], width=3)
     return img
@@ -1635,14 +1716,21 @@ def render_dashboard(state):
     _CUR = t
     # header: animated sticker logo + hand-lettered name
     top = 78
-    frames, _ = sticker_frames(LOGO_H)
+    normie = bool(t.get("normie"))
+    frames, _ = ([], 100) if normie else sticker_frames(LOGO_H)
     if frames and state.logo_frame is not None:     # None = leave room, main.py animates it
         img.alpha_composite(frames[state.logo_frame % len(frames)], LOGO_POS)
-    elif not frames:
+    elif not frames and not normie:
         paw(d, (SIDE_X0 + SIDE_X1) / 2, top + 40, 22, t["primary"])
-    tx0 = SIDE_X1 + 22
+    tx0 = SIDE_X0 + 6 if normie else SIDE_X1 + 22
     ft = font("title", 34)
     d.text((tx0, top + 46), "Fluff VR Stats", font=ft, fill=t["text"], anchor="ls")
+    if normie:
+        d.text((tx0 + 2, top + 72), "Performance stats and tools for VRChat", font=font("body2", 15),
+               fill=t["sub"], anchor="ls")
+        _header_status(d, hit, state, t, top)
+        _sidebar(d, hit, state, t)
+        return _dashboard_body(d, hit, img, state, t, top)
     cx3 = tx0 + ft.getlength("Fluff VR Stats") + 8
     d.text((cx3, top + 46), ":3", font=ft, fill=t["primary"], anchor="ls")
     doodle_heart(d, cx3 + ft.getlength(":3") + 14, top + 18, 6, t["primary"], t["line"])
@@ -1654,7 +1742,10 @@ def render_dashboard(state):
 
     _header_status(d, hit, state, t, top)
     _sidebar(d, hit, state, t)
+    return _dashboard_body(d, hit, img, state, t, top)
 
+
+def _dashboard_body(d, hit, img, state, t, top):
     body = [SIDE_X1 + 20, top + 96, DASH_W - 36, DASH_H - 38]
     state.anim_slots = []
     import ui_fun
@@ -1685,6 +1776,11 @@ def _music_page(d, hit, body, state, t):
 TAB_LABEL = {"<3": "thanks <3", "Chatbox": "Chatbox", "Fun": "fun stuff", "Body": "body", "Cam": "vcam"}
 
 
+def _tab_label(name, t):
+    label = TAB_LABEL.get(name, name).lower()
+    return label.replace(" <3", "") if t.get("normie") else label
+
+
 def _sidebar(d, hit, state, t):
     """Left nav: logo up top, every tab as a sleek row. The open one glows."""
     tabs = visible_tabs(state.cfg)
@@ -1707,7 +1803,7 @@ def _sidebar(d, hit, state, t):
             tab_icon_small = (box[0] + 16, (box[1] + box[3]) / 2)
             d.ellipse([tab_icon_small[0] - 3, tab_icon_small[1] - 3, tab_icon_small[0] + 3, tab_icon_small[1] + 3],
                       fill=col if active else t["sub"])
-        d.text((box[0] + 38, (box[1] + box[3]) / 2), TAB_LABEL.get(name, name).lower(), font=f,
+        d.text((box[0] + 38, (box[1] + box[3]) / 2), _tab_label(name, t), font=f,
                fill=col if active else t["sub"], anchor="lm")
         nb = len(state.fun.new_badges()) if name == "Fun" and getattr(state, "fun", None) else 0
         if nb and not active:
@@ -1740,7 +1836,7 @@ def _nav_dock(d, hit, state, t):
         cx = (box[0] + box[2]) / 2
         tab_icon(d, name, cx, y0 + 20, col if active else t["text"], t)
         f = font("body", 11)
-        d.text((cx, y1 - 13), ellipsize(TAB_LABEL.get(name, name).lower(), f, w - 6), font=f, fill=col, anchor="mm")
+        d.text((cx, y1 - 13), ellipsize(_tab_label(name, t), f, w - 6), font=f, fill=col, anchor="mm")
         if name == "Global" and unread and not active:
             d.ellipse([cx + 8, y0 + 4, cx + 22, y0 + 18], fill=t["bad"], outline=t["line"], width=2)
         hit.add(box, "tab", name)
@@ -1798,6 +1894,8 @@ def _quick_actions(state):
     acts = [("zoom", "zoom", "hud_cmd", "zoom"), ("chatbox", "chatbox", "hud_cmd", "chatbox"),
             ("timer", "5m timer", "hud_cmd", "timer"), ("kitty", "kitty", "hud_cmd", "kitty"),
             ("global", "global chat", "tab", "Global")]
+    if normie_on(state.cfg):
+        acts = [a for a in acts if a[0] != "kitty"]
     if not state.desktop:
         acts.insert(5, ("screen", "desktop", "hud_cmd", "screen"))
     else:
@@ -2268,6 +2366,9 @@ def tab_icon(d, name, cx, cy, col, t):
     elif name == "Boost":    # lightning bolt
         d.polygon([(cx + 3, cy - 13), (cx - 8, cy + 2), (cx - 1, cy + 2), (cx - 4, cy + 13),
                    (cx + 8, cy - 3), (cx + 1, cy - 3)], fill=col)
+    elif name == "Avatar" and t.get("normie"):   # plain person bust
+        d.ellipse([cx - 6, cy - 12, cx + 6, cy], fill=col)
+        d.pieslice([cx - 12, cy + 1, cx + 12, cy + 25], 180, 360, fill=col)
     elif name == "Avatar":   # little cat head
         d.polygon([(cx - 10, cy - 2), (cx - 9, cy - 13), (cx - 2, cy - 7)], fill=col)
         d.polygon([(cx + 10, cy - 2), (cx + 9, cy - 13), (cx + 2, cy - 7)], fill=col)
@@ -2282,7 +2383,10 @@ def tab_icon(d, name, cx, cy, col, t):
     elif name == "Home":     # lil house w/ a heart door
         d.polygon([(cx - 12, cy - 1), (cx, cy - 12), (cx + 12, cy - 1)], fill=col)
         d.rounded_rectangle([cx - 9, cy - 3, cx + 9, cy + 11], radius=3, fill=col)
-        heart(d, cx, cy + 4, 4, t["primary"] if col == t["on_primary"] else t["panel2"])
+        if t.get("normie"):
+            d.rectangle([cx - 2, cy + 3, cx + 2, cy + 11], fill=t["primary"] if col == t["on_primary"] else t["panel2"])
+        else:
+            heart(d, cx, cy + 4, 4, t["primary"] if col == t["on_primary"] else t["panel2"])
     elif name == "Global":
         action_icon(d, "global", cx, cy, 12, col)
     elif name == "Dev":       # wrench
@@ -2747,7 +2851,7 @@ def _error_toast(d, hit, box, state, t):
     d.rounded_rectangle([tb[0] - 4, tb[1] - 4, tb[2] + 4, tb[3] + 4], radius=26, fill=t["line"])
     d.rounded_rectangle(tb, radius=22, fill=t["panel2"], outline=t["bad"], width=3)
     state.anim_slots.append(("sticker", 112, (int(tb[0] + 10), int(tb[1] + 7)), ERROR_ART, False))
-    tx = tb[0] + 140
+    tx = tb[0] + (24 if t.get("normie") else 140)
     d.text((tx, tb[1] + 14), "oopsie!! something went wrong", font=font("title", 28), fill=t["bad"])
     times = f"  (x{err['count']})" if err.get("count", 1) > 1 else ""
     d.text((tx, tb[1] + 52), ellipsize(err["text"] + times, font("body2", 16), tb[2] - tx - 120),
@@ -2762,8 +2866,8 @@ def _tab_thanks(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     panel(d, box, 26, t)
     # the cuddly sticker bobs gently (animated by add_logo)
-    frames, _ = sticker_frames(330, THANKS_ART)
-    sw = frames[0].width if frames else 300
+    frames, _ = ([], 100) if t.get("normie") else sticker_frames(330, THANKS_ART)
+    sw = frames[0].width if frames else (0 if t.get("normie") else 300)
     state.anim_slots.append(("sticker", 330, (int(x0 + 30), int(y1 - 352)), THANKS_ART, True))
     tx = x0 + 60 + sw
     d.text((tx, y0 + 30), "thank u for downloading!!", font=font("title", 40), fill=t["text"])
@@ -2988,6 +3092,14 @@ def _tab_style(d, hit, box, state, t):
     x0, y0, x1, y1 = box
     cfg = state.cfg
     style = cfg.setdefault("style", {})
+    if t.get("normie"):
+        panel(d, [x0, y0, x1, y0 + 150], 14, t)
+        d.text((x0 + 24, y0 + 40), "Normie Mode is on", font=font("head", 24), fill=t["text"], anchor="lm")
+        d.text((x0 + 24, y0 + 78), "Themes, accents, ears and stripes are paused. Your choices are kept.",
+               font=font("body2", 16), fill=t["sub"], anchor="lm")
+        button(d, hit, [x0 + 24, y0 + 96, x0 + 264, y0 + 136], "Turn Normie Mode off", t, "style_set", "normie", False,
+               fsize=16, primary=True)
+        return
     # preset grid
     cols, gap = 5 if len(PRESETS) > 24 else 4, 8
     rows = -(-len(PRESETS) // cols)

@@ -135,7 +135,10 @@ def _fun_closet(d, hit, box, state, t, fun):
     kimg = getattr(state, "kitty_img", None)
     kw = y1 - y0 - 120
     panel(d, [x0, y0, x0 + kw, y1], 22, t, ears_on=True)
-    if kimg is not None:
+    if t.get("normie"):                 # the mascot rests: show a plain placeholder, closet picks still work
+        d.text((x0 + kw / 2, y0 + kw / 2 - 20), "Lil Kitty is resting", font=font("head", 20), fill=t["text"], anchor="mm")
+        d.text((x0 + kw / 2, y0 + kw / 2 + 12), "Normie Mode is on", font=font("body2", 15), fill=t["sub"], anchor="mm")
+    elif kimg is not None:
         try:
             d._image.alpha_composite(kimg.resize((int(kw - 20), int(kw - 20))), (int(x0 + 10), int(y0 + 10)))
         except Exception:
@@ -328,6 +331,8 @@ def tab_settings(d, hit, box, state, t):
             ("Setup checklist", "open", ("checklist", "open"), None, "OSC, conflicts, wrist, key"),
         ]
         rows_r = [
+            ("Normie Mode", None, ("style_set", "normie", not cfg.get("style", {}).get("normie", False)),
+             cfg.get("style", {}).get("normie", False), "clean standard look · hides the mascot + decorations"),
             ("Profile", {"performance": "Performance", "comfy": "Comfy", "full": "Full fluff"}.get(cfg.get("profile"), "my own picks"),
              ("profile", {"custom": "performance", "performance": "comfy", "comfy": "full", "full": "custom"}.get(cfg.get("profile", "custom"), "performance")),
              None, "one tap: light ~ comfy ~ everything ~ ur own picks"),
@@ -447,7 +452,7 @@ def tab_settings(d, hit, box, state, t):
         ]
     gap = 16
     cw = (x1 - x0 - gap) / 2
-    rh, rg = 48, 8
+    rh, rg = (44, 6) if max(len(rows_l), len(rows_r)) > 7 else (48, 8)    # an 8th row still fits
     top = y0 + 50
     bottom = y1 - (96 if note else 0)
     for col, rows in enumerate((rows_l, rows_r)):

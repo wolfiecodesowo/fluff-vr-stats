@@ -136,15 +136,41 @@ def build(label, bg, accent, stripe, ears="cat"):
     }
 
 
+def build_normie():
+    """Normie Mode: one neutral, conventional dark desktop palette (no mascot, ears, stripe or doodles)."""
+    t = build("Normie", (30, 33, 40), (74, 144, 226), [(74, 144, 226)], "none")
+    t.update(normie=True, show_stripe=False, ears="none",
+             bg=(30, 33, 40, 255), panel=(40, 44, 52, 255), panel2=(52, 57, 67, 255),
+             line=(24, 26, 31), line_soft=(62, 68, 80), text=(236, 239, 244), sub=(150, 158, 172),
+             primary=(74, 144, 226), on_primary=(255, 255, 255))
+    return t
+
+
+def normie_on(cfg):
+    """True when Normie Mode (clean conventional look, no mascot) is switched on. Tolerates a broken config."""
+    st = cfg.get("style") if isinstance(cfg, dict) else None
+    return bool(isinstance(st, dict) and st.get("normie") is True)
+
+
+def mascot_on(cfg):
+    """Lil Kitty (wrist + desktop pet) shows when its module is on AND Normie Mode is off."""
+    mods = cfg.get("modules") if isinstance(cfg, dict) else None
+    return bool(isinstance(mods, dict) and mods.get("wrist_kitty", True) and not normie_on(cfg))
+
+
 def theme_key(cfg):
     st = cfg.get("style", {})
+    if not isinstance(st, dict):
+        st = {}
     return json.dumps([cfg.get("theme", "pride_pastel"), st.get("accent"), st.get("background"),
-                       st.get("ears", "cat"), st.get("stripe", True)])
+                       st.get("ears", "cat"), st.get("stripe", True), bool(st.get("normie", False))])
 
 
 @lru_cache(maxsize=32)
 def from_key(key):
-    name, accent, background, ears, stripe_on = json.loads(key)
+    name, accent, background, ears, stripe_on, *rest = json.loads(key)
+    if rest and rest[0]:
+        return build_normie()
     p = PRESET_MAP.get(name, PRESETS[0])
     bg = tuple(background) if background else p[2]
     ac = tuple(accent) if accent else p[3]

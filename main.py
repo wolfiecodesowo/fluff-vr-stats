@@ -83,7 +83,7 @@ DEFAULT_WRIST = {"offset": [0.0, 0.02, 0.13], "rotation_deg": [-60.0, 0.0, 0.0]}
 # anything missing from an older config.json gets filled in from here
 DEFAULT_CFG = {
     "theme": "pride_pastel",
-    "style": {"accent": None, "background": None, "ears": "cat", "stripe": True},
+    "style": {"accent": None, "background": None, "ears": "cat", "stripe": True, "normie": False},
     "modules": {
         "fps": True, "frametime_graph": True, "gpu_cpu_ms": True, "reprojection": True,
         "pc_usage": True, "gpu_temp": False, "ping": False, "low_fps_alert": True,
@@ -262,6 +262,8 @@ def load_cfg():
         cfg["chatbox"]["statuses"] = list(chatbox.DEFAULT["statuses"])
     if cfg["style"].get("ears") not in ui.EAR_STYLES:
         cfg["style"]["ears"] = "cat"
+    if not isinstance(cfg["style"].get("normie"), bool):     # missing / corrupted -> off (the original look)
+        cfg["style"]["normie"] = False
     if cfg.get("language") not in lang.CODES:
         cfg["language"] = detect_language()
     lang.set_lang(cfg["language"])
@@ -559,6 +561,9 @@ def make_icon(path, cfg):
     """SteamVR dashboard icon: your sticker on a little furry card."""
     t = ui.get_theme(cfg)
     s = 256
+    if t.get("normie"):                      # plain rounded tile with an F, no mascot
+        ui.make_normie_tile(s).save(path)
+        return
     img = ui.furry_frame(ui.theme_key(cfg), s, s, (14, 40, s - 14, s - 16), 40, 40).copy()
     frames, _ = ui.sticker_frames(176)
     if frames:
@@ -947,7 +952,7 @@ class App:
             winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
 
     def play_intro(self):
-        if not self.cfg.get("intro", True):
+        if not self.cfg.get("intro", True) or ui.normie_on(self.cfg):    # the intro is all mascot
             self.safe("startup sound", self.play_sound)
             return
         key = ui.theme_key(self.cfg)
@@ -1421,7 +1426,11 @@ class App:
                 cfg["theme"] = args[0]
             else:
                 cfg["style"][args[0]] = args[1]
-            st.dirty_cfg = st.hud_dirty = True
+            if action == "style_set" and args[0] == "normie":
+                cfg["style"]["normie"] = bool(args[1])
+                self.kitty.changed = True            # redraw her the moment she comes back
+                self.logo_i = 0
+            st.dirty_cfg = st.hud_dirty = st.dash_dirty = True
             self.safe("icon", self.refresh_icon)
         elif action == "mods_cat":
             st.mods_cat = args[0]
@@ -2768,7 +2777,7 @@ class App:
             else openvr.TrackedControllerRole_LeftHand
 
     def step_kitty(self, now):
-        on = self.cfg["modules"].get("wrist_kitty", True)
+        on = ui.mascot_on(self.cfg)
         idx = self.vr.getTrackedDeviceIndexForControllerRole(self.kitty_role()) if on else openvr.k_unTrackedDeviceIndexInvalid
         idx = None if idx == openvr.k_unTrackedDeviceIndexInvalid else idx
         if idx != self.kitty_idx:
@@ -2968,7 +2977,11 @@ class App:
                 or (st.hud_dirty and now - self.t["hud"] > 5):
             st.hud_dirty = False
             self.t["hud"] = now
-            self.push(self.hud, ui.render_hud(st), "hud")
+            hud_img = ui.render_hud(st)
+            if ui.normie_on(self.cfg):
+                import coderain
+                hud_img = coderain.behind(hud_img, now)
+            self.push(self.hud, hud_img, "hud")
 
     def step_dash(self, now):
         st = self.state
@@ -2991,7 +3004,11 @@ class App:
             if self.cfg.get("animate_logo", True) and not getattr(st, "power_saving", False):
                 self.logo_i += 1
             th = ui.get_theme(self.cfg)
-            frame = ui.draw_hover(ui.add_logo(self.dash_base, self.logo_i, st.anim_slots), st.hover_box, th)
+            frame = ui.draw_hover(ui.add_logo(self.dash_base, self.logo_i, st.anim_slots, th.get("normie", False)),
+                                  st.hover_box, th)
+            if th.get("normie"):                     # code rain wall behind the menu
+                import coderain
+                frame = coderain.behind(frame, 0 if (self.cfg.get("a11y", {}).get("reduced_motion") or getattr(st, "power_saving", False)) else now)
             if self.cfg.get("cursor", "paw") != "steamvr":
                 calm = self.cfg.get("a11y", {}).get("reduced_motion")
                 trail = [] if calm else [(x, y, now - t0) for x, y, t0 in st.trail]

@@ -143,7 +143,7 @@ class DesktopApp(core.App):
                 mods.update(saved)
 
     def step_kitty(self, now):
-        if not self.cfg["modules"].get("wrist_kitty", True):
+        if not ui.mascot_on(self.cfg):
             self.frames.pop("kitty", None)
             return
         self.kitty.tick(now)
@@ -207,9 +207,23 @@ def app_identity():
             pass
 
 
-def set_icon(root):
+def normie_ico():
+    """plain 'F' tile icon for Normie Mode (built once, kept in logs/)"""
+    path = os.path.join(HERE, "logs", "normie.ico")
+    if not os.path.exists(path):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            from PIL import Image
+            ui.make_normie_tile(256).save(path, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (256, 256)])
+        except Exception as e:
+            core.log.warning("couldn't build the Normie Mode icon: %s", e)
+            return ICO
+    return path
+
+
+def set_icon(root, normie=False):
     try:
-        root.iconbitmap(default=ICO)          # the mascot, on the taskbar + alt-tab
+        root.iconbitmap(default=normie_ico() if normie else ICO)    # mascot (or the plain tile) on the taskbar
     except Exception:
         pass
 
@@ -646,25 +660,49 @@ def run():
             canvas_.delete("all")
             canvas_.create_image(0, 0, image=store["img"], anchor="nw")
 
+    look = {"normie": None}
+
+    def sync_look():
+        """window title + taskbar icon follow Normie Mode, live"""
+        on = ui.normie_on(cfg)
+        if on != look["normie"]:
+            look["normie"] = on
+            root.title("Fluff VR Stats" if on else "Fluff VR Stats :3")
+            set_icon(root, on)
+
     def refresh():
         if app.quit:
             root.destroy()
             return
+        sync_look()
         f = app.frames.get("dash")
         if f is not None:
             s = view["scale"]
-            if f is not view["last"]:
+            normie = ui.normie_on(cfg)
+            tick = int(time.time() * 12) if normie else -1          # the code rain moves ~12x a second
+            if normie != view.get("normie"):                          # mode just flipped: start from a clean canvas
+                view.update(normie=normie, last=None, img=None, tick=None)
+                canvas.delete("all")
+            if f is not view["last"] or tick != view.get("tick"):
                 size = (int(ui.DASH_W * s), int(ui.DASH_H * s))
-                pic = flatten(f, size)
+                if normie:                                            # Normie Mode: falling-code wall behind it all
+                    import coderain
+                    cs = (max(1, canvas.winfo_width()), max(1, canvas.winfo_height()))
+                    card = f.resize(size, Image.BILINEAR) if f.size != size else f
+                    pic = coderain.behind(card, time.time(), cs, (view["ox"], view["oy"])).convert("RGB")
+                    size, origin = cs, (0, 0)
+                else:
+                    pic = flatten(f, size)
+                    origin = (view["ox"], view["oy"])
                 if view["img"] is not None and (view["img"].width(), view["img"].height()) == size:
                     view["img"].paste(pic)                  # reuse the same picture = much faster
                 else:
                     view["img"] = ImageTk.PhotoImage(pic)
                     canvas.delete("all")
-                    canvas.create_image(view["ox"], view["oy"], image=view["img"], anchor="nw")
-                view["last"] = f
+                    canvas.create_image(*origin, image=view["img"], anchor="nw")
+                view["last"], view["tick"] = f, tick
         k = app.frames.get("kitty")
-        if k is not None and cfg["modules"].get("wrist_kitty", True):
+        if k is not None and ui.mascot_on(cfg):
             if kwin.state() == "withdrawn":
                 kwin.deiconify()
             show(kc, kview, k, (KS, KS))
