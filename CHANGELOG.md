@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.4: Fluff gets its own window 🪟
+- 🐾 **no more boring Windows frame:** in desktop mode the window IS the fluffy card now, ears + fuzz and all, with ur desktop showing around it. grab the ears to move it, the lil — ⛶ ✕ buttons between the ears do the rest
+- ⛶ **full screen:** press **F11** (or ⛶) and Fluff fills ur whole screen like a real app. **Esc** goes back
+- 🖼️ **ur pick:** right-click anywhere → Window → fluffy, full screen or a normal Windows window. it remembers
+- 🦊 **the mascot on ur taskbar** instead of the Python snake
+- ✨ **calmer look:** ears only on the big cards, no glow on every box, and pink means "on" now so u can see what's switched on at a glance
+- the View / Mode menus moved to right-click
+
 ## v0.5.3 + Quest Edition v0.10.5: safer global chat + the owner gets a crown 👑
 - 🛡️ **global chat moderation:** troublemakers can get kicked (10 min out), muted or banned, and it works on every version of the app (PC, desktop, Quest, even old ones). when it happens, everyone sees it in chat from **Fluff Mod**
 - 🔨 **ban + mute sounds:** a ban hammer clang, a lil "bwoop" for mutes and a boot + boing for kicks, so everyone hears it happen. don't want them? Global chat → **ban + mute sounds** off
