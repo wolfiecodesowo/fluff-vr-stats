@@ -142,7 +142,8 @@ class RoleButtons(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         labels = {"pings": "📢 Update Pings", "beta": "🧪 Beta Tester",
-                  "vrchat": "🌍 VRChat Player", "artist": "🎨 Artist", "bumper": "🔔 Bumper"}
+                  "vrchat": "🌍 VRChat Player", "artist": "🎨 Artist", "bumper": "🔔 Bumper",
+                  "linuxbeta": "🐧 Linux Beta Tester"}
         for key in C.SELF_ROLES:
             b = discord.ui.Button(label=labels[key], style=discord.ButtonStyle.secondary,
                                   custom_id=f"fluff_role:{key}")

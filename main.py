@@ -78,6 +78,8 @@ from stats import StatsCollector
 from themes import PRESET_MAP
 
 CFG_PATH = os.path.join(HERE, "config.json")
+# which platform this PC build reports to the Discord bot ("linux" earns the 🐧 Linux Beta Tester role)
+PC_CLIENT = "linux" if sys.platform.startswith("linux") else "pc"
 DEFAULT_WRIST = {"offset": [0.0, 0.02, 0.13], "rotation_deg": [-60.0, 0.0, 0.0]}
 
 # anything missing from an older config.json gets filled in from here
@@ -764,8 +766,8 @@ class App:
         self.last_prio = 0
         self.avatar = Avatar()
         self.extras.avatar = self.avatar
-        self.access = fluffnet.Access(self.cfg, self.state.version, client="pc", on_linked=self.on_linked)
-        self.gchat = GlobalChat(self.cfg, client="pc", on_message=self.on_gchat, access=self.access)
+        self.access = fluffnet.Access(self.cfg, self.state.version, client=PC_CLIENT, on_linked=self.on_linked)
+        self.gchat = GlobalChat(self.cfg, client=PC_CLIENT, on_message=self.on_gchat, access=self.access)
         self.state.gchat = self.gchat
         self.fun = fun_mod.Fun(self.cfg)
         self.friends = fluffnet.Friends(self.cfg, client="pc", on_wave=self.on_wave, access=self.access)
@@ -1137,14 +1139,16 @@ class App:
             return                                   # a dev test copy: leave SteamVR pointing at ur real install
         apps = openvr.VRApplications()
         path = os.path.join(HERE, "fluffvr_stats.vrmanifest")
-        pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-        if not os.path.exists(pyw):
-            pyw = sys.executable
-        man = {"source": "builtin", "applications": [{
-            "app_key": "fluffvr.stats", "launch_type": "binary", "binary_path_windows": pyw,
-            "arguments": f'"{os.path.join(HERE, "main.py")}" --vr', "working_directory": HERE,
-            "is_dashboard_overlay": True,
-            "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute furry wrist HUD for VRChat"}}}]}
+        app = {"app_key": "fluffvr.stats", "launch_type": "binary",
+               "arguments": f'"{os.path.join(HERE, "main.py")}" --vr', "working_directory": HERE,
+               "is_dashboard_overlay": True,
+               "strings": {"en_us": {"name": "Fluff VR Stats", "description": "Cute furry wrist HUD for VRChat"}}}
+        if sys.platform == "win32":
+            pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")   # no console window
+            app["binary_path_windows"] = pyw if os.path.exists(pyw) else sys.executable
+        else:
+            app["binary_path_linux"] = sys.executable          # SteamVR on Linux launches python3 directly
+        man = {"source": "builtin", "applications": [app]}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(man, f, indent=2)
         apps.addApplicationManifest(path, False)

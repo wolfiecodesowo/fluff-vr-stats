@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.0: Fluff runs on Linux now 🐧🎉
+- 🐧 **Linux support (the major update):** Fluff VR Stats runs on Linux with SteamVR now, not just Windows. same cute wrist HUD, SteamVR menu, mods, global chat and desktop-in-VR
+- 🥽 **SteamVR on Linux:** the app registers itself in SteamVR's startup list on Linux too (it writes the right Linux launch path now), so "start with SteamVR" works like on Windows
+- 🧪 **new 🐧 Linux Beta Tester role:** run the Linux build + activate ur key and u get the **🐧 Linux Beta Tester** role in the Discord automatically ~ or grab it yourself in #get-roles. come help us shake out the bugs!
+- 🪟 **Windows is untouched:** this only adds Linux, nothing moves or breaks on Windows
+- 🐛 **Linux notes:** the Windows-only extras (FPS Boost tweaks + Windows media song info) stay off on Linux for now, everything else works. anything weird goes in #bug-reports 🐾
+
 ## v0.5.5 + Quest Edition v0.11.0: Normie Mode 🕶️
 - 🕶️ **Normie Mode (PC, desktop mode and Quest):** one switch for a clean, conventional look. Settings → general → **Normie Mode** (on Quest: Settings → look). It applies instantly and is remembered
   - flat cards and buttons with small corners, one neutral dark palette + a blue accent, clean sans font instead of the hand lettering

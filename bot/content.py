@@ -21,6 +21,7 @@ ROLES = [
     {"key": "staff", "name": "🛡️ Staff", "color": 0xB58CFF, "hoist": True, "perms": "staff"},
     {"key": "invr", "name": "🥽 In VR Now", "color": 0x6EC8FF, "hoist": True, "perms": None},
     {"key": "beta", "name": "🧪 Beta Tester", "color": 0xFFD36E, "hoist": False, "perms": None},
+    {"key": "linuxbeta", "name": "🐧 Linux Beta Tester", "color": 0x8BE9FD, "hoist": False, "perms": None},
     {"key": "artist", "name": "🎨 Artist", "color": 0xFF9F6E, "hoist": False, "perms": None},
     {"key": "vrchat", "name": "🌍 VRChat Player", "color": 0x9FE870, "hoist": False, "perms": None},
     {"key": "pings", "name": "📢 Update Pings", "color": 0xFFB3D9, "hoist": False, "perms": None},
@@ -28,7 +29,7 @@ ROLES = [
     {"key": "member", "name": "🐾 Fluff", "color": 0xFFC6E4, "hoist": False, "perms": None},
 ]
 # self-assign buttons in #get-roles
-SELF_ROLES = ["pings", "vrchat", "artist", "bumper"]   # 🧪 Beta Tester is earned: /key + activate the app
+SELF_ROLES = ["pings", "vrchat", "artist", "bumper", "linuxbeta"]   # 🧪 Beta Tester is earned: /key + activate the app
 
 # Channel layout. access:
 #   "read"  = everyone can read, only Owner/Staff/bot can post
@@ -331,7 +332,7 @@ POSTS = {
             ("how do I click stuff?", "point your laser and pull the trigger, like any SteamVR menu.", False),
             ("where did the AI buddy go?", "we took it out in v0.3.0. lots of people aren't vibing with AI stuff right now, "
              "so the app is 100% AI-free. everything else still works :3", False),
-            ("Mac / Linux?", "Windows only for now.", False),
+            ("Mac / Linux?", "Linux is supported now (beta) with SteamVR! grab the 🐧 Linux Beta Tester role in #get-roles. Mac is not supported yet, sorry!", False),
             ("can I make my own theme or mod?",
              "yes!! it's open source. check the GitHub README, PRs welcome.", False),
         ]),
@@ -460,7 +461,8 @@ POSTS.update({
             ("Python", "3.10 or newer (free from python.org), tick **Add python.exe to PATH**", False),
             ("optional", "NVIDIA GPU for GPU temp + VRAM · Discord app for Discord status · "
                          "a Quest or Android phone for the Quest Edition", False),
-            ("not supported", "standalone Quest (no PC), Mac, Linux (for now)", False),
+            ("Linux", "supported in beta with SteamVR 🐧 (grab the Linux Beta Tester role)", False),
+            ("not supported", "standalone Quest (no PC), Mac (for now)", False),
         ]),
     ],
     "safety": [

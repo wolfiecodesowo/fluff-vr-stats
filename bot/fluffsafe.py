@@ -322,6 +322,8 @@ def install(bot, env):
             await signed(N.AUTH_TOPIC, {"t": "activated", "nonce": nonce, "tok": tok,
                                         "who": (m.display_name if m else "u")[:40], "beta": True})
             await give_role(uid, "beta", "activated the app with their key")
+            if str(p.get("c", "")).lower() == "linux":
+                await give_role(uid, "linuxbeta", "activated the Linux build")
             await bot.modlog(f"🧪 **beta tester:** <@{uid}> activated the app · `{u['v']}` · {u['c']}", C.GOLD)
         elif t == "hb":
             uid, u = check_tok(p.get("tok"), p.get("sid"))
@@ -330,6 +332,8 @@ def install(bot, env):
                 u.update(v=str(p.get("v", ""))[:20], c=str(p.get("c", ""))[:8], last=time.time())
                 save_data(D)
                 await give_role(uid, "beta", "using the app")
+                if str(p.get("c", "")).lower() == "linux":
+                    await give_role(uid, "linuxbeta", "using the Linux build")
                 if fresh:
                     await give_role(uid, "invr", "app is open")
         elif t == "badges":
@@ -374,7 +378,8 @@ def install(bot, env):
         if to_discord:
             c = bot.ch("gchat")
             if c:
-                tag = {"quest": " · quest", "desktop": " · desktop", "phone": " · phone"}.get(client, "")
+                tag = {"quest": " · quest", "desktop": " · desktop", "phone": " · phone",
+                       "linux": " · linux 🐧"}.get(client, "")
                 crown = "👑 " if role == "owner" else "⭐ " if role == "staff" else ""
                 safe = discord.utils.escape_mentions(discord.utils.escape_markdown(text))
                 try:
@@ -651,6 +656,14 @@ def install(bot, env):
             try:
                 r = await g.create_role(name="🏅 Badge Hunter", colour=discord.Colour(0xFFB86E), reason="app badges")
                 CFG.setdefault("roles", {})["badges"] = r.id
+                env["save_cfg"](CFG)
+            except discord.HTTPException:
+                pass
+        if g and not bot.role("linuxbeta"):
+            try:
+                r = await g.create_role(name="🐧 Linux Beta Tester", colour=discord.Colour(0x8BE9FD),
+                                        reason="Linux beta")
+                CFG.setdefault("roles", {})["linuxbeta"] = r.id
                 env["save_cfg"](CFG)
             except discord.HTTPException:
                 pass
